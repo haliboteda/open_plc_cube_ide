@@ -24,8 +24,7 @@ d- Connect ST-LINK to JTAG socket on the board
 ![image](DOC/pic/2.png)  
 
 e- Connect the RS232 pins ( PC11 -> UART4_RX | PC10 -> UART4_TX) to the pc with the serial port converter cable    
-   (In Ubuntu it will be recognized as "/dev/ttyUSBxx" and in Windows it will be "COMxx": xx for your own device number.   
-   For me,it is COM5 | /dev/ttyUSB0)  
+   (In Ubuntu it will be recognized as "/dev/ttyUSBxx" and in Windows it will be "COMxx": xx for your own device number. For me,it is COM5 | /dev/ttyUSB0)  
     
 f- Connect the device USB port to pc with USB cable (Arduino IDE will download bin file through this port)   
   
@@ -104,7 +103,15 @@ h- After the device power on, there are 5 seconds to select the running mode. If
 
 ![image](DOC/pic/17.png)  
 
-
+---
+# Linux FAQ  
+1- In Linux, Arduino IDE need permission to open serial port. Please add use into user group "dialout".  
+   (https://support.arduino.cc/hc/en-us/articles/360016495679-Fix-port-access-on-Linux)    
+2- There are some *.sh files in the Arduino package need permission to execute. Please give +x to them. (Replace {user name} and {package version} according to your environment )  
+   chmod +x "/home/{user name}/.arduino15/packages/OpenPLC_Alpha/hardware/stm32/{package version}/system/extras/postbuild.sh"   
+   chmod +x "/home/{user name}/.arduino15/packages/OpenPLC_Alpha/hardware/stm32/{package version}/system/extras/postbuild.sh"  
+---
+  
 --- 
 **Flash Constructure**  
 
