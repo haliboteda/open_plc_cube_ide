@@ -142,10 +142,10 @@ int main(void)
   Enable_RX_RS232();
 
   printf("******************************************************\r\n");
-  printf("** After the click sound, please input the menu number to choose.\r\n");
-  printf("** 1. OpenPLC board will stay in the CDC mode. \r\n");
-  printf("** 2. Run the app directly.(default) \r\n");
-  printf("**Please choose 1 or 2 in 5 seconds:");
+  printf("** During the click sound, please input the menu number to choose mode.\r\n");
+  printf("** 1. UPLOAD mode: be able to update application to the device. \r\n");
+  printf("** 2. APP mode: Run the application directly.(default) \r\n");
+  printf("**Please choose 1 or 2 in 5 seconds: \r\n");
   printf("******************************************************\r\n");
 
   // Einschalten aller HSFETs einmalig und dann ausschalten
@@ -164,7 +164,7 @@ int main(void)
     default:
       if (((*(__IO uint32_t *)CDC_APP_ADDRESS) & 0x2FFE0000) == 0x24080000)
       {
-        printf("\r\n** Go to app.\r\n");
+        printf("\r\n** Go to APP mode.\r\n");
         /* Jump to user application */
         JumpAddress = *(__IO uint32_t *)(CDC_APP_ADDRESS + 4);
 
@@ -185,11 +185,11 @@ int main(void)
       }
       else
       {
-        printf("\r\n** NO APP! Stay in the CDC mode.\r\n");
+        printf("\r\n** NO APP! Stay in the UPLOAD mode.\r\n");
       }
       break;
     }
-  printf("** In the CDC mode.\r\n");
+  printf("** In the UPLOAD mode.\r\n");
   /* USER CODE END 2 */
 
   /* Infinite loop */
