@@ -1,6 +1,6 @@
 # open-plc
 # Prerequisities (Win or Linux)
-a- Download and install STM32-Cube IDE 1.10.0 [Link](https://www.st.com/en/development-tools/stm32cubeide.html)  
+a- Download and install STM32-Cube IDE 1.16.1 [Link](https://www.st.com/en/development-tools/stm32cubeide.html)  
 b- Download and install arduino ide [Link](https://www.arduino.cc/en/software)  
 c- Download STM32-Cube-FW-H7 (optional, STM32 samples) [link](https://www.st.com/en/embedded-software/stm32cubeh7.html)  
 
