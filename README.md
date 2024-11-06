@@ -103,16 +103,16 @@ h- After the device power on, there are 5 seconds to select the running mode. If
 
 ![image](DOC/pic/17.png)  
 
----
+---  
 **Linux FAQ**         
+
 1- In Linux, Arduino IDE need permission to open serial port. Please add use into user group "dialout".  
    (https://support.arduino.cc/hc/en-us/articles/360016495679-Fix-port-access-on-Linux)    
 2- There are some *.sh files in the Arduino package need permission to execute. Please give +x to them. (Replace {user name} and {package version} according to your environment )  
    chmod +x "/home/{user name}/.arduino15/packages/OpenPLC_Alpha/hardware/stm32/{package version}/system/extras/prebuild.sh"   
-   chmod +x "/home/{user name}/.arduino15/packages/OpenPLC_Alpha/hardware/stm32/{package version}/system/extras/postbuild.sh"  
----
-  
---- 
+   chmod +x "/home/{user name}/.arduino15/packages/OpenPLC_Alpha/hardware/stm32/{package version}/system/extras/postbuild.sh"
+   
+---   
 **Flash Constructure**  
 
 ![image](DOC/pic/flash_constructure.png)  
