@@ -31,61 +31,61 @@
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
-
+extern RTC_HandleTypeDef hrtc;
 /* USER CODE END PV */
 
 /** @addtogroup STM32_USB_OTG_DEVICE_LIBRARY
-  * @brief Usb device library.
-  * @{
-  */
+ * @brief Usb device library.
+ * @{
+ */
 
 /** @addtogroup USBD_CDC_IF
-  * @{
-  */
+ * @{
+ */
 
 /** @defgroup USBD_CDC_IF_Private_TypesDefinitions USBD_CDC_IF_Private_TypesDefinitions
-  * @brief Private types.
-  * @{
-  */
+ * @brief Private types.
+ * @{
+ */
 
 /* USER CODE BEGIN PRIVATE_TYPES */
 
 /* USER CODE END PRIVATE_TYPES */
 
 /**
-  * @}
-  */
+ * @}
+ */
 
 /** @defgroup USBD_CDC_IF_Private_Defines USBD_CDC_IF_Private_Defines
-  * @brief Private defines.
-  * @{
-  */
+ * @brief Private defines.
+ * @{
+ */
 
 /* USER CODE BEGIN PRIVATE_DEFINES */
 
 /* USER CODE END PRIVATE_DEFINES */
 
 /**
-  * @}
-  */
+ * @}
+ */
 
 /** @defgroup USBD_CDC_IF_Private_Macros USBD_CDC_IF_Private_Macros
-  * @brief Private macros.
-  * @{
-  */
+ * @brief Private macros.
+ * @{
+ */
 
 /* USER CODE BEGIN PRIVATE_MACRO */
 
 /* USER CODE END PRIVATE_MACRO */
 
 /**
-  * @}
-  */
+ * @}
+ */
 
 /** @defgroup USBD_CDC_IF_Private_Variables USBD_CDC_IF_Private_Variables
-  * @brief Private variables.
-  * @{
-  */
+ * @brief Private variables.
+ * @{
+ */
 /* Create buffer for reception and transmission           */
 /* It's up to user to redefine and/or remove those define */
 /** Received data over USB are stored in this buffer      */
@@ -95,33 +95,19 @@ uint8_t UserRxBufferFS[APP_RX_DATA_SIZE];
 uint8_t UserTxBufferFS[APP_TX_DATA_SIZE];
 
 /* USER CODE BEGIN PRIVATE_VARIABLES */
-
-// for CDC upgrade
-uint8_t FlagAppToBeUpgraded = 0; // 0 - no 1 - yes
-uint32_t BinFileSize = 0;
-uint32_t BinFileRXLen = 0; // bin file received length
-
-uint32_t LenInRXBuf = 0;    // received data length in buffer
-uint32_t PackageNumTOFlash = 0; // a bin file will be split into many package. size of each package <= BIN_FILE_BUF_SIZE
-							    // In each time, when buffer is full or file is to the end, PackageNumTOFlash will increased by 1
-uint32_t LenInWRBuffer = 0; // data length to write to flash
-
-// TO avoid long writing to flash, two buffers are used.
-// One buffer is for receiving data, and the other is for writing data
-uint8_t BinFileRXBuf[BIN_FILE_BUF_SIZE]; // buffer to receive data
-uint8_t BinFileWRBuf[BIN_FILE_BUF_SIZE]; // buffer to write to flash
-// uint8_t *buf_in_rx = BinFileBuf1;       // address of the buffer to receive data
-// uint8_t *buf_to_flash = BinFileBuf2;    // address of the buffer to write to flash
+extern uint8_t DataReadyFlag; // 0 - no 1 - yes
+extern uint32_t LenInRXBuf;    // received data length in buffer
+extern uint8_t BinFileRXBuf[CDC_RX_BUFFER_SIZE]; // buffer to
 /* USER CODE END PRIVATE_VARIABLES */
 
 /**
-  * @}
-  */
+ * @}
+ */
 
 /** @defgroup USBD_CDC_IF_Exported_Variables USBD_CDC_IF_Exported_Variables
-  * @brief Public variables.
-  * @{
-  */
+ * @brief Public variables.
+ * @{
+ */
 
 extern USBD_HandleTypeDef hUsbDeviceFS;
 
@@ -130,345 +116,212 @@ extern USBD_HandleTypeDef hUsbDeviceFS;
 /* USER CODE END EXPORTED_VARIABLES */
 
 /**
-  * @}
-  */
+ * @}
+ */
 
 /** @defgroup USBD_CDC_IF_Private_FunctionPrototypes USBD_CDC_IF_Private_FunctionPrototypes
-  * @brief Private functions declaration.
-  * @{
-  */
+ * @brief Private functions declaration.
+ * @{
+ */
 
 static int8_t CDC_Init_FS(void);
 static int8_t CDC_DeInit_FS(void);
-static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length);
-static int8_t CDC_Receive_FS(uint8_t* pbuf, uint32_t *Len);
+static int8_t CDC_Control_FS(uint8_t cmd, uint8_t *pbuf, uint16_t length);
+static int8_t CDC_Receive_FS(uint8_t *pbuf, uint32_t *Len);
 static int8_t CDC_TransmitCplt_FS(uint8_t *pbuf, uint32_t *Len, uint8_t epnum);
 
 /* USER CODE BEGIN PRIVATE_FUNCTIONS_DECLARATION */
-/**
- * @brief  check if string "src" is started with "prefix"
- * @param  src: source string
- * @param  prefix: prefix string
- * @retval 1 - yes  0 - no
- */
-uint8_t starts_with(const uint8_t *restrict src, const uint8_t *restrict prefix)
-{
-  while (*prefix)
-  {
-    if (*prefix++ != *src++)
-      return 0;
-  }
-  return 1;
-}
 
-/**
- * @brief convert characters to uint32_t
- * @param  str: array start address
- * @param  Len: character length
- * @retval int value
- */
-uint32_t strToInt(const uint8_t *str, uint32_t Len)
-{
-  uint32_t num = 0;
-  for (int i = 0; i < Len; i++)
-  {
-    num = num * 10 + (str[i] - '0');
-  }
-  return num;
-}
 
-/**
- * @brief  The format is:  bin_file_is_ready + ":" + XXXXX (file byte length)
- *         If the format is correct, set the flag_app_to_be_upgraded = 1
- * @param  Buf: Buffer of data to be received
- * @param  Len: Number of data received (in bytes)
- * @retval >0 - bin file length  -1 - no
- */
-uint32_t set_upgrade_flag(uint8_t *Buf, uint32_t *Len)
-{
-  int is_good = starts_with(Buf, (uint8_t *)HEAD_OF_UPGRADE);
-  if (is_good < 1)
-    return 0;
-  // set the flag
-  FlagAppToBeUpgraded = 1;
-  // get the bin file length
-  BinFileSize = strToInt(Buf + strlen(HEAD_OF_UPGRADE), *Len - strlen(HEAD_OF_UPGRADE));
-  return BinFileSize;
-}
-
-/**
- * @brief Empty the buffer
- * @param Buf:buffer address
- * @param Len:buffer length
- */
-void empty_buf(uint8_t *Buf, uint32_t Len)
-{
-  int i;
-  for (i = 0; i < Len; i++)
-  {
-    *(Buf + i) = '\0';
-  }
-}
-/**
- * @brief reset all buffers and variables to original state
- * */
-void reset_buf(void)
-{
-  FlagAppToBeUpgraded = 0;
-  BinFileSize = 0;
-  BinFileRXLen = 0;
-
-  LenInRXBuf = 0;
-  PackageNumTOFlash = 0;
-  LenInWRBuffer = 0;
-
-  empty_buf(BinFileRXBuf, BIN_FILE_BUF_SIZE); //
-  empty_buf(BinFileWRBuf, BIN_FILE_BUF_SIZE); //
-}
 /* USER CODE END PRIVATE_FUNCTIONS_DECLARATION */
 
 /**
-  * @}
-  */
+ * @}
+ */
 
-USBD_CDC_ItfTypeDef USBD_Interface_fops_FS =
-{
-  CDC_Init_FS,
-  CDC_DeInit_FS,
-  CDC_Control_FS,
-  CDC_Receive_FS,
-  CDC_TransmitCplt_FS
-};
+USBD_CDC_ItfTypeDef USBD_Interface_fops_FS = { CDC_Init_FS, CDC_DeInit_FS,
+		CDC_Control_FS, CDC_Receive_FS, CDC_TransmitCplt_FS };
 
 /* Private functions ---------------------------------------------------------*/
 /**
-  * @brief  Initializes the CDC media low layer over the FS USB IP
-  * @retval USBD_OK if all operations are OK else USBD_FAIL
-  */
-static int8_t CDC_Init_FS(void)
-{
-  /* USER CODE BEGIN 3 */
-  /* Set Application Buffers */
-  USBD_CDC_SetTxBuffer(&hUsbDeviceFS, UserTxBufferFS, 0);
-  USBD_CDC_SetRxBuffer(&hUsbDeviceFS, UserRxBufferFS);
-  return (USBD_OK);
-  /* USER CODE END 3 */
+ * @brief  Initializes the CDC media low layer over the FS USB IP
+ * @retval USBD_OK if all operations are OK else USBD_FAIL
+ */
+static int8_t CDC_Init_FS(void) {
+	/* USER CODE BEGIN 3 */
+	/* Set Application Buffers */
+	USBD_CDC_SetTxBuffer(&hUsbDeviceFS, UserTxBufferFS, 0);
+	USBD_CDC_SetRxBuffer(&hUsbDeviceFS, UserRxBufferFS);
+	return (USBD_OK);
+	/* USER CODE END 3 */
 }
 
 /**
-  * @brief  DeInitializes the CDC media low layer
-  * @retval USBD_OK if all operations are OK else USBD_FAIL
-  */
-static int8_t CDC_DeInit_FS(void)
-{
-  /* USER CODE BEGIN 4 */
-  return (USBD_OK);
-  /* USER CODE END 4 */
+ * @brief  DeInitializes the CDC media low layer
+ * @retval USBD_OK if all operations are OK else USBD_FAIL
+ */
+static int8_t CDC_DeInit_FS(void) {
+	/* USER CODE BEGIN 4 */
+	return (USBD_OK);
+	/* USER CODE END 4 */
 }
 
 /**
-  * @brief  Manage the CDC class requests
-  * @param  cmd: Command code
-  * @param  pbuf: Buffer containing command data (request parameters)
-  * @param  length: Number of data to be sent (in bytes)
-  * @retval Result of the operation: USBD_OK if all operations are OK else USBD_FAIL
-  */
-static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
-{
-  /* USER CODE BEGIN 5 */
-  switch (cmd)
-  {
-  case CDC_SEND_ENCAPSULATED_COMMAND:
+ * @brief  Manage the CDC class requests
+ * @param  cmd: Command code
+ * @param  pbuf: Buffer containing command data (request parameters)
+ * @param  length: Number of data to be sent (in bytes)
+ * @retval Result of the operation: USBD_OK if all operations are OK else USBD_FAIL
+ */
+static int8_t CDC_Control_FS(uint8_t cmd, uint8_t *pbuf, uint16_t length) {
+	/* USER CODE BEGIN 5 */
+	USBD_CDC_LineCodingTypeDef *pline_coding =
+			(USBD_CDC_LineCodingTypeDef*) pbuf;
+	switch (cmd) {
+	case CDC_SEND_ENCAPSULATED_COMMAND:
 
-    break;
+		break;
 
-  case CDC_GET_ENCAPSULATED_RESPONSE:
+	case CDC_GET_ENCAPSULATED_RESPONSE:
 
-    break;
+		break;
 
-  case CDC_SET_COMM_FEATURE:
+	case CDC_SET_COMM_FEATURE:
 
-    break;
+		break;
 
-  case CDC_GET_COMM_FEATURE:
+	case CDC_GET_COMM_FEATURE:
 
-    break;
+		break;
 
-  case CDC_CLEAR_COMM_FEATURE:
+	case CDC_CLEAR_COMM_FEATURE:
 
-    break;
+		break;
 
-    /*******************************************************************************/
-    /* Line Coding Structure                                                       */
-    /*-----------------------------------------------------------------------------*/
-    /* Offset | Field       | Size | Value  | Description                          */
-    /* 0      | dwDTERate   |   4  | Number |Data terminal rate, in bits per second*/
-    /* 4      | bCharFormat |   1  | Number | Stop bits                            */
-    /*                                        0 - 1 Stop bit                       */
-    /*                                        1 - 1.5 Stop bits                    */
-    /*                                        2 - 2 Stop bits                      */
-    /* 5      | bParityType |  1   | Number | Parity                               */
-    /*                                        0 - None                             */
-    /*                                        1 - Odd                              */
-    /*                                        2 - Even                             */
-    /*                                        3 - Mark                             */
-    /*                                        4 - Space                            */
-    /* 6      | bDataBits  |   1   | Number Data bits (5, 6, 7, 8 or 16).          */
-    /*******************************************************************************/
-  case CDC_SET_LINE_CODING:
+		/*******************************************************************************/
+		/* Line Coding Structure                                                       */
+		/*-----------------------------------------------------------------------------*/
+		/* Offset | Field       | Size | Value  | Description                          */
+		/* 0      | dwDTERate   |   4  | Number |Data terminal rate, in bits per second*/
+		/* 4      | bCharFormat |   1  | Number | Stop bits                            */
+		/*                                        0 - 1 Stop bit                       */
+		/*                                        1 - 1.5 Stop bits                    */
+		/*                                        2 - 2 Stop bits                      */
+		/* 5      | bParityType |  1   | Number | Parity                               */
+		/*                                        0 - None                             */
+		/*                                        1 - Odd                              */
+		/*                                        2 - Even                             */
+		/*                                        3 - Mark                             */
+		/*                                        4 - Space                            */
+		/* 6      | bDataBits  |   1   | Number Data bits (5, 6, 7, 8 or 16).          */
+		/*******************************************************************************/
+	case CDC_SET_LINE_CODING:
+		uint32_t regV = HAL_RTCEx_BKUPRead(&hrtc, MAGIC_BKP_REG);
+		if (pline_coding->bitrate == MAGIC_CDC_RATE && regV != MAGIC_BOOTLOADER_FLAG) {
+			HAL_RTCEx_BKUPWrite(&hrtc, MAGIC_BKP_REG, MAGIC_BOOTLOADER_FLAG);
+			HAL_NVIC_SystemReset();
+		}
+		break;
 
-    break;
+	case CDC_GET_LINE_CODING:
 
-  case CDC_GET_LINE_CODING:
+		break;
 
-    break;
+	case CDC_SET_CONTROL_LINE_STATE:
 
-  case CDC_SET_CONTROL_LINE_STATE:
+		break;
 
-    break;
+	case CDC_SEND_BREAK:
 
-  case CDC_SEND_BREAK:
+		break;
 
-    break;
+	default:
+		break;
+	}
 
-  default:
-    break;
-  }
-
-  return (USBD_OK);
-  /* USER CODE END 5 */
+	return (USBD_OK);
+	/* USER CODE END 5 */
 }
 
 /**
-  * @brief  Data received over USB OUT endpoint are sent over CDC interface
-  *         through this function.
-  *
-  *         @note
-  *         This function will issue a NAK packet on any OUT packet received on
-  *         USB endpoint until exiting this function. If you exit this function
-  *         before transfer is complete on CDC interface (ie. using DMA controller)
-  *         it will result in receiving more data while previous ones are still
-  *         not sent.
-  *
-  * @param  Buf: Buffer of data to be received
-  * @param  Len: Number of data received (in bytes)
-  * @retval Result of the operation: USBD_OK if all operations are OK else USBD_FAIL
-  */
-static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
-{
-  /* USER CODE BEGIN 6 */
-  if (starts_with(Buf, "QUITQUITQUIT"))
-  {
-    reset_buf();
-    printf("QUIT! Reset Everything! \r\n");
-  }
-  else
-  {
-    // The upgrade procedure contains 2 steps:
-    // Step 1: receive the head string and file length, which means pc is going to transfer data.
-    // Step 2: begin to transfer bin file until completed
-    //
-    if (FlagAppToBeUpgraded < 1)
-    {
-      // app file is not ready. Wait...
-      int file_length = set_upgrade_flag(Buf, Len);
-      if (file_length < 0)
-      {
-        // string parse error
-        printf("Parsing head string get error! \r\n");
-      }
-      else
-      {
-        printf("App bin file size %d. Please wait for erasing flash! \r\n", file_length);
-        HAL_StatusTypeDef status = Erase_FLASH(CDC_APP_ADDRESS, BinFileSize);
-        if (status != HAL_OK)
-        {
-          printf("There is error when erasing flash. Addr:%x Len:%d Status:%d\r\n", CDC_APP_ADDRESS, BinFileSize, status);
-        }
-        else
-        {
-          printf("Erasing flash is complete! Begin to transfer bin file \r\n");
-          CDC_Transmit_FS("KK", 2);
-        }
-      }
-    }
-    else
-    {
-      // app file is ready
-      // copy buf to TX buffer
-      memcpy(BinFileRXBuf + LenInRXBuf, Buf, *Len);
-      LenInRXBuf += *Len;
-      BinFileRXLen += *Len;
-      //printf("LenInRXBuf %d : BinFileRXLen %d \r\n", LenInRXBuf,BinFileRXLen);
-      // all data received or receive length reach the buffer size
-      if (BinFileRXLen >= BinFileSize || LenInRXBuf >= BIN_FILE_BUF_SIZE)
-      {
-    	printf("Received Len %d : Buffer Len %d \r\n", BinFileRXLen,LenInRXBuf);
-        // copy RX to WR buffer
-        memcpy(BinFileWRBuf, BinFileRXBuf, LenInRXBuf);
-        LenInWRBuffer = LenInRXBuf;
-        LenInRXBuf = 0;       //
-//        PackageNumTOFlash++;
-        PackageNumTOFlash = 1;
-        // empty RX buffer for following data
-        empty_buf(BinFileRXBuf, BIN_FILE_BUF_SIZE);
-      }
-    }
-  }
-
-  USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
-  USBD_CDC_ReceivePacket(&hUsbDeviceFS);
-  return (USBD_OK);
-  /* USER CODE END 6 */
+ * @brief  Data received over USB OUT endpoint are sent over CDC interface
+ *         through this function.
+ *
+ *         @note
+ *         This function will issue a NAK packet on any OUT packet received on
+ *         USB endpoint until exiting this function. If you exit this function
+ *         before transfer is complete on CDC interface (ie. using DMA controller)
+ *         it will result in receiving more data while previous ones are still
+ *         not sent.
+ *
+ * @param  Buf: Buffer of data to be received
+ * @param  Len: Number of data received (in bytes)
+ * @retval Result of the operation: USBD_OK if all operations are OK else USBD_FAIL
+ */
+static int8_t CDC_Receive_FS(uint8_t *Buf, uint32_t *Len) {
+	/* USER CODE BEGIN 6 */
+	int dataLen = CDC_RX_BUFFER_SIZE >= *Len ? *Len : CDC_RX_BUFFER_SIZE;
+	memcpy(BinFileRXBuf, Buf, dataLen);
+	LenInRXBuf = dataLen;
+	DataReadyFlag = 1;
+	//
+	if (*Len > CDC_RX_BUFFER_SIZE) {
+		// if it is too big send alert info back
+		char *error = "Error: Data is larger than buffer size! So the portion beyond the buffer is discarded.\n";
+		CDC_Transmit_FS((uint8_t *)error, strlen(error));
+	}
+	//
+	USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
+	USBD_CDC_ReceivePacket(&hUsbDeviceFS);
+	return (USBD_OK);
+	/* USER CODE END 6 */
 }
 
 /**
-  * @brief  CDC_Transmit_FS
-  *         Data to send over USB IN endpoint are sent over CDC interface
-  *         through this function.
-  *         @note
-  *
-  *
-  * @param  Buf: Buffer of data to be sent
-  * @param  Len: Number of data to be sent (in bytes)
-  * @retval USBD_OK if all operations are OK else USBD_FAIL or USBD_BUSY
-  */
-uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len)
-{
-  uint8_t result = USBD_OK;
-  /* USER CODE BEGIN 7 */
-  USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef *)hUsbDeviceFS.pClassData;
-  if (hcdc->TxState != 0)
-  {
-    return USBD_BUSY;
-  }
-  USBD_CDC_SetTxBuffer(&hUsbDeviceFS, Buf, Len);
-  result = USBD_CDC_TransmitPacket(&hUsbDeviceFS);
-  /* USER CODE END 7 */
-  return result;
+ * @brief  CDC_Transmit_FS
+ *         Data to send over USB IN endpoint are sent over CDC interface
+ *         through this function.
+ *         @note
+ *
+ *
+ * @param  Buf: Buffer of data to be sent
+ * @param  Len: Number of data to be sent (in bytes)
+ * @retval USBD_OK if all operations are OK else USBD_FAIL or USBD_BUSY
+ */
+uint8_t CDC_Transmit_FS(uint8_t *Buf, uint16_t Len) {
+	uint8_t result = USBD_OK;
+	/* USER CODE BEGIN 7 */
+	USBD_CDC_HandleTypeDef *hcdc =
+			(USBD_CDC_HandleTypeDef*) hUsbDeviceFS.pClassData;
+	if (hcdc->TxState != 0) {
+		return USBD_BUSY;
+	}
+	USBD_CDC_SetTxBuffer(&hUsbDeviceFS, Buf, Len);
+	result = USBD_CDC_TransmitPacket(&hUsbDeviceFS);
+	/* USER CODE END 7 */
+	return result;
 }
 
 /**
-  * @brief  CDC_TransmitCplt_FS
-  *         Data transmitted callback
-  *
-  *         @note
-  *         This function is IN transfer complete callback used to inform user that
-  *         the submitted Data is successfully sent over USB.
-  *
-  * @param  Buf: Buffer of data to be received
-  * @param  Len: Number of data received (in bytes)
-  * @retval Result of the operation: USBD_OK if all operations are OK else USBD_FAIL
-  */
-static int8_t CDC_TransmitCplt_FS(uint8_t *Buf, uint32_t *Len, uint8_t epnum)
-{
-  uint8_t result = USBD_OK;
-  /* USER CODE BEGIN 13 */
-  UNUSED(Buf);
-  UNUSED(Len);
-  UNUSED(epnum);
-  /* USER CODE END 13 */
-  return result;
+ * @brief  CDC_TransmitCplt_FS
+ *         Data transmitted callback
+ *
+ *         @note
+ *         This function is IN transfer complete callback used to inform user that
+ *         the submitted Data is successfully sent over USB.
+ *
+ * @param  Buf: Buffer of data to be received
+ * @param  Len: Number of data received (in bytes)
+ * @retval Result of the operation: USBD_OK if all operations are OK else USBD_FAIL
+ */
+static int8_t CDC_TransmitCplt_FS(uint8_t *Buf, uint32_t *Len, uint8_t epnum) {
+	uint8_t result = USBD_OK;
+	/* USER CODE BEGIN 13 */
+	UNUSED(Buf);
+	UNUSED(Len);
+	UNUSED(epnum);
+	/* USER CODE END 13 */
+	return result;
 }
 
 /* USER CODE BEGIN PRIVATE_FUNCTIONS_IMPLEMENTATION */
@@ -476,9 +329,9 @@ static int8_t CDC_TransmitCplt_FS(uint8_t *Buf, uint32_t *Len, uint8_t epnum)
 /* USER CODE END PRIVATE_FUNCTIONS_IMPLEMENTATION */
 
 /**
-  * @}
-  */
+ * @}
+ */
 
 /**
-  * @}
-  */
+ * @}
+ */

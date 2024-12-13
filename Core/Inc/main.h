@@ -73,8 +73,7 @@ void array_prinf(unsigned char *data, unsigned int len);
 #define RS232_Enable_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
-#define HEAD_OF_UPGRADE "bin_file_is_ready:"
-#define BIN_FILE_BUF_SIZE 32 * 1024 //
+
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
