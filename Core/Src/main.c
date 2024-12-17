@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "crc.h"
 #include "mbedtls.h"
 #include "rtc.h"
 #include "usart.h"
@@ -60,19 +61,18 @@ typedef void (*pFunction)(void);
 pFunction JumpToApplication;
 uint32_t JumpAddress;
 
-typedef enum {
-	IDLE, FLASH_RECEIVE
-} CDC_State;
+uint32_t bytesToReceive;
+uint32_t expectedChecksum;
 
-CDC_State currentState = IDLE;
-int bytesToReceive;
-int calculatedChecksum;
+extern CDC_State currentState;
+extern uint8_t DataReadyFlag; // 0 - no 1 - yes
+extern uint32_t LenInRXBuffer;    // received data length in buffer
+extern uint8_t RXBuffer[CDC_RX_BUFFER_SIZE]; // buffer to receive data
+extern uint32_t receivedBytes; // received Bytes of Flash bin file
 
-uint8_t DataReadyFlag = 0; // 0 - no 1 - yes
-uint32_t LenInRXBuf = 0;    // received data length in buffer
-uint8_t BinFileRXBuf[CDC_RX_BUFFER_SIZE]; // buffer to receive data
+uint8_t FlashBuffer[CDC_RX_BUFFER_SIZE];
+uint32_t LenInFlashBuffer = 0;
 void reset_buf(void);
-void empty_buf(uint8_t *Buf, uint32_t Len);
 
 extern USBD_HandleTypeDef hUsbDeviceFS;
 //uint8_t FlashBuffer[BIN_FILE_BUF_SIZE];
@@ -104,34 +104,13 @@ void array_prinf(unsigned char *data, unsigned int len) {
 }
 
 /**
- * @brief Empty the buffer
- * @param Buf:buffer address
- * @param Len:buffer length
- */
-void empty_buf(uint8_t *Buf, uint32_t Len) {
-	int i;
-	for (i = 0; i < Len; i++) {
-		*(Buf + i) = '\0';
-	}
-}
-
-// checksum
-uint8_t calculateChecksum(uint32_t startAddress, uint16_t length) {
-    uint8_t checksum = 0;
-    for (uint32_t i = 0; i < length; i++) {
-        checksum += *(volatile uint8_t*)(startAddress + i);
-    }
-    printf("checksum %d", checksum);
-    fflush(stdout);
-    return checksum;
-}
-/**
  * @brief reset all buffers and variables to original state
  * */
 void reset_buf(void) {
 	DataReadyFlag = 0;
-	LenInRXBuf = 0;
-	empty_buf(BinFileRXBuf, CDC_RX_BUFFER_SIZE); //
+	LenInFlashBuffer = 0;
+	receivedBytes = 0;
+	memset(FlashBuffer, 0, CDC_RX_BUFFER_SIZE);
 	currentState = IDLE;
 }
 
@@ -145,13 +124,13 @@ void process_command() {
 	char tx_buffer[128]; // send buffer
 	if (currentState == IDLE) {
 		// check the command type
-		if (strncmp(BinFileRXBuf, "ping", 4) == 0) {
+		if (strncmp(FlashBuffer, "ping", 4) == 0) {
 			cmd_type = CMD_PING;
-		} else if (strncmp(BinFileRXBuf, "info", 4) == 0) {
+		} else if (strncmp(FlashBuffer, "info", 4) == 0) {
 			cmd_type = CMD_INFO;
-		} else if (strncmp(BinFileRXBuf, "flash", 5) == 0) {
+		} else if (strncmp(FlashBuffer, "flash", 5) == 0) {
 			cmd_type = CMD_FLASH;
-		} else if (strncmp(BinFileRXBuf, "run", 3) == 0) {
+		} else if (strncmp(FlashBuffer, "run", 3) == 0) {
 			cmd_type = CMD_RUN;
 		} else {
 			cmd_type = CMD_UNKNOWN;
@@ -173,28 +152,23 @@ void process_command() {
 
 		case CMD_FLASH: {
 			// decode flash command
-			if (sscanf(BinFileRXBuf, "flash %lu %lu", &bytesToReceive,
-					&calculatedChecksum) == 2) {
-				snprintf(tx_buffer, sizeof(tx_buffer),
-						"File size %d, checksum %d. Wait for erasing flash! \r\n",
-						bytesToReceive, calculatedChecksum);
-				CDC_Transmit_FS(tx_buffer, strlen(tx_buffer));
-				HAL_StatusTypeDef status = Erase_FLASH(CDC_APP_ADDRESS, bytesToReceive);
-				HAL_Delay(1);
+			if (sscanf(FlashBuffer, "flash %lu %x", &bytesToReceive,
+					&expectedChecksum) == 2) {
+				printf(
+						"File size %d, checksum %x. Wait for erasing flash! \r\n",
+						bytesToReceive, expectedChecksum);
+				HAL_StatusTypeDef status = Erase_FLASH(CDC_APP_ADDRESS,
+						bytesToReceive);
 				if (status != HAL_OK) {
-					snprintf(tx_buffer, sizeof(tx_buffer),
+					printf(
 							"There is error when erasing flash. Addr:%x Len:%d Status:%d\r\n",
-							CDC_APP_ADDRESS, LenInRXBuf, status);
-					CDC_Transmit_FS(tx_buffer, strlen((char*) tx_buffer));
+							CDC_APP_ADDRESS, bytesToReceive, status);
 				} else {
-					snprintf(tx_buffer, sizeof(tx_buffer),
-							"Done! Begin to transfer bin file.\r\n");
-					CDC_Transmit_FS(tx_buffer, strlen((char*) tx_buffer));
+					printf("Done! Begin to transfer bin file.\r\n");
 					currentState = FLASH_RECEIVE;
 				}
 			} else {
-				strcpy(tx_buffer, "Invalid flash command\r\n");
-				CDC_Transmit_FS(tx_buffer, strlen(tx_buffer));
+				printf("Invalid flash command\r\n");
 			}
 			break;
 		}
@@ -209,40 +183,39 @@ void process_command() {
 			break;
 		}
 	} else if (currentState == FLASH_RECEIVE) {
-		// receiving Flash bin file
-		static uint16_t receivedBytes = 0;
-
-		HAL_StatusTypeDef status = Flash_If_Write(BinFileRXBuf, CDC_APP_ADDRESS + receivedBytes, LenInRXBuf);
+		HAL_StatusTypeDef status = Flash_If_Write(FlashBuffer,
+				CDC_APP_ADDRESS + receivedBytes, LenInFlashBuffer);
 		if (status != HAL_OK) {
-			snprintf(tx_buffer, sizeof(tx_buffer),
-					"There is error when writing flash. Addr:%x Data:%x Status:%d\r\n",
-					CDC_APP_ADDRESS + receivedBytes, BinFileRXBuf, status);
-			CDC_Transmit_FS(tx_buffer, strlen(tx_buffer));
+			printf("There is error when writing flash. Addr:%x Status:%d\r\n",
+					CDC_APP_ADDRESS + receivedBytes, status);
 			// clean
 			reset_buf();
 		} else {
-			receivedBytes += LenInRXBuf;
-			snprintf(tx_buffer, sizeof(tx_buffer),
-					"Done. Write Addr:%x size:%d (written:%d of total:%d) \r\n",
-					CDC_APP_ADDRESS, LenInRXBuf, receivedBytes, bytesToReceive);
-			CDC_Transmit_FS(tx_buffer, strlen(tx_buffer));
+			receivedBytes += LenInFlashBuffer;
+			memset(FlashBuffer, 0, LenInFlashBuffer);
+			printf("Done. Write Addr:%x size:%d (written:%d of total:%d) \r\n",
+					CDC_APP_ADDRESS, LenInFlashBuffer, receivedBytes,
+					bytesToReceive);
+			LenInFlashBuffer = 0;
 		}
 		//
 		if (receivedBytes >= bytesToReceive) {
-			currentState = IDLE;
-			snprintf(tx_buffer, sizeof(tx_buffer), "Flash complete\r\n");
-			CDC_Transmit_FS(tx_buffer, strlen(tx_buffer));
+			//currentState = IDLE;
+			printf("Flash complete\r\n");
 
-			// checksum
-			if (calculatedChecksum
-					== calculateChecksum(CDC_APP_ADDRESS, bytesToReceive)) {
-				snprintf(tx_buffer, sizeof(tx_buffer), "Checksum valid\r\n");
+			// CRC checksum -- damn result should be inverted!!
+			uint32_t caledCRC = HAL_CRC_Calculate(&hcrc, CDC_APP_ADDRESS, bytesToReceive);
+			if (expectedChecksum == ~caledCRC) {
+				printf("Checksum valid and RESET in 3 Seconds\r\n");
+				HAL_Delay(3000);
+				HAL_NVIC_SystemReset();
 			} else {
-				snprintf(tx_buffer, sizeof(tx_buffer), "Checksum invalid\r\n");
+				printf("Checksum invalid expected: %x, actual: %x\r\n", expectedChecksum, ~caledCRC);
 			}
-			CDC_Transmit_FS(tx_buffer, strlen(tx_buffer));
+			reset_buf();
 		}
 	}
+	fflush(stdout);
 }
 /* USER CODE END 0 */
 
@@ -277,10 +250,11 @@ int main(void) {
 	MX_USB_DEVICE_Init();
 	MX_UART4_Init();
 	MX_RTC_Init();
+	MX_CRC_Init();
 	/* USER CODE BEGIN 2 */
 	Enable_RX_RS232();
 
-	CDC_Transmit_FS("** Checking Start Mod ...\r\n", 27);
+	printf("** Checking Start Mod ...\r\n");
 	// Einschalten aller HSFETs einmalig und dann ausschalten
 	for (RELAY_Name relay = RELAY_1; relay < RELAY_COUNT / 2; ++relay) {
 		Relay_On(relay);
@@ -291,12 +265,13 @@ int main(void) {
 	// check MAGIC_BKP_REG
 	uint32_t readData = HAL_RTCEx_BKUPRead(&hrtc, MAGIC_BKP_REG);
 	if (readData == MAGIC_BOOTLOADER_FLAG
-			|| ((*(__IO uint32_t*) CDC_APP_ADDRESS) & 0x2FFE0000) != 0x24080000) {
-		CDC_Transmit_FS("** Boot loader Mod ...\r\n", 24);
-		CDC_Transmit_FS("** Please input your command: \r\n", 32);
+			|| ((*(__IO uint32_t*) CDC_APP_ADDRESS) & 0x2FFE0000)
+					!= 0x24080000) {
+		printf("** Boot loader Mod ...\r\n");
+		printf("** Please input your command: \r\n");
 		//HAL_PWR_EnableBkUpAccess();
 		HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR0, MAGIC_APP_FLAG);
-	    //HAL_PWR_DisableBkUpAccess();
+		//HAL_PWR_DisableBkUpAccess();
 	} else {
 		CDC_Transmit_FS("** App Mod ...\r\n", 16);
 		/* Jump to user application */
@@ -329,6 +304,10 @@ int main(void) {
 		// ready to write flash
 		if (DataReadyFlag > 0) {
 			DataReadyFlag = 0;
+			//printf("%d %d, data is ready LenInRXBuffer %d : receivedBytes %d of %d \r\n", DataReadyFlag, currentState, LenInRXBuffer,receivedBytes, bytesToReceive);
+			LenInFlashBuffer = LenInRXBuffer;
+			LenInRXBuffer = 0;
+			memcpy(FlashBuffer, RXBuffer, LenInFlashBuffer);
 			process_command();
 		}
 	}

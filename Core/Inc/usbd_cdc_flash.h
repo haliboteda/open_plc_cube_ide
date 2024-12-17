@@ -19,6 +19,10 @@
 #define MAGIC_BKP_REG RTC_BKP_DR0
 #define BOOT_LOADER_VERSION "Boot Loader 0.1.2\r\n"
 #define CDC_RX_BUFFER_SIZE 32 * 1024
+typedef enum {
+  	IDLE, FLASH_RECEIVE
+ } CDC_State;
+ extern CDC_State currentState;
 /* Exported constants --------------------------------------------------------*/
 
 /* Base address of the Flash sectors Bank 1 */
