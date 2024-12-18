@@ -273,7 +273,7 @@ int main(void) {
 		HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR0, MAGIC_APP_FLAG);
 		//HAL_PWR_DisableBkUpAccess();
 	} else {
-		CDC_Transmit_FS("** App Mod ...\r\n", 16);
+		printf("** App Mod ...\r\n");
 		/* Jump to user application */
 		JumpAddress = *(__IO uint32_t*) (CDC_APP_ADDRESS + 4);
 
