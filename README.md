@@ -44,7 +44,8 @@ i- download file to the board
 # Download Applications using Arduino
 
 a- add the following url to arduino > file > preferences (https://github.com/haliboteda/open_plc_arduino/releases/download/main/package_openplc_alp_index.json)  
-***If you have already installed the package, Please remove it first and then follow the instruction***  
+If you have already installed the package, Please remove it first and then follow the instruction.  
+***\**Please don't try to connect OpenPLC with serial monitor at baud rate 1200. Because it will cause the openplc keep rebooting.***  
 
 ![image](DOC/pic/9.png)  
 
@@ -82,7 +83,7 @@ void loop() {
 }
 ```
 
-g- Upload the code and Just Wait until complete.  
+g- __You don't need to do anything. The program will automatically copy the code into OpenPLC.__  
 
 ![image](DOC/pic/upload_mod.png)  
 
