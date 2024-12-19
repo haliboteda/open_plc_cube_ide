@@ -85,7 +85,7 @@ void loop() {
 
 g- __You don't need to do anything. The program will automatically copy the code into OpenPLC.__  
 
-![image](DOC/pic/upload_mod.png)  
+![image](DOC/pic/app_mod.png)  
 
 ---
 **Linux FAQ**  
