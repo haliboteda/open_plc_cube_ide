@@ -267,13 +267,13 @@ int main(void) {
 	if (readData == MAGIC_BOOTLOADER_FLAG
 			|| ((*(__IO uint32_t*) CDC_APP_ADDRESS) & 0x2FFE0000)
 					!= 0x24080000) {
-		printf("** Boot loader Mod ...\r\n");
+		printf("** UPLOAD Mod ...\r\n");
 		printf("** Please input your command: \r\n");
 		//HAL_PWR_EnableBkUpAccess();
 		HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR0, MAGIC_APP_FLAG);
 		//HAL_PWR_DisableBkUpAccess();
 	} else {
-		printf("** App Mod ...\r\n");
+		printf("** APP Mod ...\r\n");
 		/* Jump to user application */
 		JumpAddress = *(__IO uint32_t*) (CDC_APP_ADDRESS + 4);
 
