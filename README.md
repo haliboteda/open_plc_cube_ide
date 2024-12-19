@@ -96,7 +96,7 @@ g- __You don't need to do anything. The program will automatically copy the code
    chmod +x "/home/{user name}/.arduino15/packages/OpenPLC_Alpha/hardware/stm32/{package version}/system/extras/postbuild.sh"  
 ---
   
---- 
+
 **Flash Constructure**  
 
 ![image](DOC/pic/flash_constructure.png)  
