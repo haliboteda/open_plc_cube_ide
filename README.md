@@ -1,7 +1,7 @@
 # open-plc
 # Prerequisities (Win or Linux)
-a- Download and install STM32-Cube IDE 1.16.1 [Link](https://www.st.com/en/development-tools/stm32cubeide.html)  
-b- Download and install arduino ide 2.3.3 [Link](https://www.arduino.cc/en/software)  
+a- Download and install STM32-Cube IDE lastest [Link](https://www.st.com/en/development-tools/stm32cubeide.html)  
+b- Download and install arduino ide lastest [Link](https://www.arduino.cc/en/software)  
 c- Download STM32-Cube-FW-H7 (optional, STM32 samples) [link](https://www.st.com/en/embedded-software/stm32cubeh7.html)  
 
 ---
@@ -27,9 +27,8 @@ e- Connect the RS232 pins ( PC11 -> UART4_RX | PC10 -> UART4_TX) to the pc with 
    (In Ubuntu it will be recognized as "/dev/ttyUSBxx" and in Windows it will be "COMxx": xx for your own device number. For me,it is COM5 | /dev/ttyUSB0)  
     
 f- Connect the device USB port to pc with USB cable (Arduino IDE will download bin file through this port)   
-  
-g- open the serial monitor on the pc  
-h- using Cube IDE, select Run -> open_plc_main_cdc   
+   
+g- using Cube IDE, select Run -> open_plc_main_cdc   
  (If it is empty, click 'Run Configurations...' -> select 'open_plc_main_cdc' -> 'Run' )  
 i- download file to the board  
 
@@ -37,19 +36,16 @@ i- download file to the board
 
 ---
 **NOTE**  
-1- After download and the device restarts, you would see the selection menu on the serial monitor.   
-   Send "1" to the plc, with RS232 port (COM5 | /dev/ttyUSB0) in 5 seconds.  
-
-![image](DOC/pic/5.png)
-
-2- The PLC will be recognized as : "/dev/ttyACMxx" in Ubuntu or "COMxx" in Windows. (xx for your own device number. For me,it is COM3 | /dev/ttyACM0)
+- The PLC USB port will be recognized as : "/dev/ttyACMxx" in Ubuntu or "COMxx" in Windows. (xx for your own device number. For me,it is COM3 | /dev/ttyACM0)
 
 ---
 
 
 # Download Applications using Arduino
 
-a- add the following url to arduino > file > preferences (https://github.com/haliboteda/open_plc_arduino/releases/download/v0.1.0/package_openplc_alp_index.json)  
+a- add the following url to arduino > file > preferences (https://github.com/haliboteda/open_plc_arduino/releases/download/main/package_openplc_alp_index.json)  
+If you have already installed the package, Please remove it first and then follow the instruction.  
+***\**Please don't try to connect OpenPLC with serial monitor at baud rate 1200. Because it will cause the openplc keep rebooting.***  
 
 ![image](DOC/pic/9.png)  
 
@@ -59,11 +55,11 @@ b- open board manager and write in the search bar "PLC"
 
 ![image](DOC/pic/11.png)  
 
-c- Select the new version 0.1.0 and press install  
+c- Select the lastest version and press install  
 
 ![image](DOC/pic/12.png)  
 
-d- after download, select the openplc board "OPEN-PLC" and select the serial port "COM3 | /dev/ttyACM0"  
+d- after download, select the openplc board "OPEN-PLC" and select the USB port "COM3 | /dev/ttyACM0"  
 
 ![image](DOC/pic/13.png)  
 
@@ -87,32 +83,20 @@ void loop() {
 }
 ```
 
+g- __You don't need to do anything. The program will automatically copy the code into OpenPLC.__  
+
+![image](DOC/pic/app_mod.png)  
+
 ---
-**NOTE**  
-1- If you select CDC support, the device will be recognized as CDC device.   
-   If you select 'None', the device will not be seen.  
-
-![image](DOC/pic/15.png)  
----
-
-g- Upload the code. After finished, press the 'RESET' button to restart the openplc.  
-
-![image](DOC/pic/16.png)  
-
-h- After the device power on, there are 5 seconds to select the running mode. If you select '2' or nothing, device will directly run the application.  
-
-![image](DOC/pic/17.png)  
-
----  
-**Linux FAQ**         
-
-1- In Linux, Arduino IDE need permission to open serial port. Please add use into user group "dialout".  
+**Linux FAQ**  
+- In Linux, Arduino IDE need permission to open serial port. Please add use into user group "dialout".  
    (https://support.arduino.cc/hc/en-us/articles/360016495679-Fix-port-access-on-Linux)    
-2- There are some *.sh files in the Arduino package need permission to execute. Please give +x to them. (Replace {user name} and {package version} according to your environment )  
-   chmod +x "/home/{user name}/.arduino15/packages/OpenPLC_Alpha/hardware/stm32/{package version}/system/extras/prebuild.sh"   
-   chmod +x "/home/{user name}/.arduino15/packages/OpenPLC_Alpha/hardware/stm32/{package version}/system/extras/postbuild.sh"
-   
----   
+- There are some *.sh files in the Arduino package need permission to execute. Please give +x to them. (Replace {user name} and {package version} according to your environment )  
+   chmod +x "/home/{user name}/.arduino15/packages/OpenPLC_Alpha/hardware/stm32/{package version}/system/extras/postbuild.sh"   
+   chmod +x "/home/{user name}/.arduino15/packages/OpenPLC_Alpha/hardware/stm32/{package version}/system/extras/postbuild.sh"  
+---
+  
+
 **Flash Constructure**  
 
 ![image](DOC/pic/flash_constructure.png)  
