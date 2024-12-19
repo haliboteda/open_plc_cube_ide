@@ -44,6 +44,7 @@ i- download file to the board
 # Download Applications using Arduino
 
 a- add the following url to arduino > file > preferences (https://github.com/haliboteda/open_plc_arduino/releases/download/main/package_openplc_alp_index.json)  
+***If you have already installed the package, Please remove it first and then follow the instruction***  
 
 ![image](DOC/pic/9.png)  
 
