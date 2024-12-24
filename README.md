@@ -7,9 +7,14 @@ c- Download STM32-Cube-FW-H7 (optional, STM32 samples) [link](https://www.st.com
 ---
 **Tips**  
 There are two modes of the openplc:
-- UPLOAD mode: Be able to update the application in the device.  
-- APP mode (default): Run the application directly.  
-After each restart, there is a 5-second window to choose the mode. If you missed, you have to restart the device.
+- UPLOAD mode: Be able to update the arduino application to the device.  
+- APP mode (default): Run the arduino application directly.  
+
+There are three ways to stay in the UPLOAD mode:  
+1. The BKP register `MAGIC_BKP_REG` is set to `MAGIC_BOOTLOADER_FLAG`  
+2. The address of `CDC_APP_ADDRESS` is empty
+3. The address of `CDC_APP_ADDRESS` is not empty and the button `BOOT0` is pressed
+
 ---
 
 # Download BootLoader-Menu to PLC-H743IIKx  
@@ -88,12 +93,13 @@ g- __You don't need to do anything. The program will automatically copy the code
 ![image](DOC/pic/app_mod.png)  
 
 ---
-**Linux FAQ**  
+**FAQ**  
 - In Linux, Arduino IDE need permission to open serial port. Please add use into user group "dialout".  
    (https://support.arduino.cc/hc/en-us/articles/360016495679-Fix-port-access-on-Linux)    
 - There are some *.sh files in the Arduino package need permission to execute. Please give +x to them. (Replace {user name} and {package version} according to your environment )  
    chmod +x "/home/{user name}/.arduino15/packages/OpenPLC_Alpha/hardware/stm32/{package version}/system/extras/postbuild.sh"   
    chmod +x "/home/{user name}/.arduino15/packages/OpenPLC_Alpha/hardware/stm32/{package version}/system/extras/postbuild.sh"  
+- **If you want to force the OpenPLC stay in the upload mode, Please reset the device and hold down the `BOOT0` button for 3-5 seconds. And then the device will stay in the Upload mode.**   
 ---
   
 
