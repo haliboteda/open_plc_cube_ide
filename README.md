@@ -99,7 +99,7 @@ g- __You don't need to do anything. The program will automatically copy the code
 - There are some *.sh files in the Arduino package need permission to execute. Please give +x to them. (Replace {user name} and {package version} according to your environment )  
    chmod +x "/home/{user name}/.arduino15/packages/OpenPLC_Alpha/hardware/stm32/{package version}/system/extras/postbuild.sh"   
    chmod +x "/home/{user name}/.arduino15/packages/OpenPLC_Alpha/hardware/stm32/{package version}/system/extras/postbuild.sh"  
-- **If you want to force the OpenPLC stay in the upload mode, Please reset the device and hold down the `BOOT0` button for 3-5 seconds. And then the device will stay in the Upload mode.**   
+- **If you want to force the OpenPLC stay in the upload mode, Please reset the device and hold down the `BOOT0` button for 3-5 seconds when clicking. And then the device will stay in the Upload mode.**   
 ---
   
 
