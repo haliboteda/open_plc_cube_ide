@@ -184,18 +184,17 @@ void process_command() {
 		}
 	} else if (currentState == FLASH_RECEIVE) {
 		HAL_StatusTypeDef status = Flash_If_Write(FlashBuffer,
-				CDC_APP_ADDRESS + receivedBytes, LenInFlashBuffer);
+		CDC_APP_ADDRESS + receivedBytes, LenInFlashBuffer);
 		if (status != HAL_OK) {
 			printf("There is error when writing flash. Addr:%x Status:%d\r\n",
-					CDC_APP_ADDRESS + receivedBytes, status);
+			CDC_APP_ADDRESS + receivedBytes, status);
 			// clean
 			reset_buf();
 		} else {
 			receivedBytes += LenInFlashBuffer;
 			memset(FlashBuffer, 0, LenInFlashBuffer);
 			printf("Done. Write Addr:%x size:%d (written:%d of total:%d) \r\n",
-					CDC_APP_ADDRESS, LenInFlashBuffer, receivedBytes,
-					bytesToReceive);
+			CDC_APP_ADDRESS, LenInFlashBuffer, receivedBytes, bytesToReceive);
 			LenInFlashBuffer = 0;
 		}
 		//
@@ -204,19 +203,34 @@ void process_command() {
 			printf("Flash complete\r\n");
 
 			// CRC checksum -- damn result should be inverted!!
-			uint32_t caledCRC = HAL_CRC_Calculate(&hcrc, CDC_APP_ADDRESS, bytesToReceive);
+			uint32_t caledCRC = HAL_CRC_Calculate(&hcrc, CDC_APP_ADDRESS,
+					bytesToReceive);
 			if (expectedChecksum == ~caledCRC) {
 				printf("Checksum valid and RESET in 3 Seconds\r\n");
 				HAL_Delay(3000);
 				HAL_NVIC_SystemReset();
 			} else {
-				printf("Checksum invalid expected: %x, actual: %x\r\n", expectedChecksum, ~caledCRC);
+				printf("Checksum invalid expected: %x, actual: %x\r\n",
+						expectedChecksum, ~caledCRC);
 			}
 			reset_buf();
 		}
 	}
 	fflush(stdout);
 }
+
+//
+uint8_t Check_BOOT0_Pressed(void) {
+	// check if boot0 pin (PG9) is pressed
+	if (HAL_GPIO_ReadPin(BOOT0_GPIO_Port, BOOT0_Pin) == GPIO_PIN_SET) {
+		printf("BOOT0 button is pressed!\r\n");
+		return 1;  //
+	} else {
+		printf("BOOT0 button is not pressed.\r\n");
+		return 0;
+	}
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -254,7 +268,9 @@ int main(void) {
 	/* USER CODE BEGIN 2 */
 	Enable_RX_RS232();
 
-	printf("** Checking Start Mod ...\r\n");
+	printf("** Checking Starting Mod ...\n"
+		   "** (IF You want OpenPLC to stay in upload mode, please hold down the BOOT0 button for 3-5 seconds while clicking)\n");
+
 	// Einschalten aller HSFETs einmalig und dann ausschalten
 	for (RELAY_Name relay = RELAY_1; relay < RELAY_COUNT / 2; ++relay) {
 		Relay_On(relay);
@@ -262,16 +278,20 @@ int main(void) {
 		Relay_Off(relay);
 	}
 
-	// check MAGIC_BKP_REG
+	// check Upload Mod situation
+	// 1 MAGIC_BKP_REG is MAGIC_BOOTLOADER_FLAG
+	// 2 CDC_APP_ADDRESS is empty
+	// 3 CDC_APP_ADDRESS is not empty and Boot0 button is pressed
+	uint8_t isBoot0Pressed = Check_BOOT0_Pressed();
 	uint32_t readData = HAL_RTCEx_BKUPRead(&hrtc, MAGIC_BKP_REG);
 	if (readData == MAGIC_BOOTLOADER_FLAG
-			|| ((*(__IO uint32_t*) CDC_APP_ADDRESS) & 0x2FFE0000)
-					!= 0x24080000) {
+			|| ((*(__IO uint32_t*) CDC_APP_ADDRESS) & 0x2FFE0000) != 0x24080000
+			|| (isBoot0Pressed > 0 && ((*(__IO uint32_t*) CDC_APP_ADDRESS) & 0x2FFE0000) == 0x24080000)) {
 		printf("** UPLOAD Mod ...\r\n");
 		printf("** Please input your command: \r\n");
-		//HAL_PWR_EnableBkUpAccess();
+		HAL_PWR_EnableBkUpAccess();
 		HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR0, MAGIC_APP_FLAG);
-		//HAL_PWR_DisableBkUpAccess();
+		HAL_PWR_DisableBkUpAccess();
 	} else {
 		printf("** APP Mod ...\r\n");
 		/* Jump to user application */
