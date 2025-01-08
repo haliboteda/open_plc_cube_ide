@@ -206,8 +206,8 @@ void process_command() {
 			uint32_t caledCRC = HAL_CRC_Calculate(&hcrc, CDC_APP_ADDRESS,
 					bytesToReceive);
 			if (expectedChecksum == ~caledCRC) {
-				printf("Checksum valid and RESET in 3 Seconds\r\n");
-				HAL_Delay(3000);
+				printf("Checksum valid and RESET in 0.5 Seconds\r\n");
+				HAL_Delay(500);
 				HAL_NVIC_SystemReset();
 			} else {
 				printf("Checksum invalid expected: %x, actual: %x\r\n",
@@ -268,8 +268,8 @@ int main(void) {
 	/* USER CODE BEGIN 2 */
 	Enable_RX_RS232();
 
-	printf("** Checking Starting Mod ...\n"
-		   "** (IF You want OpenPLC to stay in upload mode, please hold down the BOOT0 button for 3-5 seconds while clicking)\n");
+	printf("** Checking Starting Mod ...\r\n"
+		   "** (IF You want OpenPLC to stay in upload mode, please hold down the BOOT0 button for 3-5 seconds while clicking)\r\n");
 
 	// Einschalten aller HSFETs einmalig und dann ausschalten
 	for (RELAY_Name relay = RELAY_1; relay < RELAY_COUNT / 2; ++relay) {
@@ -290,7 +290,7 @@ int main(void) {
 		printf("** UPLOAD Mod ...\r\n");
 		printf("** Please input your command: \r\n");
 		HAL_PWR_EnableBkUpAccess();
-		HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR0, MAGIC_APP_FLAG);
+		HAL_RTCEx_BKUPWrite(&hrtc, MAGIC_BKP_REG, MAGIC_APP_FLAG);
 		HAL_PWR_DisableBkUpAccess();
 	} else {
 		printf("** APP Mod ...\r\n");
