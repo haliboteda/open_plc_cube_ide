@@ -12,8 +12,8 @@ There are two modes of the openplc:
 
 There are three ways to stay in the UPLOAD mode:  
 1. The BKP register `MAGIC_BKP_REG` is set to `MAGIC_BOOTLOADER_FLAG`  
-2. The address of `CDC_APP_ADDRESS` is empty
-3. The address of `CDC_APP_ADDRESS` is not empty and the button `BOOT0` is pressed
+2. The address of `IAP_APP_ADDRESS` is empty
+3. The address of `IAP_APP_ADDRESS` is not empty and the button `BOOT0` is pressed
 
 ---
 

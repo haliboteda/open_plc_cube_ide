@@ -22,6 +22,7 @@
 #include "usbd_cdc_if.h"
 
 /* USER CODE BEGIN INCLUDE */
+#include <IAP_server.h>
 #include "md5.h"
 /* USER CODE END INCLUDE */
 
@@ -31,7 +32,7 @@
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
-extern RTC_HandleTypeDef hrtc;
+//extern RTC_HandleTypeDef hrtc;
 /* USER CODE END PV */
 
 /** @addtogroup STM32_USB_OTG_DEVICE_LIBRARY
@@ -96,14 +97,6 @@ uint8_t UserTxBufferFS[APP_TX_DATA_SIZE];
 
 /* USER CODE BEGIN PRIVATE_VARIABLES */
 
-CDC_State currentState = IDLE;
-
-uint8_t DataReadyFlag = 0; // 0 - no 1 - yes
-uint32_t LenInRXBuffer = 0;    // received data length in buffer
-uint8_t RXBuffer[CDC_RX_BUFFER_SIZE]; // buffer to receive data
-uint32_t receivedBytes = 0;// received Bytes of Flash bin file
-
-extern uint32_t bytesToReceive;
 /* USER CODE END PRIVATE_VARIABLES */
 
 /**
@@ -230,12 +223,7 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 		/* 6      | bDataBits  |   1   | Number Data bits (5, 6, 7, 8 or 16).          */
 		/*******************************************************************************/
 	case CDC_SET_LINE_CODING:
-		uint32_t regV = HAL_RTCEx_BKUPRead(&hrtc, MAGIC_BKP_REG);
-		if (pline_coding->bitrate == MAGIC_CDC_RATE
-				&& regV != MAGIC_BOOTLOADER_FLAG) {
-			HAL_RTCEx_BKUPWrite(&hrtc, MAGIC_BKP_REG, MAGIC_BOOTLOADER_FLAG);
-			HAL_NVIC_SystemReset();
-		}
+		IAP_CDC_Trigger(pline_coding->bitrate);
 		break;
 
 	case CDC_GET_LINE_CODING:
@@ -276,25 +264,10 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 6 */
-	int dataLen = CDC_RX_BUFFER_SIZE >= *Len ? *Len : CDC_RX_BUFFER_SIZE;
-	if (currentState == IDLE) {
-		memcpy(RXBuffer, Buf, dataLen);
-		LenInRXBuffer = dataLen;
-	DataReadyFlag = 1;
-	} else {
-		memcpy(RXBuffer + LenInRXBuffer, Buf, *Len);
-		LenInRXBuffer += *Len;
-		// all data received or receive length reach the buffer size
-		if (LenInRXBuffer >= CDC_RX_BUFFER_SIZE || receivedBytes + LenInRXBuffer >= bytesToReceive) {
-			// buffer is full
-			DataReadyFlag = 1;
-			printf("Data is ready to FLash LenInRXBuffer %d : receivedBytes %d of %d \r\n", LenInRXBuffer,receivedBytes, bytesToReceive);
-	}
-	}
-	fflush(stdout);
+	IAP_Data_Recv(IAP_CDC, Buf, *Len);
 	//
-	USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
-	USBD_CDC_ReceivePacket(&hUsbDeviceFS);
+	//USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
+	//USBD_CDC_ReceivePacket(&hUsbDeviceFS);
 	return (USBD_OK);
   /* USER CODE END 6 */
 }
@@ -314,7 +287,8 @@ uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len)
 {
   uint8_t result = USBD_OK;
   /* USER CODE BEGIN 7 */
-USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef*) hUsbDeviceFS.pClassData;
+	USBD_CDC_HandleTypeDef *hcdc =
+			(USBD_CDC_HandleTypeDef*) hUsbDeviceFS.pClassData;
 	if (hcdc->TxState != 0) {
 		return USBD_BUSY;
 	}

@@ -56,6 +56,8 @@
 /* External variables --------------------------------------------------------*/
 extern ETH_HandleTypeDef heth;
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
+extern TIM_HandleTypeDef htim6;
+
 /* USER CODE BEGIN EV */
 
 /* USER CODE END EV */
@@ -72,9 +74,8 @@ void NMI_Handler(void)
 
   /* USER CODE END NonMaskableInt_IRQn 0 */
   /* USER CODE BEGIN NonMaskableInt_IRQn 1 */
-  while (1)
-  {
-  }
+	while (1) {
+	}
   /* USER CODE END NonMaskableInt_IRQn 1 */
 }
 
@@ -84,7 +85,14 @@ void NMI_Handler(void)
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
-
+	__asm volatile
+	(
+			"tst lr, #4          \n"  // 判断使用 MSP 还是 PSP
+			"ite eq              \n"
+			"mrseq r0, msp       \n"
+			"mrsne r0, psp       \n"
+			"b HardFault_Handler_C \n"// 跳转到 C 函数
+	);
   /* USER CODE END HardFault_IRQn 0 */
   while (1)
   {
@@ -140,19 +148,6 @@ void UsageFault_Handler(void)
 }
 
 /**
-  * @brief This function handles System service call via SWI instruction.
-  */
-void SVC_Handler(void)
-{
-  /* USER CODE BEGIN SVCall_IRQn 0 */
-
-  /* USER CODE END SVCall_IRQn 0 */
-  /* USER CODE BEGIN SVCall_IRQn 1 */
-
-  /* USER CODE END SVCall_IRQn 1 */
-}
-
-/**
   * @brief This function handles Debug monitor.
   */
 void DebugMon_Handler(void)
@@ -165,39 +160,26 @@ void DebugMon_Handler(void)
   /* USER CODE END DebugMonitor_IRQn 1 */
 }
 
-/**
-  * @brief This function handles Pendable request for system service.
-  */
-void PendSV_Handler(void)
-{
-  /* USER CODE BEGIN PendSV_IRQn 0 */
-
-  /* USER CODE END PendSV_IRQn 0 */
-  /* USER CODE BEGIN PendSV_IRQn 1 */
-
-  /* USER CODE END PendSV_IRQn 1 */
-}
-
-/**
-  * @brief This function handles System tick timer.
-  */
-void SysTick_Handler(void)
-{
-  /* USER CODE BEGIN SysTick_IRQn 0 */
-
-  /* USER CODE END SysTick_IRQn 0 */
-  HAL_IncTick();
-  /* USER CODE BEGIN SysTick_IRQn 1 */
-
-  /* USER CODE END SysTick_IRQn 1 */
-}
-
 /******************************************************************************/
 /* STM32H7xx Peripheral Interrupt Handlers                                    */
 /* Add here the Interrupt Handlers for the used peripherals.                  */
 /* For the available peripheral interrupt handler names,                      */
 /* please refer to the startup file (startup_stm32h7xx.s).                    */
 /******************************************************************************/
+
+/**
+  * @brief This function handles TIM6 global interrupt, DAC1_CH1 and DAC1_CH2 underrun error interrupts.
+  */
+void TIM6_DAC_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM6_DAC_IRQn 0 */
+
+  /* USER CODE END TIM6_DAC_IRQn 0 */
+  HAL_TIM_IRQHandler(&htim6);
+  /* USER CODE BEGIN TIM6_DAC_IRQn 1 */
+
+  /* USER CODE END TIM6_DAC_IRQn 1 */
+}
 
 /**
   * @brief This function handles Ethernet global interrupt.
@@ -228,4 +210,26 @@ void OTG_FS_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+void HardFault_Handler_C(uint32_t *stack_addr) {
+	uint32_t r0 = stack_addr[0];
+	uint32_t r1 = stack_addr[1];
+	uint32_t r2 = stack_addr[2];
+	uint32_t r3 = stack_addr[3];
+	uint32_t r12 = stack_addr[4];
+	uint32_t lr = stack_addr[5];
+	uint32_t pc = stack_addr[6];
+	uint32_t psr = stack_addr[7];
+
+	printf("\n\n--- HardFault ---\n");
+	printf("R0  = 0x%08lX\n", r0);
+	printf("R1  = 0x%08lX\n", r1);
+	printf("R2  = 0x%08lX\n", r2);
+	printf("R3  = 0x%08lX\n", r3);
+	printf("R12 = 0x%08lX\n", r12);
+	printf("LR  = 0x%08lX\n", lr);
+	printf("PC  = 0x%08lX\n", pc);
+	printf("xPSR= 0x%08lX\n", psr);
+
+	while (1);
+}
 /* USER CODE END 1 */
