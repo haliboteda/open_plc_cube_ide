@@ -10,6 +10,8 @@
 #include "lwip/tcp.h"
 #include "FreeRTOS.h"
 #include "semphr.h"
+#include "IAP_server.h"
+#include "string.h"
 
 static struct tcp_pcb *server_pcb;
 static struct tcp_pcb *client_pcb;
@@ -19,6 +21,8 @@ static err_t _recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err) {
 		printf("_recv: %d\r\n", p->len);
 		IAP_Data_Recv(IAP_ETHERNET, p->payload, p->len); // 处理TCP数据包
 		tcp_recved(client_pcb, p->len);
+
+		memset(p->payload, 0, p->len);
 		pbuf_free(p);
 	} else {
 		client_pcb = NULL; // 连接断开
@@ -50,10 +54,10 @@ void tcp_server_start(void) {
 	tcp_accept(server_pcb, _accept);
 	TCP_DEBUG("Server listening on port %d", TCP_SERVER_PORT);
 
-	while (1) {
-		// 5. 短暂延时
-		vTaskDelay(pdMS_TO_TICKS(500));
-	}
+//	while (1) {
+//		// 5. 短暂延时
+//		vTaskDelay(pdMS_TO_TICKS(500));
+//	}
 }
 
 void tcp_server_send(uint8_t *data, uint16_t len) {

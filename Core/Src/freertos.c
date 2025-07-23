@@ -27,6 +27,7 @@
 /* USER CODE BEGIN Includes */
 #include "IAP_server.h"
 #include "tcp_server_s.h"
+#include "usbd_cdc_flash.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -49,6 +50,8 @@
 
 /* USER CODE END Variables */
 osThreadId defaultTaskHandle;
+osThreadId TcpTaskHandle;
+osThreadId IAPTaskHandle;
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -56,6 +59,8 @@ osThreadId defaultTaskHandle;
 /* USER CODE END FunctionPrototypes */
 
 void StartDefaultTask(void const * argument);
+void TcpTaskEntry(void const * argument);
+void IAPTaskEntry(void const * argument);
 
 extern void MX_USB_DEVICE_Init(void);
 extern void MX_LWIP_Init(void);
@@ -63,6 +68,19 @@ void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
 /* GetIdleTaskMemory prototype (linked to static allocation support) */
 void vApplicationGetIdleTaskMemory( StaticTask_t **ppxIdleTaskTCBBuffer, StackType_t **ppxIdleTaskStackBuffer, uint32_t *pulIdleTaskStackSize );
+
+/* Hook prototypes */
+void vApplicationStackOverflowHook(xTaskHandle xTask, signed char *pcTaskName);
+
+/* USER CODE BEGIN 4 */
+__weak void vApplicationStackOverflowHook(xTaskHandle xTask, signed char *pcTaskName)
+{
+   /* Run time stack overflow checking is performed if
+   configCHECK_FOR_STACK_OVERFLOW is defined to 1 or 2. This hook function is
+   called if a stack overflow is detected. */
+	printf("\r\n What stack overflow Errors when erasing flash.\r\n");
+}
+/* USER CODE END 4 */
 
 /* USER CODE BEGIN GET_IDLE_TASK_MEMORY */
 static StaticTask_t xIdleTaskTCBBuffer;
@@ -108,6 +126,14 @@ void MX_FREERTOS_Init(void) {
   osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 512);
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
+  /* definition and creation of TcpTask */
+  osThreadDef(TcpTask, TcpTaskEntry, osPriorityLow, 0, 512);
+  TcpTaskHandle = osThreadCreate(osThread(TcpTask), NULL);
+
+  /* definition and creation of IAPTask */
+  osThreadDef(IAPTask, IAPTaskEntry, osPriorityIdle, 0, 512);
+  IAPTaskHandle = osThreadCreate(osThread(IAPTask), NULL);
+
   /* USER CODE BEGIN RTOS_THREADS */
 	/* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -129,23 +155,61 @@ void StartDefaultTask(void const * argument)
   /* init code for LWIP */
   MX_LWIP_Init();
   /* USER CODE BEGIN StartDefaultTask */
-	//
-	HAL_Delay(100); // Allow PHY stabilization
-	/* Create TCP server task */
-	osThreadDef(tcpTask, tcp_server_start, osPriorityNormal, 0, 512);
-	osThreadId tcpHandle = osThreadCreate(osThread(tcpTask), NULL);
-	if(tcpHandle == NULL) {
-	    Error_Handler();
-	}
+//	//
+//	HAL_Delay(100); // Allow PHY stabilization
+//	/* Create TCP server task */
+//	osThreadDef(tcpTask, tcp_server_start, osPriorityNormal, 0, 1024);
+//	osThreadId tcpHandle = osThreadCreate(osThread(tcpTask), NULL);
+//	if(tcpHandle == NULL) {
+//	    Error_Handler();
+//	}
 
-	/* Infinite loop */
+//	/* Infinite loop */
 	for (;;) {
-		IAP_Task();
-		osDelay(100);
+//		IAP_Task();
+		osDelay(1);
 	}
 
 	printf("******Out the StartDefaultTask \r\n");
   /* USER CODE END StartDefaultTask */
+}
+
+/* USER CODE BEGIN Header_TcpTaskEntry */
+/**
+* @brief Function implementing the TcpTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_TcpTaskEntry */
+void TcpTaskEntry(void const * argument)
+{
+  /* USER CODE BEGIN TcpTaskEntry */
+	tcp_server_start();
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1000);
+  }
+  /* USER CODE END TcpTaskEntry */
+}
+
+/* USER CODE BEGIN Header_IAPTaskEntry */
+/**
+* @brief Function implementing the IAPTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_IAPTaskEntry */
+void IAPTaskEntry(void const * argument)
+{
+  /* USER CODE BEGIN IAPTaskEntry */
+  /* Infinite loop */
+  for(;;)
+  {
+	IAP_Task();
+    osDelay(500);
+  }
+  /* USER CODE END IAPTaskEntry */
 }
 
 /* Private application code --------------------------------------------------*/

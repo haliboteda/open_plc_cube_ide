@@ -229,7 +229,5 @@ void HardFault_Handler_C(uint32_t *stack_addr) {
 	printf("LR  = 0x%08lX\n", lr);
 	printf("PC  = 0x%08lX\n", pc);
 	printf("xPSR= 0x%08lX\n", psr);
-
-	while (1);
 }
 /* USER CODE END 1 */

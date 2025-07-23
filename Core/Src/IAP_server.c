@@ -14,6 +14,9 @@
 #include "usbd_cdc_flash.h"
 #include "usb_device.h"
 
+#include "tcp_server_s.h"
+#include "usbd_cdc_if.h"
+
 pFunction JumpToApplication;
 
 uint32_t bytesToReceive;
@@ -30,6 +33,14 @@ IAP_State currentState = IDLE;
 
 static IAP_Method current_method = IAP_NONE;
 
+//
+extern uint32_t _sdata, _edata;
+extern uint32_t _sbss, _ebss;
+extern uint32_t _estack;
+extern uint16_t Erase_FLASH(uint8_t *flashAddress, uint32_t Len);
+extern uint16_t Flash_If_Write(uint8_t *DataAddress, uint8_t *FlashAddress, uint32_t Len);
+//
+
 void Reset_Buf(void) {
 	DataReadyFlag = 0;
 	LenInRXBuffer = 0;
@@ -40,7 +51,7 @@ void Reset_Buf(void) {
 }
 
 // 接口特定的发送响应
-void Send_Response(const char *msg) {
+void Send_Response(char *msg) {
 	switch (current_method) {
 	case IAP_CDC:
 		CDC_Transmit_FS((uint8_t*) msg, strlen(msg));
@@ -71,12 +82,17 @@ void Process_Command() {
 				printf(
 						"File size %d, checksum %x. Wait for erasing flash! \r\n",
 						bytesToReceive, expectedChecksum);
-//				// Disable DCache
-//				SCB_DisableDCache();
-//				// Erase flash
-				HAL_StatusTypeDef status = HAL_OK;//Erase_FLASH(IAP_APP_ADDRESS, bytesToReceive);
-//				// Invalidate data cache
-//				SCB_InvalidateDCache();
+
+
+				taskENTER_CRITICAL();  // 这比 vTaskSuspendAll 更彻底，能屏蔽中断
+				SCB_CleanInvalidateDCache();  // 清除 DCache，防止写入失败
+
+				HAL_FLASH_Unlock();
+				HAL_StatusTypeDef status = Erase_FLASH((uint8_t *)IAP_APP_ADDRESS, bytesToReceive);
+				HAL_FLASH_Lock();
+
+				SCB_CleanInvalidateDCache();  // 擦除完再次清理 Cache
+				taskEXIT_CRITICAL();
 				//
 				if (status != HAL_OK) {
 					printf("Errors when erasing flash. Status:%d\r\n", status);
@@ -89,6 +105,8 @@ void Process_Command() {
 
 					Send_Response("OK");
 				}
+
+
 
 			} else {
 				printf("Invalid flash command");
@@ -123,7 +141,7 @@ void Process_Command() {
 			printf("Flash complete\r\n");
 
 			// CRC checksum -- damn result should be inverted!!
-			uint32_t caledCRC = HAL_CRC_Calculate(&hcrc, IAP_APP_ADDRESS,
+			uint32_t caledCRC = HAL_CRC_Calculate(&hcrc, (uint32_t *)IAP_APP_ADDRESS,
 					bytesToReceive);
 			if (expectedChecksum == ~caledCRC) {
 				printf("Checksum valid and RESET in 0.5 Seconds\r\n");
@@ -208,6 +226,25 @@ void IAP_Task(void) {
 		//memcpy(FlashBuffer, RXBuffer, LenInFlashBuffer);
 		Process_Command();
 	}
+//	//
+//    printf("DATA section:  Start = 0x%08lx, End = 0x%08lx, Size = %lu bytes\r\n",
+//           (uint32_t)&_sdata, (uint32_t)&_edata, (uint32_t)&_edata - (uint32_t)&_sdata);
+//
+//    printf("BSS  section:  Start = 0x%08lx, End = 0x%08lx, Size = %lu bytes\r\n",
+//           (uint32_t)&_sbss, (uint32_t)&_ebss, (uint32_t)&_ebss - (uint32_t)&_sbss);
+
+//    printf("Heap size    : %u bytes\r\n", configTOTAL_HEAP_SIZE);
+//    printf("Free heap    : %u bytes\r\n", xPortGetFreeHeapSize());
+//    printf("Min ever heap: %u bytes\r\n", xPortGetMinimumEverFreeHeapSize());
+//    TaskStatus_t taskStatusArray[10];  // 假设你有不超过 10 个任务
+//    UBaseType_t taskCount = uxTaskGetSystemState(taskStatusArray, 10, NULL);
+//
+//    for (int i = 0; i < taskCount; i++) {
+//        printf("Task: %s, Stack HighWaterMark: %u words (%u bytes)\r\n",
+//               taskStatusArray[i].pcTaskName,
+//               taskStatusArray[i].usStackHighWaterMark,
+//               taskStatusArray[i].usStackHighWaterMark * sizeof(StackType_t));
+//    }
 }
 
 void IAP_Data_Recv(IAP_Method iapM, uint8_t *Buf, uint32_t Len) {
@@ -233,6 +270,10 @@ void IAP_Data_Recv(IAP_Method iapM, uint8_t *Buf, uint32_t Len) {
 					LenInRXBuffer, receivedBytes, bytesToReceive);
 		}
 	}
+
+	 printf("Heap size    : %u bytes\r\n", configTOTAL_HEAP_SIZE);
+	 printf("Free heap    : %u bytes\r\n", xPortGetFreeHeapSize());
+	 printf("Min ever heap: %u bytes\r\n", xPortGetMinimumEverFreeHeapSize());
 	fflush(stdout);
 }
 
