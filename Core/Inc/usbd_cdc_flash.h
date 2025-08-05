@@ -47,8 +47,8 @@
 #endif
 
 #ifdef USE_BOOTLOADER
-#define ADDRESS_VECTOR ((uint32_t)0x20000)
-#define RESERVED_SECTORS 1
+#define ADDRESS_VECTOR ((uint32_t)0x40000)
+#define RESERVED_SECTORS 2
 #else
 #define ADDRESS_VECTOR 0UL
 #define RESERVED_SECTORS 0UL

@@ -13,9 +13,7 @@ extern "C" {
 #endif
 
 #include <IAP_config.h>
-
-#include "FreeRTOS.h"
-#include "semphr.h"
+#include "stdint.h"
 
 typedef void (*pFunction)(void);
 
@@ -25,7 +23,7 @@ typedef void (*pFunction)(void);
 
 void Reset_Buf(void);
 void Process_Command();
-uint8_t Check_Boot0_Pressed(void);
+//uint8_t Check_Boot0_Pressed(void);
 
 void IAP_Init(void);
 void IAP_Task(void);
@@ -33,6 +31,7 @@ void IAP_Task(void);
 void IAP_Data_Recv(IAP_Method iapM, uint8_t *Buf, uint32_t Len);
 
 void IAP_CDC_Trigger(uint32_t bitrate);
+void IAP_ETH_Trigger();
 ///////////
 
 

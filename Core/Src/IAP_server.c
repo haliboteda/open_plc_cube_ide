@@ -5,6 +5,7 @@
  *      Author: ziotier
  */
 #include <IAP_server.h>
+#include <tcp_server.h>
 #include "crc.h"
 #include "md5.h"
 
@@ -14,12 +15,11 @@
 #include "usbd_cdc_flash.h"
 #include "usb_device.h"
 
-#include "tcp_server_s.h"
 #include "usbd_cdc_if.h"
 
 pFunction JumpToApplication;
 
-uint32_t bytesToReceive;
+uint32_t expected_size;
 uint32_t expectedChecksum;
 
 uint8_t DataReadyFlag = 0; // 0 - no 1 - yes
@@ -38,7 +38,8 @@ extern uint32_t _sdata, _edata;
 extern uint32_t _sbss, _ebss;
 extern uint32_t _estack;
 extern uint16_t Erase_FLASH(uint8_t *flashAddress, uint32_t Len);
-extern uint16_t Flash_If_Write(uint8_t *DataAddress, uint8_t *FlashAddress, uint32_t Len);
+extern uint16_t Flash_If_Write(uint8_t *DataAddress, uint8_t *FlashAddress,
+		uint32_t Len);
 //
 
 void Reset_Buf(void) {
@@ -77,37 +78,19 @@ void Process_Command() {
 			HAL_NVIC_SystemReset();
 		} else if (strncmp(RXBuffer, "flash", 5) == 0) {			//
 			// decode flash command
-			if (sscanf(RXBuffer, "flash %lu %x", &bytesToReceive,
-					&expectedChecksum) == 2) {			//
-				printf(
-						"File size %d, checksum %x. Wait for erasing flash! \r\n",
-						bytesToReceive, expectedChecksum);
-
-
-				taskENTER_CRITICAL();  // 这比 vTaskSuspendAll 更彻底，能屏蔽中断
-				SCB_CleanInvalidateDCache();  // 清除 DCache，防止写入失败
-
-				HAL_FLASH_Unlock();
-				HAL_StatusTypeDef status = Erase_FLASH((uint8_t *)IAP_APP_ADDRESS, bytesToReceive);
-				HAL_FLASH_Lock();
-
-				SCB_CleanInvalidateDCache();  // 擦除完再次清理 Cache
-				taskEXIT_CRITICAL();
+			if (sscanf(RXBuffer, "flash %lu %x", &expected_size, &expectedChecksum) == 2) {			//
+				printf("File size %d, checksum %x. Wait for erasing flash! \r\n", expected_size, expectedChecksum);
+				//
+				HAL_StatusTypeDef status = Erase_FLASH((uint8_t*) IAP_APP_ADDRESS, expected_size);
 				//
 				if (status != HAL_OK) {
 					printf("Errors when erasing flash. Status:%d\r\n", status);
-
 					Send_Response("ERR");
 				} else {
-
 					printf("Done! Begin to transfer bin file.\r\n");
 					currentState = FLASH_RECEIVE;
-
 					Send_Response("OK");
 				}
-
-
-
 			} else {
 				printf("Invalid flash command");
 			}
@@ -116,43 +99,44 @@ void Process_Command() {
 		}
 		LenInRXBuffer = 0;
 	} else if (currentState == FLASH_RECEIVE) {
-		HAL_StatusTypeDef status = HAL_OK;//Flash_If_Write(RXBuffer, IAP_APP_ADDRESS + receivedBytes, LenInRXBuffer);			//
+		HAL_StatusTypeDef status = Flash_If_Write(RXBuffer, IAP_APP_ADDRESS + receivedBytes, LenInRXBuffer);			//
 		if (status != HAL_OK) {
 			printf("There is error when writing flash. Addr:%x Status:%d\r\n",
 			IAP_APP_ADDRESS + receivedBytes, status);
-
 			// clean
 			Reset_Buf();
-
 			Send_Response("Failed");
 		} else {
 
 			receivedBytes += LenInRXBuffer;			//LenInFlashBuffer;
 			memset(RXBuffer, 0, LenInRXBuffer);			//
 			printf("Done. Write Addr:%x size:%d (written:%d of total:%d) \r\n",
-			IAP_APP_ADDRESS, LenInRXBuffer, receivedBytes, bytesToReceive);
+			IAP_APP_ADDRESS, LenInRXBuffer, receivedBytes, expected_size);
 			LenInRXBuffer = 0;
 
 			Send_Response("OK");
 		}
-		//
-		if (receivedBytes >= bytesToReceive) {
-			//currentState = IDLE;
-			printf("Flash complete\r\n");
 
-			// CRC checksum -- damn result should be inverted!!
-			uint32_t caledCRC = HAL_CRC_Calculate(&hcrc, (uint32_t *)IAP_APP_ADDRESS,
-					bytesToReceive);
+		// 检查是否传输完成
+		if (receivedBytes >= expected_size) {
+			printf("Flash complete, verifying checksum...\r\n");
+
+			uint32_t caledCRC = HAL_CRC_Calculate(&hcrc,
+					(uint32_t*) IAP_APP_ADDRESS, expected_size);
 			if (expectedChecksum == ~caledCRC) {
-				printf("Checksum valid and RESET in 0.5 Seconds\r\n");
+				printf("Checksum OK. Rebooting...\r\n");
 				HAL_Delay(500);
 				HAL_NVIC_SystemReset();
 			} else {
-				printf("Checksum invalid expected: %x, actual: %x\r\n",
+				printf("Checksum FAIL. Expected: %08X, Got: %08X\r\n",
 						expectedChecksum, ~caledCRC);
+				Send_Response("Checksum Failed");
 			}
 			Reset_Buf();
 		}
+	}
+	else{
+		printf("What is currentState:%d\r\n", currentState);
 	}
 	fflush(stdout);
 }
@@ -178,10 +162,10 @@ void IAP_Init(void) {
 	uint32_t boot_flag = HAL_RTCEx_BKUPRead(&hrtc, MAGIC_BKP_REG);
 
 	// 判断启动模式
-	if (boot_flag == MAGIC_CDC_RATE) {
+	if (boot_flag == MAGIC_CDC_FLAG) {
 		current_method = IAP_CDC;
 
-	} else if (boot_flag == MAGIC_ETHERNET_FLAG) {
+	} else if (boot_flag == MAGIC_ETH_FLAG) {
 		current_method = IAP_ETHERNET;
 	} else if (((*(__IO uint32_t*) IAP_APP_ADDRESS) & 0x2FFE0000) != 0x24080000
 			|| (isBoot0Pressed > 0
@@ -220,31 +204,8 @@ void IAP_Init(void) {
 void IAP_Task(void) {
 	if (DataReadyFlag > 0) {
 		DataReadyFlag = 0;
-		//printf("%d %d, data is ready LenInRXBuffer %d : receivedBytes %d of %d \r\n", DataReadyFlag, currentState, LenInRXBuffer,receivedBytes, bytesToReceive);
-		//LenInFlashBuffer = LenInRXBuffer;
-		//LenInRXBuffer = 0;
-		//memcpy(FlashBuffer, RXBuffer, LenInFlashBuffer);
 		Process_Command();
 	}
-//	//
-//    printf("DATA section:  Start = 0x%08lx, End = 0x%08lx, Size = %lu bytes\r\n",
-//           (uint32_t)&_sdata, (uint32_t)&_edata, (uint32_t)&_edata - (uint32_t)&_sdata);
-//
-//    printf("BSS  section:  Start = 0x%08lx, End = 0x%08lx, Size = %lu bytes\r\n",
-//           (uint32_t)&_sbss, (uint32_t)&_ebss, (uint32_t)&_ebss - (uint32_t)&_sbss);
-
-//    printf("Heap size    : %u bytes\r\n", configTOTAL_HEAP_SIZE);
-//    printf("Free heap    : %u bytes\r\n", xPortGetFreeHeapSize());
-//    printf("Min ever heap: %u bytes\r\n", xPortGetMinimumEverFreeHeapSize());
-//    TaskStatus_t taskStatusArray[10];  // 假设你有不超过 10 个任务
-//    UBaseType_t taskCount = uxTaskGetSystemState(taskStatusArray, 10, NULL);
-//
-//    for (int i = 0; i < taskCount; i++) {
-//        printf("Task: %s, Stack HighWaterMark: %u words (%u bytes)\r\n",
-//               taskStatusArray[i].pcTaskName,
-//               taskStatusArray[i].usStackHighWaterMark,
-//               taskStatusArray[i].usStackHighWaterMark * sizeof(StackType_t));
-//    }
 }
 
 void IAP_Data_Recv(IAP_Method iapM, uint8_t *Buf, uint32_t Len) {
@@ -257,23 +218,25 @@ void IAP_Data_Recv(IAP_Method iapM, uint8_t *Buf, uint32_t Len) {
 		DataReadyFlag = 1;
 		printf("IDLE ready \r\n");
 	} else {
+
+		printf("--LenInRXBuffer %d : Len %d \r\n", LenInRXBuffer, Len);
+
 		memcpy(RXBuffer + LenInRXBuffer, Buf, Len);
 		LenInRXBuffer += Len;
-		printf("--LenInRXBuffer %d : receivedBytes %d of %d \r\n",
-							LenInRXBuffer, receivedBytes, bytesToReceive);
+
+		printf("--LenInRXBuffer %d : receivedBytes %d of %d \r\n", LenInRXBuffer, receivedBytes, expected_size);
+
+
 		// all data received or receive length reach the buffer size
 		if (LenInRXBuffer >= IAP_RX_BUFFER_SIZE
-				|| receivedBytes + LenInRXBuffer >= bytesToReceive) {
+				|| receivedBytes + LenInRXBuffer >= expected_size) {
 			// buffer is full
 			DataReadyFlag = 1;
 			printf("Data is ready to FLash LenInRXBuffer %d : receivedBytes %d of %d \r\n",
-					LenInRXBuffer, receivedBytes, bytesToReceive);
+					LenInRXBuffer, receivedBytes, expected_size);
 		}
 	}
 
-	 printf("Heap size    : %u bytes\r\n", configTOTAL_HEAP_SIZE);
-	 printf("Free heap    : %u bytes\r\n", xPortGetFreeHeapSize());
-	 printf("Min ever heap: %u bytes\r\n", xPortGetMinimumEverFreeHeapSize());
 	fflush(stdout);
 }
 
@@ -281,6 +244,14 @@ void IAP_CDC_Trigger(uint32_t bitrate) {
 	uint32_t regV = HAL_RTCEx_BKUPRead(&hrtc, MAGIC_BKP_REG);
 	if (bitrate == MAGIC_CDC_RATE && regV != MAGIC_CDC_FLAG) {
 		HAL_RTCEx_BKUPWrite(&hrtc, MAGIC_BKP_REG, MAGIC_CDC_FLAG);
+		HAL_NVIC_SystemReset();
+	}
+}
+
+void IAP_ETH_Trigger() {
+	uint32_t regV = HAL_RTCEx_BKUPRead(&hrtc, MAGIC_BKP_REG);
+	if (regV != MAGIC_ETH_FLAG) {
+		HAL_RTCEx_BKUPWrite(&hrtc, MAGIC_BKP_REG, MAGIC_ETH_FLAG);
 		HAL_NVIC_SystemReset();
 	}
 }

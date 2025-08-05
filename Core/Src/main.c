@@ -18,7 +18,6 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "cmsis_os.h"
 #include "crc.h"
 #include "lwip.h"
 #include "rtc.h"
@@ -30,6 +29,7 @@
 /* USER CODE BEGIN Includes */
 #include "relay.h"
 #include "IAP_server.h"
+#include "tcp_server.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -63,7 +63,6 @@
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MPU_Config(void);
-void MX_FREERTOS_Init(void);
 /* USER CODE BEGIN PFP */
 // RS232
 PUTCHAR_PROTOTYPE {
@@ -128,43 +127,42 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_USB_DEVICE_Init();
   MX_UART4_Init();
   MX_RTC_Init();
   MX_CRC_Init();
+  MX_LWIP_Init();
   /* USER CODE BEGIN 2 */
-	Enable_RX_RS232();
+  Enable_RX_RS232();
 
-	printf(
-			"** Checking Starting Mod ...\r\n"
-					"** (IF You want OpenPLC to stay in upload mode, please hold down the BOOT0 button for 3-5 seconds while clicking)\r\n");
+  printf("** Checking Starting Mod ...\r\n"
+		  "** (IF You want OpenPLC to stay in upload mode, please hold down the BOOT0 button for 3-5 seconds while clicking)\r\n");
 
-	// Einschalten aller HSFETs einmalig und dann ausschalten
-	for (RELAY_Name relay = RELAY_1; relay < RELAY_COUNT / 2; ++relay) {
-		Relay_On(relay);
-		HAL_Delay(500); // Einschaltverzoegerung von 500 Millisekunden
-		Relay_Off(relay);
-	}
+  // Einschalten aller HSFETs einmalig und dann ausschalten
+  for (RELAY_Name relay = RELAY_1; relay < RELAY_COUNT / 2; ++relay) {
+    Relay_On(relay);
+    HAL_Delay(500); // Einschaltverzoegerung von 500 Millisekunden
+    Relay_Off(relay);
+  }
 
-	IAP_Init();
+  IAP_Init();
 
+  tcp_server_start();
+//  udp_server_start(IAP_ETH_Trigger);
+//  udp_server_stop();
   /* USER CODE END 2 */
-
-  /* Call init function for freertos objects (in cmsis_os2.c) */
-  MX_FREERTOS_Init();
-
-  /* Start scheduler */
-  osKernelStart();
-
-  /* We should never get here as control is now taken by the scheduler */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-	while (1) {
+  while (1) {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
 
-	}
+    IAP_Task();
+    MX_LWIP_Process();
+    HAL_Delay(10);
+  }
   /* USER CODE END 3 */
 }
 

@@ -1,68 +1,93 @@
+/*
+ * tcp_server_simple.c
+ *
+ *  Created on: May 7, 2025
+ *      Author: WhoamIamwhO
+ */
+
+#include <IAP_config.h>
+#include <tcp_server.h>
 #include "lwip/tcp.h"
-#include <stdio.h>
-#include "tcp_server_s.h"
 
-static struct tcp_pcb *pcb;
+#include "IAP_server.h"
+#include "string.h"
 
-// Connection close handler (simplified)
-static void tcp_server_close(struct tcp_pcb *tpcb) {
-	if (!tpcb)
-		return;
+static struct tcp_pcb *server_pcb;
+static struct tcp_pcb *client_pcb;
 
-	tcp_arg(tpcb, NULL);
-	tcp_sent(tpcb, NULL);
-	tcp_recv(tpcb, NULL);
-	tcp_err(tpcb, NULL);
-
-	if (tcp_close(tpcb) != ERR_OK) {
-		tcp_abort(tpcb);
+static void tcp_server_close(struct tcp_pcb *pcb) {
+	if (pcb) {
+		tcp_arg(pcb, NULL);
+		tcp_sent(pcb, NULL);
+		tcp_recv(pcb, NULL);
+		tcp_err(pcb, NULL);
+		tcp_close(pcb);
 	}
+	client_pcb = NULL;
+	Reset_Buf();
+	TCP_PRINT("Client disconnected.");
 }
 
-// Unified receive callback
-static err_t tcp_server_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p,
-		err_t err) {
-	if (p) {
-		IAP_Data_Recv(p->payload, p->len); // 处理TCP数据包
-		tcp_recved(tpcb, p->len);
-		pbuf_free(p);
+static err_t _recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err) {
+	if (err != ERR_OK || p == NULL) {
+		tcp_server_close(pcb);  // 安全关闭连接
+		return ERR_OK;
 	}
+
+	struct pbuf *q = p;
+	while (q != NULL) {
+		TCP_PRINT("_recv: %d of total: %d\r\n", q->len, q->tot_len);
+		IAP_Data_Recv(IAP_ETHERNET, q->payload, q->len);
+		q = q->next;
+	}
+
+	tcp_recved(pcb, p->tot_len);
+
+	pbuf_free(p);  //
 	return ERR_OK;
 }
 
-// Simplified accept callback
-static err_t tcp_server_accept(void *arg, struct tcp_pcb *newpcb, err_t err) {
-	if (err != ERR_OK || !newpcb)
-		return ERR_VAL;
+static void _err(void *arg, err_t err) {
+	(void)arg;
+	TCP_PRINT("TCP connection error: %d\r\n", err);
+	client_pcb = NULL;
+	Reset_Buf();  // 清空 buffer
+}
 
-	// Set callbacks
-	tcp_arg(newpcb, arg);
-	tcp_recv(newpcb, tcp_server_recv);
-	tcp_err(newpcb, (tcp_err_fn) tcp_server_close);
-
-	TCP_DEBUG("Client connected");
+static err_t _accept(void *arg, struct tcp_pcb *pcb, err_t err) {
+	client_pcb = pcb;
+	tcp_recv(pcb, _recv);
+	tcp_err(pcb, _err);
 	return ERR_OK;
 }
 
-// Main server task
-void TcpServerTask(void const *arg) {
-	pcb = tcp_new();
-	if (!pcb) {
-		TCP_DEBUG("Failed to create PCB");
+void tcp_server_start(void) {
+	server_pcb = tcp_new();
+	if (!server_pcb) {
+		TCP_PRINT("Failed to create PCB");
 		return;
 	}
 
-	if (tcp_bind(pcb, IP_ADDR_ANY, TCP_SERVER_PORT) != ERR_OK) {
-		TCP_DEBUG("Bind failed");
-		tcp_abort(pcb);
+	if (tcp_bind(server_pcb, IP_ADDR_ANY, TCP_SERVER_PORT) != ERR_OK) {
+		TCP_PRINT("Bind failed");
+		tcp_abort(server_pcb);
 		return;
 	}
 
-	pcb = tcp_listen(pcb);
-	tcp_accept(pcb, tcp_server_accept);
-	TCP_DEBUG("Server listening on port %d", TCP_SERVER_PORT);
+	server_pcb = tcp_listen(server_pcb);
+	tcp_accept(server_pcb, _accept);
+	TCP_PRINT("Server listening on port %d", TCP_SERVER_PORT);
+}
 
-	while (1) {
-		osDelay(25);
+
+void tcp_server_send(uint8_t *data, uint16_t len) {
+	err_t err;
+	if (client_pcb && data && len) {
+		err = tcp_write(client_pcb, data, len, TCP_WRITE_FLAG_COPY);
+		if (err == ERR_OK) {
+			tcp_output(client_pcb);
+		} else {
+			TCP_PRINT("tcp_write failed: %d\n", err);
+		}
 	}
 }

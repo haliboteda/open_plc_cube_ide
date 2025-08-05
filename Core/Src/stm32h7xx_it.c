@@ -85,14 +85,7 @@ void NMI_Handler(void)
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
-	__asm volatile
-	(
-			"tst lr, #4          \n"  // 判断使用 MSP 还是 PSP
-			"ite eq              \n"
-			"mrseq r0, msp       \n"
-			"mrsne r0, psp       \n"
-			"b HardFault_Handler_C \n"// 跳转到 C 函数
-	);
+	IT_Manage_Handler("HardFault");
   /* USER CODE END HardFault_IRQn 0 */
   while (1)
   {
@@ -108,7 +101,7 @@ void HardFault_Handler(void)
 void MemManage_Handler(void)
 {
   /* USER CODE BEGIN MemoryManagement_IRQn 0 */
-
+	IT_Manage_Handler("MemManage");
   /* USER CODE END MemoryManagement_IRQn 0 */
   while (1)
   {
@@ -148,6 +141,19 @@ void UsageFault_Handler(void)
 }
 
 /**
+  * @brief This function handles System service call via SWI instruction.
+  */
+void SVC_Handler(void)
+{
+  /* USER CODE BEGIN SVCall_IRQn 0 */
+
+  /* USER CODE END SVCall_IRQn 0 */
+  /* USER CODE BEGIN SVCall_IRQn 1 */
+
+  /* USER CODE END SVCall_IRQn 1 */
+}
+
+/**
   * @brief This function handles Debug monitor.
   */
 void DebugMon_Handler(void)
@@ -158,6 +164,33 @@ void DebugMon_Handler(void)
   /* USER CODE BEGIN DebugMonitor_IRQn 1 */
 
   /* USER CODE END DebugMonitor_IRQn 1 */
+}
+
+/**
+  * @brief This function handles Pendable request for system service.
+  */
+void PendSV_Handler(void)
+{
+  /* USER CODE BEGIN PendSV_IRQn 0 */
+
+  /* USER CODE END PendSV_IRQn 0 */
+  /* USER CODE BEGIN PendSV_IRQn 1 */
+
+  /* USER CODE END PendSV_IRQn 1 */
+}
+
+/**
+  * @brief This function handles System tick timer.
+  */
+void SysTick_Handler(void)
+{
+  /* USER CODE BEGIN SysTick_IRQn 0 */
+
+  /* USER CODE END SysTick_IRQn 0 */
+
+  /* USER CODE BEGIN SysTick_IRQn 1 */
+
+  /* USER CODE END SysTick_IRQn 1 */
 }
 
 /******************************************************************************/
@@ -210,24 +243,33 @@ void OTG_FS_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
-void HardFault_Handler_C(uint32_t *stack_addr) {
-	uint32_t r0 = stack_addr[0];
-	uint32_t r1 = stack_addr[1];
-	uint32_t r2 = stack_addr[2];
-	uint32_t r3 = stack_addr[3];
-	uint32_t r12 = stack_addr[4];
-	uint32_t lr = stack_addr[5];
-	uint32_t pc = stack_addr[6];
-	uint32_t psr = stack_addr[7];
+void IT_Manage_Handler(char *g_fault_type)
+{
+    uint32_t *fault_stack = (uint32_t *)__get_MSP();  // 或 PSP, 取决于运行上下文
 
-	printf("\n\n--- HardFault ---\n");
-	printf("R0  = 0x%08lX\n", r0);
-	printf("R1  = 0x%08lX\n", r1);
-	printf("R2  = 0x%08lX\n", r2);
-	printf("R3  = 0x%08lX\n", r3);
-	printf("R12 = 0x%08lX\n", r12);
-	printf("LR  = 0x%08lX\n", lr);
-	printf("PC  = 0x%08lX\n", pc);
-	printf("xPSR= 0x%08lX\n", psr);
+    uint32_t r0 = fault_stack[0];
+    uint32_t r1 = fault_stack[1];
+    uint32_t r2 = fault_stack[2];
+    uint32_t r3 = fault_stack[3];
+    uint32_t r12 = fault_stack[4];
+    uint32_t lr = fault_stack[5];
+    uint32_t pc = fault_stack[6];
+    uint32_t psr = fault_stack[7];
+
+    printf("\n--- %s Fault ---\n", g_fault_type);
+    printf("R0  = 0x%08lX\n", r0);
+    printf("R1  = 0x%08lX\n", r1);
+    printf("R2  = 0x%08lX\n", r2);
+    printf("R3  = 0x%08lX\n", r3);
+    printf("R12 = 0x%08lX\n", r12);
+    printf("LR  = 0x%08lX\n", lr);
+    printf("PC  = 0x%08lX\n", pc);
+    printf("xPSR= 0x%08lX\n", psr);
+
+    // 内存管理错误状态寄存器
+    printf("CFSR = 0x%08lX\n", SCB->CFSR);
+    printf("MMFAR = 0x%08lX\n", SCB->MMFAR); // 有效地址
+
+    while (1);
 }
 /* USER CODE END 1 */
