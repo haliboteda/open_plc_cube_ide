@@ -12,6 +12,7 @@
 #include "IAP_server.h"
 #include "string.h"
 
+extern struct netif gnetif;
 static struct tcp_pcb *server_pcb;
 static struct tcp_pcb *client_pcb;
 
@@ -76,7 +77,7 @@ void tcp_server_start(void) {
 
 	server_pcb = tcp_listen(server_pcb);
 	tcp_accept(server_pcb, _accept);
-	TCP_PRINT("Server listening on port %d", TCP_SERVER_PORT);
+	TCP_PRINT("Server listening on port %d IP %s", TCP_SERVER_PORT, ip4addr_ntoa(netif_ip4_addr(&gnetif)));
 }
 
 
