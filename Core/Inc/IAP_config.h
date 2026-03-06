@@ -17,7 +17,7 @@
 
 #define BOOT_LOADER_VERSION "Boot Loader 0.1.2\r\n"
 
-#define IAP_RX_BUFFER_SIZE 4 * 1024
+#define IAP_RX_BUFFER_SIZE 8 * 1024
 
 typedef enum {
 	IDLE, FLASH_RECEIVE
