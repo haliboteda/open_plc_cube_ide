@@ -61,7 +61,7 @@ void send_response(char *msg) {
 		CDC_Transmit_FS((uint8_t*) msg, strlen(msg));
 		break;
 	case IAP_ETHERNET:
-		tcp_server_send((uint8_t*)msg, strlen(msg));
+		tcp_server_send((uint8_t*) msg, strlen(msg));
 		break;
 	default:
 		break;

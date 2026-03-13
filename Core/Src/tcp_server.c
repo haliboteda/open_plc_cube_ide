@@ -81,7 +81,7 @@ void tcp_server_start(void) {
 }
 
 
-void tcp_server_send(uint8_t *data, uint16_t len) {
+void tcp_server_send(uint8_t* data, uint16_t len) {
 	err_t err;
 	if (client_pcb && data && len) {
 		err = tcp_write(client_pcb, data, len, TCP_WRITE_FLAG_COPY);
