@@ -4,8 +4,10 @@
  *  Created on: Apr 30, 2025
  *      Author: ziotier
  */
-#include <IAP_server.h>
-#include <tcp_server.h>
+#include <inttypes.h>
+#include "IAP_server.h"
+#include "tcp_server.h"
+#include "udp_server.h"
 #include "crc.h"
 #include "md5.h"
 
@@ -20,16 +22,16 @@
 pFunction JumpToApplication;
 
 uint32_t expected_size;
-uint32_t expectedChecksum;
+uint32_t expected_checksum;
 
-uint8_t DataReadyFlag = 0; // 0 - no 1 - yes
-uint32_t LenInRXBuffer = 0;    // received data length in buffer
+uint8_t data_is_ready = 0; // 0 - no 1 - yes
+uint32_t len_in_RX_buffer = 0;    // received data length in buffer
 uint8_t RXBuffer[IAP_RX_BUFFER_SIZE]; // buffer to receive data
-uint32_t receivedBytes = 0; // received Bytes of Flash bin file
+uint32_t received_bytes = 0; // received Bytes of Flash bin file
 
 //uint8_t FlashBuffer[IAP_RX_BUFFER_SIZE];
 //uint32_t LenInFlashBuffer = 0;
-IAP_State currentState = IDLE;
+IAP_STATUS current_status = IDLE;
 
 static IAP_Method current_method = IAP_NONE;
 
@@ -43,107 +45,104 @@ extern uint16_t Flash_If_Write(uint8_t *DataAddress, uint8_t *FlashAddress,
 //
 uint32_t app_base, app_msp, app_reset;
 
-void Reset_Buf(void) {
-	DataReadyFlag = 0;
-	LenInRXBuffer = 0;
-	receivedBytes = 0;
+void reset_buf(void) {
+	data_is_ready = 0;
+	len_in_RX_buffer = 0;
+	received_bytes = 0;
 	memset(RXBuffer, 0, IAP_RX_BUFFER_SIZE); //
-	currentState = IDLE;
+	current_status = IDLE;
 	current_method = IAP_NONE;
 }
 
 // 接口特定的发送响应
-void Send_Response(char *msg) {
+void send_response(char *msg) {
 	switch (current_method) {
 	case IAP_CDC:
 		CDC_Transmit_FS((uint8_t*) msg, strlen(msg));
 		break;
 	case IAP_ETHERNET:
-		tcp_server_send(msg, strlen(msg));
+		tcp_server_send((uint8_t*)msg, strlen(msg));
 		break;
 	default:
 		break;
 	}
 }
 
-void Process_Command() {
-	if (currentState == IDLE) {
+void process_command() {
+	if (current_status == IDLE) {
 		// check the command type
-		if (strncmp(RXBuffer, "ping", 4) == 0) { //
-			Send_Response("OK");
-		} else if (strncmp(RXBuffer, "info", 4) == 0) { //
-			Send_Response(BOOT_LOADER_VERSION);
-		} else if (strncmp(RXBuffer, "run", 3) == 0) { //
+		if (strncmp((char *)RXBuffer, "ping", 4) == 0) {
+			send_response("OK");
+		} else if (strncmp((char *)RXBuffer, "info", 4) == 0) {
+			send_response(BOOT_LOADER_VERSION);
+		} else if (strncmp((char *)RXBuffer, "run", 3) == 0) {
 			// jump to App
-			Reset_Buf();
+			reset_buf();
 			HAL_NVIC_SystemReset();
-		} else if (strncmp(RXBuffer, "flash", 5) == 0) {			//
+		} else if (strncmp((char *)RXBuffer, "flash", 5) == 0) {
 			// decode flash command
-			if (sscanf(RXBuffer, "flash %lu %x", &expected_size,
-					&expectedChecksum) == 2) {			//
-				printf(
-						"File size %d, checksum %x. Wait for erasing flash! \r\n",
-						expected_size, expectedChecksum);
+			if (sscanf((char *)RXBuffer, "flash %" SCNu32 " %" SCNx32, &expected_size, &expected_checksum) == 2) {
+				printf("File size %" PRIu32 ", checksum %" PRIx32 ". Wait for erasing flash! \r\n",
+                        expected_size, expected_checksum);
 				//
-				HAL_StatusTypeDef status = Erase_FLASH(
-						(uint8_t*) app_base, expected_size);
-				//
+				HAL_StatusTypeDef status = Erase_FLASH((uint8_t*) app_base, expected_size);
 				if (status != HAL_OK) {
 					printf("Errors when erasing flash. Status:%d\r\n", status);
-					Send_Response("ERR");
+					send_response("ERR");
 				} else {
 					printf("Done! Begin to transfer bin file.\r\n");
-					currentState = FLASH_RECEIVE;
-					Send_Response("OK");
+					current_status = FLASH_RECEIVE;
+					send_response("OK");
 				}
 			} else {
 				printf("Invalid flash command");
 			}
 		} else {
-			Send_Response("Unknown command");
+			send_response("Unknown command");
 		}
-		LenInRXBuffer = 0;
-	} else if (currentState == FLASH_RECEIVE) {
-		HAL_StatusTypeDef status = Flash_If_Write(RXBuffer, (uint8_t *)(app_base + receivedBytes), LenInRXBuffer);
+		len_in_RX_buffer = 0;
+	} else if (current_status == FLASH_RECEIVE) {
+		HAL_StatusTypeDef status = Flash_If_Write(RXBuffer, (uint8_t *)(app_base + received_bytes), len_in_RX_buffer);
 		if (status != HAL_OK) {
-			printf("There is error when writing flash. Addr:%x Status:%d\r\n", app_base + receivedBytes, status);
+			printf("There is error when writing flash. Addr:%" PRIx32 " Status:%d\r\n", app_base + received_bytes, status);
 			// clean
-			Reset_Buf();
-			Send_Response("Failed");
+			reset_buf();
+			send_response("Failed");
 		} else {
 
-			receivedBytes += LenInRXBuffer;			//LenInFlashBuffer;
-			memset(RXBuffer, 0, LenInRXBuffer);			//
-			printf("Done. Write Addr:%x size:%d (written:%d of total:%d) \r\n", app_base, LenInRXBuffer, receivedBytes, expected_size);
-			LenInRXBuffer = 0;
+			received_bytes += len_in_RX_buffer;			//LenInFlashBuffer;
+			memset(RXBuffer, 0, len_in_RX_buffer);			//
+			printf("Done. Write Addr:%" PRIx32 " size:%" PRIu32 " (written:%" PRIu32 " of total:%" PRIu32 ") \r\n",
+                    app_base, len_in_RX_buffer, received_bytes, expected_size);
+			len_in_RX_buffer = 0;
 
-			Send_Response("OK");
+			send_response("OK");
 		}
 
 		// 检查是否传输完成
-		if (receivedBytes >= expected_size) {
+		if (received_bytes >= expected_size) {
 			printf("Flash complete, verifying checksum...\r\n");
 
 			uint32_t caledCRC = HAL_CRC_Calculate(&hcrc, (uint32_t *)app_base, expected_size);
-			if (expectedChecksum == ~caledCRC) {
+			if (expected_checksum == ~caledCRC) {
 				printf("Checksum OK. Rebooting...\r\n");
 				HAL_Delay(500);
 				HAL_NVIC_SystemReset();
 			} else {
-				printf("Checksum FAIL. Expected: %08X, Got: %08X\r\n",
-						expectedChecksum, ~caledCRC);
-				Send_Response("Checksum Failed");
+				printf("Checksum FAIL. Expected: %08" PRIX32 ", Got: %08" PRIX32 "\r\n",
+						expected_checksum, ~caledCRC);
+				send_response("Checksum Failed");
 			}
-			Reset_Buf();
+			reset_buf();
 		}
 	} else {
-		printf("What is currentState:%d\r\n", currentState);
+		printf("What is currentState:%d\r\n", current_status);
 	}
 	fflush(stdout);
 }
 
 //
-uint8_t Check_Boot0_Pressed(void) {
+uint8_t boot0_is_pressed(void) {
 	// check if boot0 pin (PG9) is pressed
 	if (HAL_GPIO_ReadPin(BOOT0_GPIO_Port, BOOT0_Pin) == GPIO_PIN_SET) {
 		printf("BOOT0 button is pressed!\r\n");
@@ -154,7 +153,7 @@ uint8_t Check_Boot0_Pressed(void) {
 	}
 }
 //
-void IAP_Init(void) {
+void server_init (void) {
 	// check Upload Mod situation
 	// 1 MAGIC_BKP_REG is MAGIC_BOOTLOADER_FLAG
 	// 2 IAP_APP_ADDRESS is empty
@@ -163,7 +162,7 @@ void IAP_Init(void) {
 	app_msp   = *(__IO uint32_t *)IAP_APP_ADDRESS;
 	app_reset = *(__IO uint32_t *)(IAP_APP_ADDRESS + 4);
 
-	uint8_t isBoot0Pressed = Check_Boot0_Pressed();
+	uint8_t isBoot0Pressed = boot0_is_pressed();
 	uint32_t boot_flag = HAL_RTCEx_BKUPRead(&hrtc, MAGIC_BKP_REG);
 
 	// 判断启动模式
@@ -214,50 +213,57 @@ void IAP_Init(void) {
 		__enable_irq();         //
 		((void (*)(void)) app_reset)();
 	}
+}
+//
+void IAP_init(void) {
+	server_init();
 
+	tcp_server_start();
+	openplc_udp_server_start();
+	//  udp_server_start(IAP_ETH_Trigger);
+	//  udp_server_stop();
 }
 
-void IAP_Task(void) {
-	if (DataReadyFlag > 0) {
-		DataReadyFlag = 0;
-		Process_Command();
+void IAP_task(void) {
+	if (data_is_ready > 0) {
+		data_is_ready = 0;
+		process_command();
 	}
 }
 
-void IAP_Data_Recv(IAP_Method iapM, uint8_t *Buf, uint32_t Len) {
+void IAP_data_recv(IAP_Method iapM, uint8_t *Buf, uint32_t Len) {
 	current_method = iapM;
 	// 安全写入缓冲区
 	int dataLen = IAP_RX_BUFFER_SIZE >= Len ? Len : IAP_RX_BUFFER_SIZE;
-	if (currentState == IDLE) {
+	if (current_status == IDLE) {
 		memcpy(RXBuffer, Buf, dataLen);
-		LenInRXBuffer = dataLen;
-		DataReadyFlag = 1;
+		len_in_RX_buffer = dataLen;
+		data_is_ready = 1;
 		printf("IDLE ready \r\n");
 	} else {
 
 		//printf("--LenInRXBuffer %d : Len %d \r\n", LenInRXBuffer, Len);
 
-		memcpy(RXBuffer + LenInRXBuffer, Buf, Len);
-		LenInRXBuffer += Len;
+		memcpy(RXBuffer + len_in_RX_buffer, Buf, Len);
+		len_in_RX_buffer += Len;
 
 //		printf("--LenInRXBuffer %d : receivedBytes %d of %d \r\n",
 //				LenInRXBuffer, receivedBytes, expected_size);
 
 		// all data received or receive length reach the buffer size
-		if (LenInRXBuffer >= IAP_RX_BUFFER_SIZE
-				|| receivedBytes + LenInRXBuffer >= expected_size) {
+		if (len_in_RX_buffer >= IAP_RX_BUFFER_SIZE
+				|| received_bytes + len_in_RX_buffer >= expected_size) {
 			// buffer is full
-			DataReadyFlag = 1;
-			printf(
-					"Data is ready to FLash LenInRXBuffer %d : receivedBytes %d of %d \r\n",
-					LenInRXBuffer, receivedBytes, expected_size);
+			data_is_ready = 1;
+			printf("Data is ready to FLash LenInRXBuffer %"PRIu32 " : received %"PRIu32 " of %"PRIu32 " \r\n",
+					len_in_RX_buffer, received_bytes, expected_size);
 		}
 	}
 
 	fflush(stdout);
 }
 
-void IAP_CDC_Trigger(uint32_t bitrate) {
+void IAP_CDC_reboot_trigger(uint32_t bitrate) {
 	uint32_t regV = HAL_RTCEx_BKUPRead(&hrtc, MAGIC_BKP_REG);
 	if (bitrate == MAGIC_CDC_RATE && regV != MAGIC_CDC_FLAG) {
 		HAL_RTCEx_BKUPWrite(&hrtc, MAGIC_BKP_REG, MAGIC_CDC_FLAG);
@@ -265,7 +271,7 @@ void IAP_CDC_Trigger(uint32_t bitrate) {
 	}
 }
 
-void IAP_ETH_Trigger() {
+void IAP_ETH_reboot_trigger() {
 	uint32_t regV = HAL_RTCEx_BKUPRead(&hrtc, MAGIC_BKP_REG);
 	if (regV != MAGIC_ETH_FLAG) {
 		HAL_RTCEx_BKUPWrite(&hrtc, MAGIC_BKP_REG, MAGIC_ETH_FLAG);

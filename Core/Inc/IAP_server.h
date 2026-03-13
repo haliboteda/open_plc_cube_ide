@@ -21,17 +21,17 @@ typedef void (*pFunction)(void);
 //extern SemaphoreHandle_t xDataMutex;
 //extern TaskHandle_t xCommandTaskHandle;
 
-void Reset_Buf(void);
-void Process_Command();
+void reset_buf(void);
+void process_command();
 //uint8_t Check_Boot0_Pressed(void);
 
-void IAP_Init(void);
-void IAP_Task(void);
+void IAP_init(void);
+void IAP_task(void);
 
-void IAP_Data_Recv(IAP_Method iapM, uint8_t *Buf, uint32_t Len);
+void IAP_data_recv(IAP_Method iapM, uint8_t *Buf, uint32_t Len);
 
-void IAP_CDC_Trigger(uint32_t bitrate);
-void IAP_ETH_Trigger();
+void IAP_CDC_reboot_trigger(uint32_t bitrate);
+void IAP_ETH_reboot_trigger();
 ///////////
 
 

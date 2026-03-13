@@ -25,7 +25,7 @@ static void tcp_server_close(struct tcp_pcb *pcb) {
 		tcp_close(pcb);
 	}
 	client_pcb = NULL;
-	Reset_Buf();
+	reset_buf();
 	TCP_PRINT("Client disconnected.");
 }
 
@@ -37,8 +37,8 @@ static err_t _recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err) {
 
 	struct pbuf *q = p;
 	while (q != NULL) {
-		TCP_PRINT("_recv: %d of total: %d\r\n", q->len, q->tot_len);
-		IAP_Data_Recv(IAP_ETHERNET, q->payload, q->len);
+//		TCP_PRINT("_recv: %d of total: %d\r\n", q->len, q->tot_len);
+		IAP_data_recv(IAP_ETHERNET, q->payload, q->len);
 		q = q->next;
 	}
 
@@ -52,7 +52,7 @@ static void _err(void *arg, err_t err) {
 	(void)arg;
 	TCP_PRINT("TCP connection error: %d\r\n", err);
 	client_pcb = NULL;
-	Reset_Buf();  // 清空 buffer
+	reset_buf();  // 清空 buffer
 }
 
 static err_t _accept(void *arg, struct tcp_pcb *pcb, err_t err) {

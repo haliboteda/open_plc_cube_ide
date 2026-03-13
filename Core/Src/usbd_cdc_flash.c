@@ -188,10 +188,10 @@ uint16_t Erase_FLASH(uint8_t *flashAddress, uint32_t Len)
   HAL_StatusTypeDef status = Flash_If_Erase((uint32_t)flashAddress, NbSectors);
   if (status != HAL_OK)
   {
-    printf("There is error when erasing flash. Addr:%x Sectors:%d Status:%d\r\n", flashAddress, NbSectors, status);
+    //printf("There is error when erasing flash. Addr:%x Sectors:%d Status:%d\r\n", flashAddress, NbSectors, status);
     return HAL_ERROR;
   }
-  printf("Erasing flash Done. Addr:%x Sectors:%d\r\n", flashAddress, NbSectors);
+  //printf("Erasing flash Done. Addr:%x Sectors:%d\r\n", flashAddress, NbSectors);
   return HAL_OK;
 }
 
@@ -208,7 +208,7 @@ uint16_t Write_FLASH(uint8_t *dataAddress, uint8_t *flashAddress, uint32_t Len)
   HAL_StatusTypeDef status = Flash_If_Write(dataAddress, flashAddress, Len);
   if (status != HAL_OK)
   {
-    printf("There is error when writing flash. Addr:%x Data:%x Status:%d", flashAddress, dataAddress, status);
+//    printf("There is error when writing flash. Addr:%x Data:%x Status:%d", flashAddress, dataAddress, status);
     return HAL_ERROR;
   }
   return HAL_OK;

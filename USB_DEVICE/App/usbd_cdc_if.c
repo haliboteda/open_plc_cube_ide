@@ -182,8 +182,7 @@ static int8_t CDC_DeInit_FS(void)
 static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 {
   /* USER CODE BEGIN 5 */
-	USBD_CDC_LineCodingTypeDef *pline_coding =
-			(USBD_CDC_LineCodingTypeDef*) pbuf;
+	//USBD_CDC_LineCodingTypeDef *pline_coding = (USBD_CDC_LineCodingTypeDef*) pbuf;
 	switch (cmd) {
 	case CDC_SEND_ENCAPSULATED_COMMAND:
 
@@ -223,7 +222,7 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 		/* 6      | bDataBits  |   1   | Number Data bits (5, 6, 7, 8 or 16).          */
 		/*******************************************************************************/
 	case CDC_SET_LINE_CODING:
-		IAP_CDC_Trigger(pline_coding->bitrate);
+//		IAP_CDC_Trigger(pline_coding->bitrate);
 		break;
 
 	case CDC_GET_LINE_CODING:
@@ -264,7 +263,7 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 6 */
-	IAP_Data_Recv(IAP_CDC, Buf, *Len);
+	IAP_data_recv(IAP_CDC, Buf, *Len);
 	//
 	USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
 	USBD_CDC_ReceivePacket(&hUsbDeviceFS);

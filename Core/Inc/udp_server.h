@@ -15,8 +15,8 @@ extern "C" {
 #define UDP_SERVER_PORT 12345
 #define UDP_PRINT(fmt, ...) printf("[UDP] " fmt "\n", ##__VA_ARGS__)
 
-void udp_server_start(void (*reboot_func)(void));
-void udp_server_stop(void);
+void openplc_udp_server_start();
+void openplc_udp_server_stop(void);
 
 #ifdef __cplusplus
 }

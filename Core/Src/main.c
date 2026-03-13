@@ -29,7 +29,6 @@
 /* USER CODE BEGIN Includes */
 #include "relay.h"
 #include "IAP_server.h"
-#include "tcp_server.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -145,11 +144,7 @@ int main(void)
     Relay_Off(relay);
   }
 
-  IAP_Init();
-
-  tcp_server_start();
-//  udp_server_start(IAP_ETH_Trigger);
-//  udp_server_stop();
+  IAP_init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -158,8 +153,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
-    IAP_Task();
+    IAP_task();
     MX_LWIP_Process();
     HAL_Delay(10);
   }
