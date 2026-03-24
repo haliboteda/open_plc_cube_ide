@@ -35,15 +35,15 @@ static void openplc_udp_reply(struct udp_pcb *pcb, const ip_addr_t *addr, u16_t 
   pbuf_free(reply_pbuf);
 }
 
-static void openplc_set_eth_flag_and_reset(void)
-{
-  uint32_t regV = HAL_RTCEx_BKUPRead(&hrtc, MAGIC_BKP_REG);
-  if (regV != MAGIC_ETH_FLAG) {
-    HAL_RTCEx_BKUPWrite(&hrtc, MAGIC_BKP_REG, MAGIC_ETH_FLAG);
-  }
-  HAL_Delay(20);
-  HAL_NVIC_SystemReset();
-}
+//static void openplc_set_eth_flag_and_reset(void)
+//{
+//  uint32_t regV = HAL_RTCEx_BKUPRead(&hrtc, MAGIC_BKP_REG);
+//  if (regV != MAGIC_ETH_FLAG) {
+//    HAL_RTCEx_BKUPWrite(&hrtc, MAGIC_BKP_REG, MAGIC_ETH_FLAG);
+//  }
+//  HAL_Delay(20);
+//  HAL_NVIC_SystemReset();
+//}
 
 static void udp_server_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p,
                             const ip_addr_t *addr, u16_t port)
@@ -64,13 +64,13 @@ static void udp_server_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p,
 
   if ((strcmp(recv_buf, "DISCOVER") == 0) ||
       (strcmp(recv_buf, "openplc_discover") == 0) ||
-      (strcmp(recv_buf, "openplc_server_where_r_y") == 0)) {
+      (strcmp(recv_buf, "openplc_server_where_r_y") == 0) ||
+      (strcmp(recv_buf, "ping") == 0)) {
     char uid_hex[25] = {0};
     char reply_msg[96] = {0};
-    const char *ip_str = ip4addr_ntoa(netif_ip4_addr(&gnetif));
     openplc_uid_hex(uid_hex);
-    (void)snprintf(reply_msg, sizeof(reply_msg), "%s,%s,%s",
-                   OPENPLC_DEVICE_NAME, uid_hex, ip_str);
+    (void)snprintf(reply_msg, sizeof(reply_msg), "%s_%s_%s_%s",
+                   OPENPLC_DEVICE_NAME, uid_hex, UDP_SERVER_NAME, OPENPLC_CUSAPP_VERSION);
     openplc_udp_reply(pcb, addr, port, reply_msg);
 //  } else if (strcmp(recv_buf, "openplc_server_reboot") == 0) {
 //    if (udp_reboot_callback != NULL) {
@@ -78,11 +78,6 @@ static void udp_server_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p,
 //    } else {
 //      openplc_set_eth_flag_and_reset();
 //    }
-  } else if (strcmp(recv_buf, "ping") == 0) {
-    char reply_msg[96] = {0};
-    (void)snprintf(reply_msg, sizeof(reply_msg), "%s_%s_%s",
-                   OPENPLC_DEVICE_NAME, UDP_SERVER_NAME, OPENPLC_CUSAPP_VERSION);
-    openplc_udp_reply(pcb, addr, port, reply_msg);
   }
 }
 
@@ -100,7 +95,7 @@ void openplc_udp_server_start()
     return;
   }
 
-  if (udp_bind(udp_server_pcb, IP_ADDR_ANY, OPENPLC_UDP_PORT) != ERR_OK) {
+  if (udp_bind(udp_server_pcb, IP_ADDR_ANY, OPENPLC_SERVER_PORT) != ERR_OK) {
     udp_remove(udp_server_pcb);
     udp_server_pcb = NULL;
     return;

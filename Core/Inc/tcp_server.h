@@ -7,7 +7,7 @@ extern "C" {
 
 #include "main.h"
 
-#define TCP_SERVER_PORT 8247
+
 #define TCP_PRINT(fmt, ...) printf("[TCP] " fmt "\n", ##__VA_ARGS__)
 
 void tcp_server_start(void);

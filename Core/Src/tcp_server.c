@@ -69,7 +69,7 @@ void tcp_server_start(void) {
 		return;
 	}
 
-	if (tcp_bind(server_pcb, IP_ADDR_ANY, TCP_SERVER_PORT) != ERR_OK) {
+	if (tcp_bind(server_pcb, IP_ADDR_ANY, OPENPLC_SERVER_PORT) != ERR_OK) {
 		TCP_PRINT("Bind failed");
 		tcp_abort(server_pcb);
 		return;
@@ -77,7 +77,7 @@ void tcp_server_start(void) {
 
 	server_pcb = tcp_listen(server_pcb);
 	tcp_accept(server_pcb, _accept);
-	TCP_PRINT("Server listening on port %d IP %s", TCP_SERVER_PORT, ip4addr_ntoa(netif_ip4_addr(&gnetif)));
+	TCP_PRINT("Server listening on port %d IP %s", OPENPLC_SERVER_PORT, ip4addr_ntoa(netif_ip4_addr(&gnetif)));
 }
 
 
