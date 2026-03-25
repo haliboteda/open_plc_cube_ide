@@ -168,7 +168,6 @@ void server_init (void) {
 	// 判断启动模式
 	if (boot_flag == MAGIC_CDC_FLAG) {
 		current_method = IAP_CDC;
-
 	} else if (boot_flag == MAGIC_ETH_FLAG) {
 		current_method = IAP_ETHERNET;
 	} else if ((app_msp & 0x2FFE0000) != 0x24080000
