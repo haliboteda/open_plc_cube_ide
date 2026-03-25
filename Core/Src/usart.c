@@ -29,9 +29,6 @@ uint8_t rxFifoBuffer[BUFFER_SIZE];
 volatile uint16_t rxFifoHead = 0;
 volatile uint16_t rxFifoTail = 0;
 
-static void addToFifo(uint8_t byte);
-static void UART_RxCpltCallback(UART_HandleTypeDef *huart);
-
 /* USER CODE END 0 */
 
 UART_HandleTypeDef huart4;

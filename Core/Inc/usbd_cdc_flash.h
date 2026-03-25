@@ -13,16 +13,7 @@
 #include "usbd_cdc.h"
 
 /* Exported types ------------------------------------------------------------*/
-#define MAGIC_CDC_RATE 1200
-#define MAGIC_BOOTLOADER_FLAG 0xAF
-#define MAGIC_APP_FLAG 0xAA
-#define MAGIC_BKP_REG RTC_BKP_DR0
-#define BOOT_LOADER_VERSION "Boot Loader 0.1.2\r\n"
-#define CDC_RX_BUFFER_SIZE 32 * 1024
-typedef enum {
-  	IDLE, FLASH_RECEIVE
- } CDC_State;
- extern CDC_State currentState;
+
 /* Exported constants --------------------------------------------------------*/
 
 /* Base address of the Flash sectors Bank 1 */
@@ -56,15 +47,15 @@ typedef enum {
 #endif
 
 #ifdef USE_BOOTLOADER
-#define ADDRESS_VECTOR ((uint32_t)0x20000)
-#define RESERVED_SECTORS 1
+#define ADDRESS_VECTOR ((uint32_t)0x40000)
+#define RESERVED_SECTORS 2
 #else
 #define ADDRESS_VECTOR 0UL
 #define RESERVED_SECTORS 0UL
 #endif
 
-#ifndef CDC_APP_ADDRESS
-#define CDC_APP_ADDRESS (FLASH_BASE_ADDR | ADDRESS_VECTOR)
+#ifndef IAP_APP_ADDRESS
+#define IAP_APP_ADDRESS (FLASH_BASE_ADDR | ADDRESS_VECTOR)
 #endif
 
 #endif /* INC_USBD_CDC_FLASH_H_ */

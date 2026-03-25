@@ -22,6 +22,7 @@
 #include "stm32h7xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -46,6 +47,7 @@
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN PFP */
+void IT_Manage_Handler(char *g_fault_type);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -55,6 +57,8 @@
 
 /* External variables --------------------------------------------------------*/
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
+extern TIM_HandleTypeDef htim6;
+
 /* USER CODE BEGIN EV */
 
 /* USER CODE END EV */
@@ -71,9 +75,8 @@ void NMI_Handler(void)
 
   /* USER CODE END NonMaskableInt_IRQn 0 */
   /* USER CODE BEGIN NonMaskableInt_IRQn 1 */
-  while (1)
-  {
-  }
+	while (1) {
+	}
   /* USER CODE END NonMaskableInt_IRQn 1 */
 }
 
@@ -83,7 +86,7 @@ void NMI_Handler(void)
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
-
+	IT_Manage_Handler("HardFault");
   /* USER CODE END HardFault_IRQn 0 */
   while (1)
   {
@@ -99,7 +102,7 @@ void HardFault_Handler(void)
 void MemManage_Handler(void)
 {
   /* USER CODE BEGIN MemoryManagement_IRQn 0 */
-
+	IT_Manage_Handler("MemManage");
   /* USER CODE END MemoryManagement_IRQn 0 */
   while (1)
   {
@@ -185,7 +188,7 @@ void SysTick_Handler(void)
   /* USER CODE BEGIN SysTick_IRQn 0 */
 
   /* USER CODE END SysTick_IRQn 0 */
-  HAL_IncTick();
+
   /* USER CODE BEGIN SysTick_IRQn 1 */
 
   /* USER CODE END SysTick_IRQn 1 */
@@ -197,6 +200,20 @@ void SysTick_Handler(void)
 /* For the available peripheral interrupt handler names,                      */
 /* please refer to the startup file (startup_stm32h7xx.s).                    */
 /******************************************************************************/
+
+/**
+  * @brief This function handles TIM6 global interrupt, DAC1_CH1 and DAC1_CH2 underrun error interrupts.
+  */
+void TIM6_DAC_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM6_DAC_IRQn 0 */
+
+  /* USER CODE END TIM6_DAC_IRQn 0 */
+  HAL_TIM_IRQHandler(&htim6);
+  /* USER CODE BEGIN TIM6_DAC_IRQn 1 */
+
+  /* USER CODE END TIM6_DAC_IRQn 1 */
+}
 
 /**
   * @brief This function handles USB On The Go FS global interrupt.
@@ -213,4 +230,33 @@ void OTG_FS_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+void IT_Manage_Handler(char *g_fault_type)
+{
+    uint32_t *fault_stack = (uint32_t *)__get_MSP();  // 或 PSP, 取决于运行上下文
+
+    uint32_t r0 = fault_stack[0];
+    uint32_t r1 = fault_stack[1];
+    uint32_t r2 = fault_stack[2];
+    uint32_t r3 = fault_stack[3];
+    uint32_t r12 = fault_stack[4];
+    uint32_t lr = fault_stack[5];
+    uint32_t pc = fault_stack[6];
+    uint32_t psr = fault_stack[7];
+
+    printf("\n--- %s Fault ---\n", g_fault_type);
+    printf("R0  = 0x%08lX\n", r0);
+    printf("R1  = 0x%08lX\n", r1);
+    printf("R2  = 0x%08lX\n", r2);
+    printf("R3  = 0x%08lX\n", r3);
+    printf("R12 = 0x%08lX\n", r12);
+    printf("LR  = 0x%08lX\n", lr);
+    printf("PC  = 0x%08lX\n", pc);
+    printf("xPSR= 0x%08lX\n", psr);
+
+    // 内存管理错误状态寄存器
+    printf("CFSR = 0x%08lX\n", SCB->CFSR);
+    printf("MMFAR = 0x%08lX\n", SCB->MMFAR); // 有效地址
+
+    while (1);
+}
 /* USER CODE END 1 */
