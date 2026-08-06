@@ -1,5 +1,6 @@
 #include <string.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 #include "lwip/pbuf.h"
 #include "lwip/udp.h"
@@ -8,11 +9,64 @@
 #include "lwip/netif.h"
 #include "rtc.h"
 #include "IAP_config.h"
+#include "bootloader_state.h"
 
 extern struct netif gnetif;
 
 //static void (*udp_reboot_callback)(void) = NULL;
 static struct udp_pcb *udp_server_pcb = NULL;
+
+/* Discovery replies need no authentication (see SECURITY.md, Step 2) -- the
+ * UID they carry is the very lookup key a per-device secret would be
+ * indexed by, so gating a reply on one would be circular. What they do need
+ * is a cap on how often a given source gets a reply, so a spoofed-source
+ * flood of "openplc_server_where_r_y" can't turn this device into a
+ * reflection/amplification tool against some third IP on the LAN. This is a
+ * small fixed-size LRU of recently-seen sources, not a security boundary --
+ * it only bounds abuse, it doesn't require the sender to prove anything. */
+#define DISCOVERY_MIN_REPLY_INTERVAL_MS 2000U
+#define DISCOVERY_RATE_SLOTS 8U
+
+typedef struct {
+  ip_addr_t addr;
+  uint32_t  last_reply_tick;
+  bool      used;
+} discovery_rate_slot_t;
+
+static discovery_rate_slot_t s_discovery_rate_slots[DISCOVERY_RATE_SLOTS];
+
+static bool discovery_reply_allowed(const ip_addr_t *addr)
+{
+  uint32_t now = HAL_GetTick();
+  uint32_t i;
+  uint32_t victim;
+
+  for (i = 0; i < DISCOVERY_RATE_SLOTS; i++) {
+    if (s_discovery_rate_slots[i].used && ip_addr_cmp(&s_discovery_rate_slots[i].addr, addr)) {
+      if ((now - s_discovery_rate_slots[i].last_reply_tick) < DISCOVERY_MIN_REPLY_INTERVAL_MS) {
+        return false; /* replied to this source too recently */
+      }
+      s_discovery_rate_slots[i].last_reply_tick = now;
+      return true;
+    }
+  }
+
+  /* Not tracked yet: claim a free slot, or evict the least-recently-used one. */
+  victim = 0;
+  for (i = 0; i < DISCOVERY_RATE_SLOTS; i++) {
+    if (!s_discovery_rate_slots[i].used) {
+      victim = i;
+      break;
+    }
+    if (s_discovery_rate_slots[i].last_reply_tick < s_discovery_rate_slots[victim].last_reply_tick) {
+      victim = i;
+    }
+  }
+  s_discovery_rate_slots[victim].addr = *addr;
+  s_discovery_rate_slots[victim].used = true;
+  s_discovery_rate_slots[victim].last_reply_tick = now;
+  return true;
+}
 
 static void openplc_uid_hex(char out[25])
 {
@@ -68,9 +122,15 @@ static void udp_server_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p,
       (strcmp(recv_buf, "ping") == 0)) {
     char uid_hex[25] = {0};
     char reply_msg[96] = {0};
+    if (!discovery_reply_allowed(addr)) {
+      return;
+    }
+    // Note: the reply is joined/split on "_" (see PC tool's parseBoardInfoFromReply),
+    // so this suffix must not itself contain an underscore.
+    const char *role = bootloader_state_app_is_valid() ? UDP_SERVER_NAME : UDP_SERVER_NAME "-INVALID";
     openplc_uid_hex(uid_hex);
     (void)snprintf(reply_msg, sizeof(reply_msg), "%s_%s_%s_%s",
-                   OPENPLC_DEVICE_NAME, uid_hex, UDP_SERVER_NAME, OPENPLC_CUSAPP_VERSION);
+                   OPENPLC_DEVICE_NAME, uid_hex, role, OPENPLC_CUSAPP_VERSION);
     openplc_udp_reply(pcb, addr, port, reply_msg);
 //  } else if (strcmp(recv_buf, "openplc_server_reboot") == 0) {
 //    if (udp_reboot_callback != NULL) {

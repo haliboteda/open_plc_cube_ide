@@ -12,6 +12,7 @@ extern "C" {
 
 void tcp_server_start(void);
 void tcp_server_send(uint8_t *data, uint16_t len);
+uint32_t tcp_server_get_client_ip(void);
 
 #ifdef __cplusplus
 }

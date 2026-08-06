@@ -29,6 +29,11 @@
 /* USER CODE BEGIN Includes */
 #include "relay.h"
 #include "IAP_server.h"
+#include "pwm_test.h"
+#include "rs232_test.h"
+#include "adc_test.h"
+#include "sdram_test.h"
+#include "sd_test.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -144,7 +149,18 @@ int main(void)
     Relay_Off(relay);
   }
 
-  IAP_init();
+  // Only one of these runs forever and hijacks the boot - uncomment the one
+  // you're currently bringing up, leave the rest commented out.
+  // PWM_Test_Run();        // Digital Out 6 breathing LED
+  //ADC_Test_Run();        // on-board temp sensors (PA0/PA3)
+  //RS232_Test_Run();         // RS232 RX echo
+  //SDRAM_Test_Capacity();            // external SDRAM: how big is it really?
+  //SDRAM_Test_Retention();          // external SDRAM: random addr, wait 5s, read back
+  //SDRAM_Test_CubeProgrammerVerify(); // external SDRAM: write via CubeProgrammer, verify CRC32 here
+  //SD_Test_Info();                   // microSD: is a card detected, how big is it?
+  SD_Test_FileIntegrity();          // microSD: FatFs write+read-back+CRC32 on the inserted card
+
+//  IAP_init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -153,9 +169,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    IAP_task();
-    MX_LWIP_Process();
-    HAL_Delay(10);
+//    IAP_task();
+//    MX_LWIP_Process();
+//    HAL_Delay(10);
   }
   /* USER CODE END 3 */
 }

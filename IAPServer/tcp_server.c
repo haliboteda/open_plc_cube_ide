@@ -81,6 +81,13 @@ void tcp_server_start(void) {
 }
 
 
+uint32_t tcp_server_get_client_ip(void) {
+	if (client_pcb == NULL) {
+		return 0U;
+	}
+	return ip4_addr_get_u32(ip_2_ip4(&client_pcb->remote_ip));
+}
+
 void tcp_server_send(uint8_t* data, uint16_t len) {
 	err_t err;
 	if (client_pcb && data && len) {

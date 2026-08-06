@@ -47,8 +47,8 @@
 #endif
 
 #ifdef USE_BOOTLOADER
-#define ADDRESS_VECTOR ((uint32_t)0x40000)
-#define RESERVED_SECTORS 2
+#define ADDRESS_VECTOR ((uint32_t)0x20000)
+#define RESERVED_SECTORS 1
 #else
 #define ADDRESS_VECTOR 0UL
 #define RESERVED_SECTORS 0UL
@@ -57,5 +57,13 @@
 #ifndef IAP_APP_ADDRESS
 #define IAP_APP_ADDRESS (FLASH_BASE_ADDR | ADDRESS_VECTOR)
 #endif
+
+/* Last Flash sector (Bank2 Sector7) is reserved for bootloader-owned state:
+ * firmware metadata (size/hash/signature) and the tamper-evident event log.
+ * It must never be touched by app erase/write and is excluded from the
+ * app's maximum usable size. */
+#define RESERVED_TAIL_SECTORS 1
+#define IAP_STATE_SECTOR_ADDR ADDR_FLASH_SECTOR_7_BANK2
+#define IAP_APP_MAX_SIZE (IAP_STATE_SECTOR_ADDR - IAP_APP_ADDRESS)
 
 #endif /* INC_USBD_CDC_FLASH_H_ */
