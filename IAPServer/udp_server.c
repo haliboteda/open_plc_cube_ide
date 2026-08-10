@@ -7,9 +7,9 @@
 #include "lwip/ip_addr.h"
 #include "lwip/ip4_addr.h"
 #include "lwip/netif.h"
-#include "rtc.h"
 #include "IAP_config.h"
 #include "bootloader_state.h"
+#include "iap_keyderive.h"
 
 extern struct netif gnetif;
 
@@ -68,15 +68,6 @@ static bool discovery_reply_allowed(const ip_addr_t *addr)
   return true;
 }
 
-static void openplc_uid_hex(char out[25])
-{
-  uint32_t u0 = HAL_GetUIDw0();
-  uint32_t u1 = HAL_GetUIDw1();
-  uint32_t u2 = HAL_GetUIDw2();
-  (void)snprintf(out, 25, "%08lX%08lX%08lX",
-                 (unsigned long)u2, (unsigned long)u1, (unsigned long)u0);
-}
-
 static void openplc_udp_reply(struct udp_pcb *pcb, const ip_addr_t *addr, u16_t port, const char *msg)
 {
   size_t len = strlen(msg);
@@ -88,16 +79,6 @@ static void openplc_udp_reply(struct udp_pcb *pcb, const ip_addr_t *addr, u16_t 
   udp_sendto(pcb, reply_pbuf, addr, port);
   pbuf_free(reply_pbuf);
 }
-
-//static void openplc_set_eth_flag_and_reset(void)
-//{
-//  uint32_t regV = HAL_RTCEx_BKUPRead(&hrtc, MAGIC_BKP_REG);
-//  if (regV != MAGIC_ETH_FLAG) {
-//    HAL_RTCEx_BKUPWrite(&hrtc, MAGIC_BKP_REG, MAGIC_ETH_FLAG);
-//  }
-//  HAL_Delay(20);
-//  HAL_NVIC_SystemReset();
-//}
 
 static void udp_server_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p,
                             const ip_addr_t *addr, u16_t port)
@@ -120,7 +101,7 @@ static void udp_server_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p,
       (strcmp(recv_buf, "openplc_discover") == 0) ||
       (strcmp(recv_buf, "openplc_server_where_r_y") == 0) ||
       (strcmp(recv_buf, "ping") == 0)) {
-    char uid_hex[25] = {0};
+    char uid_hex[IAP_MACHINE_ID_HEX_LEN + 1U] = {0};
     char reply_msg[96] = {0};
     if (!discovery_reply_allowed(addr)) {
       return;
@@ -128,7 +109,7 @@ static void udp_server_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p,
     // Note: the reply is joined/split on "_" (see PC tool's parseBoardInfoFromReply),
     // so this suffix must not itself contain an underscore.
     const char *role = bootloader_state_app_is_valid() ? UDP_SERVER_NAME : UDP_SERVER_NAME "-INVALID";
-    openplc_uid_hex(uid_hex);
+    iap_keyderive_get_machine_id_hex(uid_hex);
     (void)snprintf(reply_msg, sizeof(reply_msg), "%s_%s_%s_%s",
                    OPENPLC_DEVICE_NAME, uid_hex, role, OPENPLC_CUSAPP_VERSION);
     openplc_udp_reply(pcb, addr, port, reply_msg);

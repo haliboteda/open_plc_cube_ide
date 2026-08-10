@@ -125,11 +125,18 @@ key was never on the device.
   key — anyone with this repo can sign an image the placeholder public key
   accepts. Run `generate_keys.sh`, paste the new public key into
   `fw_pubkey.c`, keep the private key off any repo/network.
-- **HMAC session key**: currently one fixed value hardcoded identically in
-  three places (this repo's `iap_auth.c`, Arduino core's `iap_auth.c`, PC
-  tool's `auth.go`). Should be one independent key per device, provisioned
-  at manufacturing time and looked up by UID — that provisioning process
-  doesn't exist yet and isn't something this code alone can provide.
+- **HMAC session key**: derived per-device now (`iap_keyderive.c`, mirrored
+  in Arduino core and in the PC tool's `iapcrypto` package) as
+  `HMAC-SHA256(fixed_password, device_UID)`, replacing the single global
+  key every device used to share. This stops naive cross-device replay/
+  confusion, but it is **not** equivalent to real manufacturing
+  provisioning: the fixed password is still one value hardcoded identically
+  in all three places, and the UID it's mixed with is public (sent in the
+  clear by discovery/ping/`getuid`). Anyone who extracts that password from
+  a firmware image or the PC tool binary can compute any device's key from
+  its UID alone. The real fix is still an independent secret per device,
+  generated at manufacturing time and looked up by UID rather than derived
+  from a value that ships in every image.
 
 ## TODO
 
@@ -144,8 +151,12 @@ key was never on the device.
       IDE flow. If RDP is also considered: check the STM32H7 reference
       manual first — lowering RDP triggers a full chip mass-erase by design,
       wiping bootloader and app and requiring full re-provisioning.
-- [ ] **Per-device HMAC provisioning + real release ECDSA key** — the actual
-      manufacturing-line process.
+- [ ] **Real manufacturing-line HMAC provisioning + real release ECDSA
+      key** — fixed-password+UID key derivation (`iap_keyderive.c`) closes
+      the "everyone shares one literal key" gap, but the fixed password
+      itself is still a placeholder baked into every image; an independent,
+      unguessable secret per device generated at manufacturing time is the
+      actual remaining item.
 - [ ] **PC-tool downgrade prompt.** The bootloader-side foundation is done
       (Step 4: `flash` carries a real version, `getversion` reports what's
       installed, downgrades are never blocked device-side). What's still

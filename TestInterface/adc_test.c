@@ -17,6 +17,7 @@
 // stm32h7xx_hal_adc.c in this same folder for why) - must come before
 // main.h pulls in stm32h7xx_hal.h, which is what conditionally declares
 // ADC_HandleTypeDef/HAL_ADC_* based on this macro.
+#include "testinterface_hal_guard.h"   /* fires if this peripheral becomes real -- read it */
 #define HAL_ADC_MODULE_ENABLED
 
 #include "adc_test.h"

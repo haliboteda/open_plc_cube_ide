@@ -4,12 +4,9 @@
 // picture (hardware, why the vendor files are copied in here, and what
 // each of the three entry points proves).
 
-// See stm32h7xx_hal_sdram.c/stm32h7xx_ll_fmc.c in this same folder for why
-// this is defined locally instead of touching Core/Inc/stm32h7xx_hal_conf.h.
-#define HAL_SDRAM_MODULE_ENABLED
-
 #include "sdram_test.h"
 #include "main.h"
+#include "fmc.h"      /* hsdram1 -- the FMC/SDRAM is a real peripheral now */
 #include <stdio.h>
 
 #define SDRAM_BASE_ADDR   0xC0000000UL
@@ -28,168 +25,35 @@
                                             actually was, so a mismatched length here
                                             is the most common false "integrity failure" */
 
-static SDRAM_HandleTypeDef hsdram1;
-
-/* ---- FMC/SDRAM bring-up (GPIO+clock, controller init, command sequence) --
-   Pin map, HAL_SDRAM_Init() parameters and command sequence copied from the
-   sibling firmware's fmc.c (see sdram_test.h header) - proven working on
-   this exact board/chip, not reverse-engineered here. ------------------- */
-
-static void SDRAM_Test_GPIO_ClockInit(void)
-{
-    RCC_PeriphCLKInitTypeDef periphClk = {0};
-    periphClk.PeriphClockSelection = RCC_PERIPHCLK_FMC;
-    periphClk.FmcClockSelection = RCC_FMCCLKSOURCE_D1HCLK;
-    HAL_RCCEx_PeriphCLKConfig(&periphClk);
-
-    __HAL_RCC_FMC_CLK_ENABLE();
-    __HAL_RCC_GPIOC_CLK_ENABLE();
-    __HAL_RCC_GPIOD_CLK_ENABLE();
-    __HAL_RCC_GPIOE_CLK_ENABLE();
-    __HAL_RCC_GPIOF_CLK_ENABLE();
-    __HAL_RCC_GPIOG_CLK_ENABLE();
-    __HAL_RCC_GPIOH_CLK_ENABLE();
-
-    GPIO_InitTypeDef gpio = {0};
-    gpio.Mode = GPIO_MODE_AF_PP;
-    gpio.Pull = GPIO_NOPULL;
-    gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    gpio.Alternate = GPIO_AF12_FMC;
-
-    /* PE0/1=NBL0/1, PE7..15=D4/D5/D6/D8/D9/D10/D11/D12 (see fmc.c comment
-       block for the exact FMC_* signal per pin) */
-    gpio.Pin = GPIO_PIN_1 | GPIO_PIN_0 | GPIO_PIN_13 | GPIO_PIN_8 | GPIO_PIN_9
-             | GPIO_PIN_11 | GPIO_PIN_14 | GPIO_PIN_7 | GPIO_PIN_10 | GPIO_PIN_12 | GPIO_PIN_15;
-    HAL_GPIO_Init(GPIOE, &gpio);
-
-    gpio.Pin = GPIO_PIN_15 | GPIO_PIN_8 | GPIO_PIN_5 | GPIO_PIN_4
-             | GPIO_PIN_2 | GPIO_PIN_1 | GPIO_PIN_0;
-    HAL_GPIO_Init(GPIOG, &gpio);
-
-    gpio.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_15 | GPIO_PIN_14
-             | GPIO_PIN_10 | GPIO_PIN_9 | GPIO_PIN_8;
-    HAL_GPIO_Init(GPIOD, &gpio);
-
-    gpio.Pin = GPIO_PIN_0 | GPIO_PIN_2 | GPIO_PIN_1 | GPIO_PIN_3 | GPIO_PIN_4
-             | GPIO_PIN_5 | GPIO_PIN_13 | GPIO_PIN_12 | GPIO_PIN_15 | GPIO_PIN_11 | GPIO_PIN_14;
-    HAL_GPIO_Init(GPIOF, &gpio);
-
-    gpio.Pin = GPIO_PIN_2 | GPIO_PIN_3;
-    HAL_GPIO_Init(GPIOH, &gpio);
-
-    gpio.Pin = GPIO_PIN_0;
-    HAL_GPIO_Init(GPIOC, &gpio);
-}
-
-/* Overrides the weak default in stm32h7xx_hal_sdram.c - called by
-   HAL_SDRAM_Init() below. */
-void HAL_SDRAM_MspInit(SDRAM_HandleTypeDef *hsdram)
-{
-    (void)hsdram;
-    SDRAM_Test_GPIO_ClockInit();
-}
-
-static int SDRAM_Test_ControllerInit(void)
-{
-    FMC_SDRAM_TimingTypeDef timing = {0};
-
-    hsdram1.Instance = FMC_SDRAM_DEVICE;
-    hsdram1.Init.SDBank             = FMC_SDRAM_BANK1;
-    hsdram1.Init.ColumnBitsNumber   = FMC_SDRAM_COLUMN_BITS_NUM_10;
-    hsdram1.Init.RowBitsNumber      = FMC_SDRAM_ROW_BITS_NUM_13;
-    hsdram1.Init.MemoryDataWidth    = FMC_SDRAM_MEM_BUS_WIDTH_16;
-    hsdram1.Init.InternalBankNumber = FMC_SDRAM_INTERN_BANKS_NUM_4;
-    hsdram1.Init.CASLatency         = FMC_SDRAM_CAS_LATENCY_2;
-    hsdram1.Init.WriteProtection    = FMC_SDRAM_WRITE_PROTECTION_DISABLE;
-    hsdram1.Init.SDClockPeriod      = FMC_SDRAM_CLOCK_PERIOD_2;
-    hsdram1.Init.ReadBurst          = FMC_SDRAM_RBURST_ENABLE;
-    hsdram1.Init.ReadPipeDelay      = FMC_SDRAM_RPIPE_DELAY_2;
-
-    timing.LoadToActiveDelay    = 2;
-    timing.ExitSelfRefreshDelay = 7;
-    timing.SelfRefreshTime      = 5;
-    timing.RowCycleDelay        = 7;
-    timing.WriteRecoveryTime    = 2;
-    timing.RPDelay               = 3;
-    timing.RCDDelay               = 3;
-
-    return HAL_SDRAM_Init(&hsdram1, &timing) == HAL_OK;
-}
-
-static void SDRAM_Test_SendCommandSequence(void)
-{
-    FMC_SDRAM_CommandTypeDef command;
-
-    command.CommandMode            = FMC_SDRAM_CMD_CLK_ENABLE;
-    command.CommandTarget          = FMC_SDRAM_CMD_TARGET_BANK1;
-    command.AutoRefreshNumber      = 1;
-    command.ModeRegisterDefinition = 0;
-    HAL_SDRAM_SendCommand(&hsdram1, &command, 0xFFFU);
-    HAL_Delay(1); /* >=100us minimum - HAL_Delay granularity is 1ms */
-
-    command.CommandMode = FMC_SDRAM_CMD_PALL;
-    HAL_SDRAM_SendCommand(&hsdram1, &command, 0xFFFU);
-
-    command.CommandMode       = FMC_SDRAM_CMD_AUTOREFRESH_MODE;
-    command.AutoRefreshNumber = 2;
-    HAL_SDRAM_SendCommand(&hsdram1, &command, 0xFFFU);
-
-    /* Burst length=1, sequential, CAS latency=2, standard mode, single
-       write (WBM=1) - same mode-register bit layout as reference fmc.c. */
-    command.CommandMode            = FMC_SDRAM_CMD_LOAD_MODE;
-    command.ModeRegisterDefinition = (uint32_t)0U | (0U << 3) | (2U << 4) | (0U << 7) | (1U << 9);
-    HAL_SDRAM_SendCommand(&hsdram1, &command, 0xFFFU);
-
-    /* COUNT = (64ms self-refresh / 8192 rows) * 100MHz SDCLK - 20 ~= 762
-       (SDCLK = D1HCLK/2, matches SDClockPeriod=2 above). */
-    HAL_SDRAM_ProgramRefreshRate(&hsdram1, 762);
-}
-
-/* Core/Src/main.c's MPU_Config() (untouched - CubeMX/core-owned) defines
-   region 0 as a 4GB NO_ACCESS blanket with only the Flash/SRAM/peripheral/
-   system sub-regions carved out as exceptions - the 0xC0000000-0xDFFFFFFF
-   sub-region (FMC external memory, where our SDRAM lives) is deliberately
-   left blocked, since this bootloader never expected anything mapped
-   there. Add one more region (unused slot 3) that grants full access to
-   just the 64MiB SDRAM window, overriding region 0's blanket block for
-   that range only - MPU regions are priority-ordered by number, so a
-   higher-numbered region wins on overlap. */
-static void SDRAM_Test_MpuUnblock(void)
-{
-    MPU_Region_InitTypeDef mpu = {0};
-
-    HAL_MPU_Disable();
-
-    mpu.Enable           = MPU_REGION_ENABLE;
-    mpu.Number           = MPU_REGION_NUMBER3;
-    mpu.BaseAddress       = SDRAM_BASE_ADDR;
-    mpu.Size              = MPU_REGION_SIZE_64MB;
-    mpu.SubRegionDisable  = 0x0;
-    mpu.TypeExtField      = MPU_TEX_LEVEL0;
-    mpu.AccessPermission  = MPU_REGION_FULL_ACCESS;
-    mpu.DisableExec       = MPU_INSTRUCTION_ACCESS_DISABLE;
-    mpu.IsShareable       = MPU_ACCESS_SHAREABLE;
-    mpu.IsCacheable       = MPU_ACCESS_NOT_CACHEABLE;
-    mpu.IsBufferable      = MPU_ACCESS_NOT_BUFFERABLE;
-    HAL_MPU_ConfigRegion(&mpu);
-
-    HAL_MPU_Enable(MPU_PRIVILEGED_DEFAULT);
-}
+/* ---- Bring-up is no longer this file's job --------------------------------
+ *
+ * When these tests were written the FMC was not in the .ioc at all, so this
+ * file carried its own copies of the pin map, the controller init, the SDRAM
+ * command sequence, the vendor driver sources, and an MPU patch. All of that
+ * has since moved to where it belongs:
+ *
+ *   pin map + clocks        -> Core/Src/fmc.c   HAL_FMC_MspInit()   (CubeMX)
+ *   controller init         -> Core/Src/fmc.c   MX_FMC_Init()       (CubeMX)
+ *   SDRAM power-up sequence -> Core/Src/fmc.c   FMC_SDRAM_PowerUpSequence()
+ *   vendor driver sources   -> Drivers/STM32H7xx_HAL_Driver/        (CubeMX)
+ *   MPU access to 0xC0000000 -> MPU_Config() region 0, SubRegionDisable 0xC7
+ *
+ * So the tests below just use the peripheral, and all this function does is
+ * confirm somebody already brought it up. It must therefore be called after
+ * MX_FMC_Init(), which in main.c means Phase 2. ------------------------- */
 
 static int SDRAM_Test_Bringup(void)
 {
-    printf("SDRAM_TEST: bring-up - FMC Bank1 @ 0x%08lX, %lu MiB (AS4C32M16SB-7BIN)\r\n",
+    printf("SDRAM_TEST: FMC Bank1 @ 0x%08lX, %lu MiB (AS4C32M16SB-7BIN)\r\n",
            (unsigned long)SDRAM_BASE_ADDR, (unsigned long)(SDRAM_SIZE_BYTES / (1024UL * 1024UL)));
 
-    SDRAM_Test_MpuUnblock();
-
-    if (!SDRAM_Test_ControllerInit()) {
-        printf("SDRAM_TEST: FAIL reason=controller_init (HAL_SDRAM_Init)\r\n");
+    if (hsdram1.State != HAL_SDRAM_STATE_READY) {
+        printf("SDRAM_TEST: FAIL reason=not_initialised (state=%u) - "
+               "MX_FMC_Init() has not run, or it failed\r\n",
+               (unsigned)hsdram1.State);
         return 0;
     }
-    SDRAM_Test_SendCommandSequence();
-    printf("SDRAM_TEST: bring-up done - clock enabled, precharge-all, auto-refresh x2, "
-           "mode register set, refresh rate programmed\r\n");
+    printf("SDRAM_TEST: controller ready, power-up sequence already done by MX_FMC_Init()\r\n");
     return 1;
 }
 

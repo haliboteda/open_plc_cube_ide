@@ -1,39 +1,41 @@
 // sdram_test.h
 //
-// Standalone external SDRAM bring-up test for the STM32H743 OpenPLC board.
-// Not part of the bootloader's core logic - safe to delete once the SDRAM
-// has been validated and its FMC init ported into a real MX_FMC_Init().
+// External SDRAM diagnostics for the STM32H743 OpenPLC board.
 //
 // Hardware under test (Bridge board, fully internal - no external wiring):
 //   U6 = AS4C32M16SB-7BIN, 32M x16bit x4 banks = 512Mbit = 64MiB SDRAM,
-//   wired to the STM32H743's FMC controller, mapped at 0xC0000000 (Bank1)
-//   once initialized. See Hardware/Bridge_overview.txt and the schematic
-//   sheet "1436_01_SCHAE-BR_SHEET06-Memory.SchDoc" for the chip-side pinout.
+//   wired to the STM32H743's FMC controller, mapped at 0xC0000000 (Bank1).
+//   See Hardware/Bridge_overview.txt and the schematic sheet
+//   "1436_01_SCHAE-BR_SHEET06-Memory.SchDoc" for the chip-side pinout.
 //
-// This project's .ioc never enabled the FMC/SDRAM peripheral (no pins, no
-// HAL_SDRAM_MODULE_ENABLED, no MX_FMC_Init - see "To test.txt" -> External
-// RAM -> "Needs to be activated"), so - same pattern as adc_test.c - the
-// missing vendor files (stm32h7xx_hal_sdram.c/.h, stm32h7xx_ll_fmc.c/.h)
-// live right here alongside the test code, with HAL_SDRAM_MODULE_ENABLED
-// #define'd locally rather than touching Core/ or the .ioc.
+// These started life as a standalone bring-up test, back when the FMC was not
+// in the .ioc at all: this folder carried its own pin map, controller init,
+// SDRAM command sequence, MPU patch and even its own copies of the vendor
+// driver sources. The FMC is now a real CubeMX peripheral, so all of that has
+// moved out and these are pure diagnostics that only *use* the peripheral:
 //
-// The GPIO pin map, HAL_SDRAM_Init() parameters, timing values and the
-// SDRAM command bring-up sequence (clock-enable -> PALL -> auto-refresh x2
-// -> load-mode-register -> refresh-rate) are NOT reverse-engineered here -
-// they are copied from a known-working sibling firmware for the same
-// Bridge board (E:\WorkSpace\Schaeffer-AG\ref\Hello_World_OpenPLC\Core\Src\fmc.c,
-// written by the hardware engineer and confirmed against the schematic's
-// FMC_* net names), so this is the same bring-up already proven on this
-// exact chip/board combination.
+//   pin map + clocks         -> Core/Src/fmc.c   HAL_FMC_MspInit()   (CubeMX)
+//   controller init          -> Core/Src/fmc.c   MX_FMC_Init()       (CubeMX)
+//   SDRAM power-up sequence  -> Core/Src/fmc.c   FMC_SDRAM_PowerUpSequence()
+//   vendor driver sources    -> Drivers/STM32H7xx_HAL_Driver/        (CubeMX)
+//   MPU access to 0xC0000000 -> MPU_Config() region 0, SubRegionDisable 0xC7
 //
-// Note on caching: FMC Bank1 (0xC0000000-0xCFFFFFFF) falls in the Cortex-M7
-// default memory map's "External device" region, which is Device-type and
-// therefore never cached even with D-Cache globally enabled (see main.c's
-// SCB_EnableDCache()) - unless an MPU region explicitly overrides it to
-// Normal/cacheable, which nothing here does. Every load/store in this file
-// really does go to the physical SDRAM controller, which matters a lot for
-// SDRAM_Test_CubeProgrammerVerify() below (an external tool's writes must
-// be visible to the next firmware read, and vice versa).
+// Consequence: every entry point below must run AFTER MX_FMC_Init(), which in
+// main.c means Phase 2. They check hsdram1.State and bail out with a clear
+// message rather than poking a dead controller.
+//
+// The timing values and the command sequence were never reverse-engineered
+// here - they came from a known-working sibling firmware for the same Bridge
+// board: FMC_Init() in ref/Hello_World_OpenPLC/Core/Src/main.c, written by the
+// hardware engineer and confirmed against the schematic's FMC_* net names. They
+// are now what MX_FMC_Init() carries, value for value.
+//
+// Note on caching: FMC Bank1 (0xC0000000-0xCFFFFFFF) is in the Cortex-M7
+// default memory map's "External device" region, which is Device-type and so
+// never cached - and the bootloader runs with both caches off anyway. Every
+// load/store here really does reach the physical SDRAM controller, which
+// matters for SDRAM_Test_CubeProgrammerVerify() below: an external tool's
+// writes must be visible to the next firmware read, and vice versa.
 //
 // Three independent entry points - uncomment exactly one in main.c at a
 // time (see pwm_test.h/rs232_test.h for the same convention). All three
@@ -58,7 +60,7 @@
 //
 //   SDRAM_Test_CubeProgrammerVerify() - answers "can I write via
 //       STM32CubeProgrammer and read it back with an integrity check?":
-//       runs the bring-up ONLY (does not touch memory contents), then
+//       never touches memory contents, then
 //       every second prints a zlib-compatible CRC32 + a 16-byte hex
 //       preview of a configurable [offset, length) window. Connect
 //       ST-Link, open STM32CubeProgrammer's "Read & Write Memory" panel

@@ -6,6 +6,7 @@
 
 // See stm32h7xx_hal_sd.c/stm32h7xx_ll_sdmmc.c in this same folder for why
 // this is defined locally instead of touching Core/Inc/stm32h7xx_hal_conf.h.
+#include "testinterface_hal_guard.h"   /* fires if this peripheral becomes real -- read it */
 #define HAL_SD_MODULE_ENABLED
 
 #include "sd_test.h"

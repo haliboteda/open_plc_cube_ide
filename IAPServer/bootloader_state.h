@@ -88,7 +88,7 @@ void bootloader_state_log_event(bootloader_event_type_t event, uint32_t method, 
  * app_base, read directly from Flash -- no RAM staging of the whole image. */
 void bootloader_state_hash_app(uint32_t app_base, uint32_t size, uint8_t out_sha256[32]);
 
-/* Records the outcome of server_init()'s boot-time signature check so
+/* Records the outcome of server_decide()'s boot-time signature check so
  * other modules (e.g. the UDP discovery reply) can report it without
  * recomputing the hash/signature check themselves. Defaults to false. */
 void bootloader_state_set_app_valid(bool valid);

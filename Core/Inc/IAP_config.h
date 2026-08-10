@@ -28,25 +28,16 @@
 #define UDP_SERVER_NAME "BOOTLD"
 #endif
 
+/* The baud rate the PC tool opens the CDC port at to ask for upload mode. Not a
+ * flag -- this one stays. */
 #ifndef MAGIC_CDC_RATE
 #define MAGIC_CDC_RATE 1200U
 #endif
 
-#ifndef MAGIC_APP_FLAG
-#define MAGIC_APP_FLAG 0xAAU
-#endif
-
-#ifndef MAGIC_ETH_FLAG
-#define MAGIC_ETH_FLAG 0xAEU
-#endif
-
-#ifndef MAGIC_CDC_FLAG
-#define MAGIC_CDC_FLAG 0xAFU
-#endif
-
-#ifndef MAGIC_BKP_REG
-#define MAGIC_BKP_REG RTC_BKP_DR0
-#endif
+/* MAGIC_APP_FLAG / MAGIC_ETH_FLAG / MAGIC_CDC_FLAG / MAGIC_BKP_REG are gone.
+ * The boot-mode request no longer lives in an RTC backup register; see
+ * IAPServer/IAP_boot_handoff.h for the replacement and for why the register was
+ * the wrong place for it. */
 
 typedef enum {
 	IDLE, FLASH_RECEIVE
@@ -55,7 +46,14 @@ typedef enum {
 typedef enum {
     IAP_NONE,
 	IAP_CDC,
-	IAP_ETHERNET
+	IAP_ETHERNET,
+	/* Decision result only, never a transport identity: stay in the bootloader
+	 * and serve every channel. Used when we know an upload was asked for but not
+	 * over which channel (unreadable handoff record), and when the board has no
+	 * runnable application or BOOT0 was held -- in all three cases we have no
+	 * idea how the operator intends to reach us, so guessing one channel would
+	 * be worse than opening both. IAP_data_recv() is never called with it. */
+	IAP_ALL
 } IAP_Method;
 
 #endif /* INC_IAP_CONFIG_H_ */

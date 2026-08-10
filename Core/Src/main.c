@@ -18,16 +18,22 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "crc.h"
-#include "lwip.h"
-#include "rtc.h"
 #include "usart.h"
-#include "usb_device.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+/* These peripherals are no longer called from the generated init block ("Do not
+ * generate function call" in CubeMX), so main.c has to reach their MX_*_Init()
+ * itself -- see Phase 2 below for when each one is actually needed. */
+#include "rtc.h"
+#include "crc.h"
+#include "fmc.h"
+#include "usb_device.h"
+#include "lwip.h"
+
 #include "relay.h"
+#include "bootloader_state.h"
 #include "IAP_server.h"
 #include "pwm_test.h"
 #include "rs232_test.h"
@@ -69,10 +75,36 @@ void SystemClock_Config(void);
 static void MPU_Config(void);
 /* USER CODE BEGIN PFP */
 // RS232
+/*
+ * Bounded stand-in for CMSIS ITM_SendChar(): that one spins forever waiting for
+ * the trace FIFO if ITM is enabled but nothing is draining it -- e.g. a debug
+ * session that died with the enable bits still set. That is the same hang we
+ * remove from the UART path below, so it would be odd to add it back here.
+ */
+static void itm_putchar_bounded(uint8_t ch)
+{
+	if (((ITM->TCR & ITM_TCR_ITMENA_Msk) == 0UL) || ((ITM->TER & 1UL) == 0UL)) {
+		return;   /* no debugger has enabled the trace port -- nothing to do */
+	}
+	for (uint32_t spins = 0U; spins < 1000U; spins++) {
+		if (ITM->PORT[0U].u32 != 0UL) {
+			ITM->PORT[0U].u8 = ch;
+			return;
+		}
+	}
+	/* FIFO never drained: drop the character rather than wedge the board. */
+}
+
 PUTCHAR_PROTOTYPE {
-	/* Place your implementation of fputc here */
-	/* e.g. write a character to the USART1 and Loop until the end of transmission */
-	HAL_UART_Transmit(&huart4, (uint8_t*) &ch, 1, HAL_MAX_DELAY);
+	/* Two sinks. SWO/ITM costs nothing when no debugger is attached and lets the
+	 * boot log be read in CubeIDE's SWV console without wiring up an RS232
+	 * adapter; RS232 stays for field diagnostics, where there is no debugger. */
+	itm_putchar_bounded((uint8_t) ch);
+
+	/* Bounded timeout rather than HAL_MAX_DELAY: a bootloader is the last place
+	 * that should be able to hang forever on a log line. Losing a character is
+	 * strictly better than wedging the board. */
+	(void) HAL_UART_Transmit(&huart4, (uint8_t*) &ch, 1, 10);
 	return ch;
 }
 /* USER CODE END PFP */
@@ -90,6 +122,66 @@ void array_prinf(unsigned char *data, unsigned int len) {
 	printf("}\r\n");
 }
 
+/* What server_decide() settled on. Phase 2 and the superloop both key off it. */
+static IAP_Method s_boot_mode = IAP_NONE;
+
+/*
+ * Startup relay window.
+ *
+ * The clicking is not decoration: it IS the window in which the operator can
+ * press BOOT0 to interrupt the normal boot, and the only cue that the window is
+ * open. The board gives no other feedback with nothing plugged in.
+ *
+ * So the pin is polled for the whole duration and the result latched, rather
+ * than read once when the clicking stops. A press-and-release anywhere inside
+ * the window counts. (Reading the pin a few milliseconds after reset, as an
+ * earlier version of this did, asks for a reaction time no human has -- the
+ * decision was already made and the board had jumped to the application before
+ * a finger could get there.)
+ *
+ * BOOT0_WINDOW_STEP_MS x BOOT0_WINDOW_STEPS gives the total; three relays at
+ * 500 ms each is what this board has always done, and the startup banner says
+ * "hold down the BOOT0 button for 3-5 seconds while clicking", so keep it long
+ * enough to match that instruction.
+ */
+#define BOOT0_WINDOW_STEP_MS   10U
+#define BOOT0_WINDOW_STEPS     50U   /* 50 x 10 ms = 500 ms per relay */
+
+static uint8_t boot_window_relay(void)
+{
+	uint8_t pressed = 0U;
+
+	for (RELAY_Name relay = RELAY_1; relay < RELAY_COUNT / 2; ++relay) {
+		Relay_On(relay);
+		for (uint32_t step = 0U; step < BOOT0_WINDOW_STEPS; step++) {
+			HAL_Delay(BOOT0_WINDOW_STEP_MS);
+			if (boot0_is_pressed()) {
+				pressed = 1U;   /* latch: do not require it to still be held */
+			}
+		}
+		Relay_Off(relay);
+	}
+	return pressed;
+}
+
+/*
+ * Post-decision status click, so the mode is audible without a cable:
+ *   1 click  - staying in the bootloader, waiting for an upload
+ *   2 clicks - no valid application to boot
+ * Booting the application says nothing extra: the window above was the sound.
+ */
+static void boot_beep(uint8_t times)
+{
+	for (uint8_t i = 0; i < times; i++) {
+		Relay_On(RELAY_1);
+		HAL_Delay(100);
+		Relay_Off(RELAY_1);
+		if ((uint8_t)(i + 1U) < times) {
+			HAL_Delay(120);
+		}
+	}
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -105,14 +197,6 @@ int main(void)
   /* MPU Configuration--------------------------------------------------------*/
   MPU_Config();
 
-  /* Enable the CPU Cache */
-
-  /* Enable I-Cache---------------------------------------------------------*/
-  SCB_EnableICache();
-
-  /* Enable D-Cache---------------------------------------------------------*/
-  SCB_EnableDCache();
-
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
@@ -122,31 +206,55 @@ int main(void)
 
   /* USER CODE END Init */
 
-  /* Configure the system clock */
-  SystemClock_Config();
-
   /* USER CODE BEGIN SysInit */
-
-  /* USER CODE END SysInit */
-
-  /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-  MX_USB_DEVICE_Init();
-  MX_UART4_Init();
-  MX_RTC_Init();
-  MX_CRC_Init();
-  MX_LWIP_Init();
-  /* USER CODE BEGIN 2 */
-  Enable_RX_RS232();
+  /* ------------------------- Phase 1: decide ------------------------------
+   *
+   * Only what the decision itself needs comes up here. USB, lwIP, RTC, CRC and
+   * FMC all wait for Phase 2, which runs *only* when we stay in the bootloader.
+   * That is what keeps the application from inheriting our peripheral state:
+   * "never initialised" cannot be got wrong, whereas a de-init list has to be
+   * maintained by hand and rots silently. It also means enabling FMC for the
+   * SDRAM staging area can never leak into a user's sketch.
+   */
+  MX_GPIO_Init();      /* BOOT0 input, relay outputs, RS232_Enable */
+  Enable_RX_RS232();   /* the MAX3221 stays in shutdown until this pin is high, */
+  MX_UART4_Init();     /* so without it the printf below reaches nothing at all */
 
   printf("** Checking Starting Mod ...\r\n"
 		  "** (IF You want OpenPLC to stay in upload mode, please hold down the BOOT0 button for 3-5 seconds while clicking)\r\n");
 
-  // Einschalten aller HSFETs einmalig und dann ausschalten
-  for (RELAY_Name relay = RELAY_1; relay < RELAY_COUNT / 2; ++relay) {
-    Relay_On(relay);
-    HAL_Delay(500); // Einschaltverzoegerung von 500 Millisekunden
-    Relay_Off(relay);
+  /* 1.5 s of relay clicking = the operator's window to press BOOT0. Polled
+   * throughout, so a press anywhere inside it counts. */
+  s_boot_mode = server_decide(boot_window_relay());
+
+  if (s_boot_mode == IAP_NONE) {
+    server_jump_to_app();   /* hands the hardware back; never returns */
+  }
+  boot_beep(bootloader_state_app_is_valid() ? 1 : 2);
+  /* USER CODE END SysInit */
+
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  /* USER CODE BEGIN 2 */
+  /* ------------------- Phase 2: staying in the bootloader ------------------ */
+
+  /* The generated MX_GPIO_Init() above runs a second time and pulls
+   * RS232_Enable low again (gpio.c writes every output low before configuring
+   * it), so re-assert it. Suppressing that call in CubeMX, or setting the pin's
+   * default output level to High, would make this line unnecessary. */
+  Enable_RX_RS232();
+
+  MX_RTC_Init();   /* iap_auth's nonce counter lives in a backup register */
+  MX_CRC_Init();   /* upload checksum */
+  MX_FMC_Init();   /* external SDRAM: staging area for the incoming image */
+
+  /* Bring up only the channel we were asked for. IAP_ALL means we could not tell
+   * which one the operator is on, so open both rather than guess. */
+  if ((s_boot_mode == IAP_CDC) || (s_boot_mode == IAP_ALL)) {
+    MX_USB_DEVICE_Init();
+  }
+  if ((s_boot_mode == IAP_ETHERNET) || (s_boot_mode == IAP_ALL)) {
+    MX_LWIP_Init();
   }
 
   // Only one of these runs forever and hijacks the boot - uncomment the one
@@ -158,9 +266,9 @@ int main(void)
   //SDRAM_Test_Retention();          // external SDRAM: random addr, wait 5s, read back
   //SDRAM_Test_CubeProgrammerVerify(); // external SDRAM: write via CubeProgrammer, verify CRC32 here
   //SD_Test_Info();                   // microSD: is a card detected, how big is it?
-  SD_Test_FileIntegrity();          // microSD: FatFs write+read-back+CRC32 on the inserted card
+  //SD_Test_FileIntegrity();          // microSD: FatFs write+read-back+CRC32 on the inserted card
 
-//  IAP_init();
+  IAP_servers_start(s_boot_mode);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -169,9 +277,13 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-//    IAP_task();
-//    MX_LWIP_Process();
-//    HAL_Delay(10);
+    IAP_task();
+    /* Guarded: MX_LWIP_Init() only ran for the ethernet modes, and calling
+     * MX_LWIP_Process() on an uninitialised stack is not harmless. */
+    if ((s_boot_mode == IAP_ETHERNET) || (s_boot_mode == IAP_ALL)) {
+      MX_LWIP_Process();
+    }
+    HAL_Delay(10);
   }
   /* USER CODE END 3 */
 }
@@ -256,7 +368,7 @@ void MPU_Config(void)
   MPU_InitStruct.Number = MPU_REGION_NUMBER0;
   MPU_InitStruct.BaseAddress = 0x0;
   MPU_InitStruct.Size = MPU_REGION_SIZE_4GB;
-  MPU_InitStruct.SubRegionDisable = 0x87;
+  MPU_InitStruct.SubRegionDisable = 0xC7;
   MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL0;
   MPU_InitStruct.AccessPermission = MPU_REGION_NO_ACCESS;
   MPU_InitStruct.DisableExec = MPU_INSTRUCTION_ACCESS_DISABLE;
@@ -269,7 +381,7 @@ void MPU_Config(void)
   /** Initializes and configures the Region and the memory to be protected
   */
   MPU_InitStruct.Number = MPU_REGION_NUMBER1;
-  MPU_InitStruct.BaseAddress = 0x30020000;
+  MPU_InitStruct.BaseAddress = 0x30000000;
   MPU_InitStruct.Size = MPU_REGION_SIZE_128KB;
   MPU_InitStruct.SubRegionDisable = 0x0;
   MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL1;
@@ -281,8 +393,8 @@ void MPU_Config(void)
   /** Initializes and configures the Region and the memory to be protected
   */
   MPU_InitStruct.Number = MPU_REGION_NUMBER2;
-  MPU_InitStruct.BaseAddress = 0x30040000;
-  MPU_InitStruct.Size = MPU_REGION_SIZE_512B;
+  MPU_InitStruct.BaseAddress = 0x30020000;
+  MPU_InitStruct.Size = MPU_REGION_SIZE_256B;
   MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL0;
   MPU_InitStruct.IsShareable = MPU_ACCESS_SHAREABLE;
   MPU_InitStruct.IsBufferable = MPU_ACCESS_BUFFERABLE;

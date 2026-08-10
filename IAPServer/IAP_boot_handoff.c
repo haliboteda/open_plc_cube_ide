@@ -1,0 +1,190 @@
+/*
+ * IAP_boot_handoff.c
+ *
+ * See IAP_boot_handoff.h. Mirrored into the Arduino core at
+ * cores/arduino/stm32/IAP_boot_handoff.c -- the two copies differ only in the
+ * include block below, same arrangement as iap_auth.c / iap_keyderive.c.
+ */
+
+#include "IAP_boot_handoff.h"
+#include "main.h"
+#include <stdio.h>
+
+static bool                  s_taken;
+static boot_req_t            s_taken_mode = BOOT_REQ_NONE;
+static boot_handoff_status_t s_status     = BOOT_HANDOFF_OK;
+
+static volatile boot_handoff_t *record(void)
+{
+	return (volatile boot_handoff_t *)BOOT_HANDOFF_ADDR;
+}
+
+static uint32_t expected_check(uint16_t version, uint32_t mode)
+{
+	return ~(BOOT_HANDOFF_MAGIC ^ (uint32_t)version ^ mode);
+}
+
+/*
+ * Push our stores out to physical memory and drop any cached copy, so that the
+ * read-back below really reads memory instead of the cache line we just wrote.
+ *
+ * Both maintenance calls are harmless no-ops when the data cache is disabled,
+ * which is the point: this file stays correct no matter how the running image
+ * has configured its caches, and it needs no MPU region. The bootloader can
+ * therefore not care what a user's PLC application does with the D-cache.
+ */
+static void sync_to_memory(void)
+{
+	__DSB();
+	SCB_CleanDCache_by_Addr((uint32_t *)BOOT_HANDOFF_ADDR, (int32_t)BOOT_HANDOFF_SIZE);
+	SCB_InvalidateDCache_by_Addr((uint32_t *)BOOT_HANDOFF_ADDR, (int32_t)BOOT_HANDOFF_SIZE);
+	__DSB();
+	__ISB();
+}
+
+static void clear_record(void)
+{
+	volatile boot_handoff_t *h = record();
+
+	h->magic   = 0U;
+	h->version = 0U;
+	h->size    = 0U;
+	h->mode    = 0U;
+	h->check   = 0U;
+	sync_to_memory();
+}
+
+bool boot_handoff_request(boot_req_t mode)
+{
+	volatile boot_handoff_t *h = record();
+	const uint32_t chk = expected_check((uint16_t)BOOT_HANDOFF_VERSION, (uint32_t)mode);
+
+	h->magic   = BOOT_HANDOFF_MAGIC;
+	h->version = (uint16_t)BOOT_HANDOFF_VERSION;
+	h->size    = (uint16_t)sizeof(boot_handoff_t);
+	h->mode    = (uint32_t)mode;
+	h->check   = chk;
+	sync_to_memory();
+
+	/* Read-back verification. This is the guard the old RTC-backup-register
+	 * scheme lacked: a write that the hardware discarded looked identical to a
+	 * write that succeeded, so the board reset with the old flag still in place
+	 * and booted the wrong mode with nothing logged anywhere. */
+	if ((h->magic != BOOT_HANDOFF_MAGIC) ||
+	    (h->version != (uint16_t)BOOT_HANDOFF_VERSION) ||
+	    (h->mode != (uint32_t)mode) ||
+	    (h->check != chk)) {
+		printf("boot_handoff: write did not take effect, not resetting\r\n");
+		return false;
+	}
+
+	HAL_NVIC_SystemReset();
+	for (;;) {
+		/* not reached */
+	}
+}
+
+boot_req_t boot_handoff_take(void)
+{
+	volatile boot_handoff_t *h = record();
+	uint32_t magic;
+	uint16_t version;
+	uint32_t mode;
+	uint32_t chk;
+	bool cold;
+
+	if (s_taken) {
+		return s_taken_mode;
+	}
+	s_taken = true;
+
+	/*
+	 * A power-on reset leaves SRAM undefined, and on the H7 every internal SRAM
+	 * carries ECC -- reading a location that has never been written since power
+	 * up is best avoided. So on a cold boot we only ever write. Any genuine
+	 * request must have come from a warm reset, which means this is also the
+	 * only path that ever reads the record.
+	 *
+	 * This must run before anything else clears RCC->RSR, which is why
+	 * boot_handoff_take() belongs at the very top of the boot sequence.
+	 */
+	cold = (__HAL_RCC_GET_FLAG(RCC_FLAG_PORRST) != RESET);
+	__HAL_RCC_CLEAR_RESET_FLAGS();
+
+	if (cold) {
+		clear_record();
+		s_status     = BOOT_HANDOFF_COLD_BOOT;
+		s_taken_mode = BOOT_REQ_NONE;
+		return s_taken_mode;
+	}
+
+	SCB_InvalidateDCache_by_Addr((uint32_t *)BOOT_HANDOFF_ADDR, (int32_t)BOOT_HANDOFF_SIZE);
+	__DSB();
+
+	magic   = h->magic;
+	version = h->version;
+	mode    = h->mode;
+	chk     = h->check;
+
+	if (magic == 0U) {
+		/* The common case, and deliberately silent: nobody asked for anything.
+		 * Reset button, watchdog, an application that reset itself -- all land
+		 * here on every single boot, so reporting it would drown the log. */
+		s_status     = BOOT_HANDOFF_OK;
+		s_taken_mode = BOOT_REQ_NONE;
+	} else if ((magic != BOOT_HANDOFF_MAGIC) || (chk != expected_check(version, mode))) {
+		/* Only this file writes here, and it only ever stores 0 or MAGIC. Any
+		 * third value means something wrote where it should not have (a stray
+		 * pointer, a DMA, a linker script that gave the area away) or a bit
+		 * flipped. Report it, but still boot the application: the signature
+		 * check is the real gate, and pinning the board in the bootloader over
+		 * one corrupted word would turn a glitch into an outage. */
+		printf("boot_handoff: corrupt record (magic=%08lX ver=%u mode=%lu chk=%08lX)\r\n",
+		       (unsigned long)magic, (unsigned)version,
+		       (unsigned long)mode, (unsigned long)chk);
+		s_status     = BOOT_HANDOFF_CORRUPT;
+		s_taken_mode = BOOT_REQ_NONE;
+	} else {
+		/* Valid record. */
+		if (version > (uint16_t)BOOT_HANDOFF_VERSION) {
+			/* Written by a newer image than this bootloader understands. The
+			 * header is frozen, so `mode` is still meaningful; we just cannot
+			 * see whatever was appended after `check`. */
+			printf("boot_handoff: record version %u newer than supported %u,"
+			       " using frozen header fields only\r\n",
+			       (unsigned)version, (unsigned)BOOT_HANDOFF_VERSION);
+			s_status = BOOT_HANDOFF_UNKNOWN_VERSION;
+		} else {
+			s_status = BOOT_HANDOFF_OK;
+		}
+
+		switch (mode) {
+		case (uint32_t)BOOT_REQ_CDC:
+			s_taken_mode = BOOT_REQ_CDC;
+			break;
+		case (uint32_t)BOOT_REQ_ETH:
+			s_taken_mode = BOOT_REQ_ETH;
+			break;
+		default:
+			/* Somebody asked us to stay, but we cannot tell which channel they
+			 * are on. Staying and serving everything is recoverable; jumping
+			 * into the application would discard a request that explicitly told
+			 * us not to. Do not guess a single channel. */
+			printf("boot_handoff: unusable mode %lu, staying in bootloader on all channels\r\n",
+			       (unsigned long)mode);
+			s_status     = BOOT_HANDOFF_BAD_MODE;
+			s_taken_mode = BOOT_REQ_ALL;
+			break;
+		}
+	}
+
+	/* Consume it either way: read once and it is gone, so no stale record can
+	 * ever hold the board in the bootloader across reboots. */
+	clear_record();
+	return s_taken_mode;
+}
+
+boot_handoff_status_t boot_handoff_last_status(void)
+{
+	return s_status;
+}

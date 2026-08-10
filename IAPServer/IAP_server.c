@@ -14,12 +14,13 @@
 #include "fw_verify.h"
 #include "bootloader_state.h"
 #include "iap_auth.h"
+#include "iap_keyderive.h"
+#include "IAP_boot_handoff.h"
 
 #include "main.h"
 
-#include "rtc.h"
+#include "usart.h"          /* huart4, de-initialised before jumping to the app */
 #include "usbd_cdc_flash.h"
-#include "usb_device.h"
 
 #include "usbd_cdc_if.h"
 
@@ -31,14 +32,18 @@ static uint8_t expected_signature[FW_SIGNATURE_SIZE];
 static bool have_expected_signature;
 static uint32_t expected_version; /* 0 if the flash command didn't carry one (older PC tool) */
 
-uint8_t data_is_ready = 0; // 0 - no 1 - yes
-uint32_t len_in_RX_buffer = 0;    // received data length in buffer
+// volatile: written from IAP_data_recv() (USB/lwIP receive callback context)
+// and read/cleared from IAP_task() (main superloop context) -- without it
+// the compiler is free to assume nothing outside the current function
+// changes these between accesses.
+volatile uint8_t data_is_ready = 0; // 0 - no 1 - yes
+volatile uint32_t len_in_RX_buffer = 0;    // received data length in buffer
 uint8_t RXBuffer[IAP_RX_BUFFER_SIZE]; // buffer to receive data
-uint32_t received_bytes = 0; // received Bytes of Flash bin file
+volatile uint32_t received_bytes = 0; // received Bytes of Flash bin file
 
 //uint8_t FlashBuffer[IAP_RX_BUFFER_SIZE];
 //uint32_t LenInFlashBuffer = 0;
-IAP_STATUS current_status = IDLE;
+volatile IAP_STATUS current_status = IDLE;
 
 static IAP_Method current_method = IAP_NONE;
 
@@ -116,6 +121,13 @@ void process_command() {
 			char nonce_hex[IAP_AUTH_NONCE_SIZE * 2U + 1U];
 			iap_auth_issue_challenge(nonce_hex);
 			send_response(nonce_hex);
+		} else if (strncmp((char *)RXBuffer, "getuid", 6) == 0) {
+			// Lets a PC tool connected over CDC (no discovery reply available)
+			// learn this device's machine ID, needed to derive its device key
+			// before an authchallenge/flash exchange.
+			char uid_hex[IAP_MACHINE_ID_HEX_LEN + 1U];
+			iap_keyderive_get_machine_id_hex(uid_hex);
+			send_response(uid_hex);
 		} else if (strncmp((char *)RXBuffer, "getversion", 10) == 0) {
 			// Lets the PC tool learn the version currently installed *before*
 			// committing to a flash command, so it can warn the operator
@@ -238,7 +250,7 @@ void process_command() {
 				send_response("No Signature");
 				bootloader_state_log_event(IAP_EVT_SIG_FAIL, (uint32_t)current_method, peer_ip, nowTick, authCtr);
 			} else if (!bootloader_state_crypto_selftest_passed()) {
-				// Same precondition server_init() applies to the boot-time
+				// Same precondition server_decide() applies to the boot-time
 				// check (Step 1) -- don't trust a signature verification
 				// result computed with a crypto implementation the self-test
 				// already found broken at boot.
@@ -268,36 +280,86 @@ void process_command() {
 	fflush(stdout);
 }
 
-//
+/*
+ * Raw, silent read of the BOOT0 / KNX-programming button (SW2 on PG9).
+ *
+ * Silent on purpose: the caller polls this in a loop for the whole length of the
+ * startup relay window, so printing here would flood the log. server_decide()
+ * reports the latched outcome once.
+ *
+ * Reads HIGH when pressed: SW2 ties the pin to 3V3, and the pin is configured
+ * GPIO_Input + PULLDOWN, so it sits low when released. The macro name follows
+ * the .ioc's User Label for PG9 and changes if that label is retyped.
+ */
 uint8_t boot0_is_pressed(void) {
-	// check if boot0 pin (PG9) is pressed
-	if (HAL_GPIO_ReadPin(BOOT0_GPIO_Port, BOOT0_Pin) == GPIO_PIN_SET) {
-		printf("BOOT0 button is pressed!\r\n");
-		return 1;  //
-	} else {
-		printf("BOOT0 button is not pressed.\r\n");
-		return 0;
-	}
+	return (HAL_GPIO_ReadPin(Boot0_GPIO_Port, Boot0_Pin) == GPIO_PIN_SET) ? 1U : 0U;
 }
-//
-void server_init (void) {
-	// check Upload Mod situation
-	// 1 MAGIC_BKP_REG is MAGIC_BOOTLOADER_FLAG
-	// 2 IAP_APP_ADDRESS is empty
-	// 3 IAP_APP_ADDRESS is not empty and Boot0 button is pressed
+// __set_MSP() from inside an ordinary C function is unsafe if anything else
+// in that function runs afterward: the compiler doesn't know the hardware
+// stack pointer just moved, and still emits its normal epilogue (restoring
+// callee-saved registers and deallocating locals) relative to the *old*
+// stack. If that epilogue instead executes after MSP already points at the
+// jumped-to app's fresh stack, "restore/deallocate" becomes "read garbage
+// past the top of the app's RAM" -- which is exactly what was happening
+// here: server_jump_to_app()'s compiler-generated epilogue (`add sp,#0xA0` +
+// `ldmia sp!,{r4-r9,sl,lr}`) ran *after* MSP had already been set to
+// app_msp, corrupting SP to app_msp+0xA0 (0x240800A0, just past the end of
+// AXI SRAM) and bus-faulting on the register pop. A naked function has no
+// compiler-generated prologue/epilogue at all, so nothing can run between
+// setting MSP and jumping.
+__attribute__((naked)) static void jump_to_app(uint32_t msp, uint32_t reset_vector)
+{
+	__asm volatile (
+		"msr msp, r0\n"
+		"dsb\n"
+		"isb\n"
+		"cpsie i\n"
+		"bx r1\n"
+	);
+}
+
+/*
+ * Phase 1 of the boot sequence: decide whether this reset runs the application
+ * or stays in the bootloader, and return the answer without acting on it.
+ *
+ * Everything needed here is available before a single peripheral has been
+ * initialised: flash reads, software SHA-256/ECDSA, one GPIO pin for BOOT0, and
+ * the handoff record in SRAM4. That is the point -- it lets USB, ethernet and
+ * FMC stay untouched on the path that boots the application, so the application
+ * inherits almost none of our state. "Never initialised" cannot be got wrong,
+ * whereas a de-init list has to be maintained by hand and silently rots.
+ *
+ * Deliberately does not jump: the caller owns that step (server_jump_to_app) so
+ * it can do its own work first, such as the startup beep.
+ */
+IAP_Method server_decide(uint8_t boot0Pressed) {
+	IAP_Method mode = IAP_NONE;
+	boot_req_t req;
+	bool app_signature_valid = false;
+
+	bootloader_state_init();
+
 	app_base  = (uint32_t)IAP_APP_ADDRESS;
 	app_msp   = *(__IO uint32_t *)IAP_APP_ADDRESS;
 	app_reset = *(__IO uint32_t *)(IAP_APP_ADDRESS + 4);
 
-	uint8_t isBoot0Pressed = boot0_is_pressed();
-	uint32_t boot_flag = HAL_RTCEx_BKUPRead(&hrtc, MAGIC_BKP_REG);
+	/* Take the request first: boot_handoff_take() is also what reads and clears
+	 * RCC->RSR, so it has to run before anything else can look at the reset
+	 * cause. It consumes the record, so a stale request can never pin us here. */
+	req = boot_handoff_take();
+
+	/* boot0Pressed is latched by the caller across the whole startup relay
+	 * window, not sampled here: reading the pin once at this point would need
+	 * the operator to already be holding the button a few milliseconds after
+	 * reset, which is not a reaction time a human has. */
+	printf(boot0Pressed ? "BOOT0 button is pressed!\r\n"
+	                    : "BOOT0 button is not pressed.\r\n");
 
 	// Is the app region's actual content the one that was signed and accepted
 	// at the last successful update? This replaces the old "does the MSP
 	// value merely look like a plausible RAM address" heuristic, which could
 	// not tell a legitimate app from corrupted or maliciously-written flash
 	// as long as the first word happened to look like a stack pointer.
-	bool app_signature_valid = false;
 	if (bootloader_state_crypto_selftest_passed()) {
 		iap_fw_metadata_t meta;
 		if (bootloader_state_get_metadata(&meta) && meta.app_size > 0U && meta.app_size <= IAP_APP_MAX_SIZE) {
@@ -308,85 +370,153 @@ void server_init (void) {
 	}
 	bootloader_state_set_app_valid(app_signature_valid);
 
-	// 判断启动模式
-	if (boot_flag == MAGIC_CDC_FLAG) {
-		current_method = IAP_CDC;
-	} else if (boot_flag == MAGIC_ETH_FLAG) {
-		current_method = IAP_ETHERNET;
-	} else if (!app_signature_valid || isBoot0Pressed > 0) {
-		current_method = IAP_CDC;
+	switch (req) {
+	case BOOT_REQ_CDC:
+		mode = IAP_CDC;
+		break;
+	case BOOT_REQ_ETH:
+		mode = IAP_ETHERNET;
+		break;
+	case BOOT_REQ_ALL:
+		/* Somebody asked for an upload but the record did not say over which
+		 * channel. Open both rather than guess -- see IAP_ALL in IAP_config.h. */
+		mode = IAP_ALL;
+		break;
+	default:
 		if (!app_signature_valid) {
 			printf("** App signature invalid or absent - staying in bootloader **\r\n");
 			bootloader_state_log_event(IAP_EVT_BOOT_VERIFY_FAIL, (uint32_t)IAP_NONE, 0U,
 					HAL_GetTick(), iap_auth_get_counter());
+			mode = IAP_ALL;
+		} else if (boot0Pressed > 0U) {
+			/* The physical escape hatch. We cannot know which channel the
+			 * operator will use, so serve all of them. */
+			mode = IAP_ALL;
 		}
+		break;
 	}
 
-	if (current_method != IAP_NONE) {
+	/* current_method tracks the channel actually in use and is (re)set by
+	 * IAP_data_recv() as soon as a command arrives. Pre-seed it for the
+	 * single-channel modes to keep the old behaviour; IAP_ALL has no single
+	 * channel yet, so leave it until the first command says which one. */
+	if ((mode == IAP_CDC) || (mode == IAP_ETHERNET)) {
+		current_method = mode;
+	}
+
+	if (mode != IAP_NONE) {
 		printf("** UPLOAD Mod ...\r\n");
 		printf("** Please input your command: \r\n");
-		HAL_PWR_EnableBkUpAccess();
-		HAL_RTCEx_BKUPWrite(&hrtc, MAGIC_BKP_REG, MAGIC_APP_FLAG);
-		HAL_PWR_DisableBkUpAccess();
 	} else {
 		printf("** APP Mod ...\r\n");
-		/* Jump to user application */
-		/* Stop and De-initialize USB peripheral */
-		MX_USB_DEVICE_DeInit();
+	}
+	return mode;
+}
 
-		__disable_irq();
+/*
+ * Hand the hardware back and jump. Only valid when server_decide() returned
+ * IAP_NONE, and only on the boot path -- a completed upload resets instead (see
+ * process_command()), which is what keeps the I-cache out of the picture.
+ *
+ * There is no MX_USB_DEVICE_DeInit() here any more: on this path USB was never
+ * brought up in the first place.
+ */
+void server_jump_to_app(void) {
+	/* Give the application a clean slate. Our MPU regions describe the
+	 * bootloader's lwIP buffers and mean nothing to it, and leaving the 4GB
+	 * no-access blanket in place would deny it the external SDRAM. One register
+	 * write, so unlike a peripheral de-init there is nothing to forget. */
+	HAL_MPU_Disable();
 
-		/* stop SysTick */
-		SysTick->CTRL = 0;
-		SysTick->LOAD = 0;
-		SysTick->VAL = 0;
+	/* UART4 is the only peripheral Phase 1 brought up (for the boot log). Its
+	 * MspDeInit also releases the PC10/PC11 pins. */
+	HAL_UART_DeInit(&huart4);
 
-		/* clear interrupt pending*/
-		for (uint32_t i = 0; i < 16; i++) {
-			NVIC->ICER[i] = 0xFFFFFFFFU;
-			NVIC->ICPR[i] = 0xFFFFFFFFU;
-		}
+	__disable_irq();
 
-		/* */
-		HAL_RCC_DeInit();
-		HAL_DeInit();
+	/* stop SysTick */
+	SysTick->CTRL = 0;
+	SysTick->LOAD = 0;
+	SysTick->VAL = 0;
 
-		SCB->VTOR = app_base;   // set vtor
-		__set_MSP(app_msp);
-		__DSB();
-		__ISB();
+	/* clear interrupt pending -- NVIC->ICER/ICPR are 8 words (256 IRQs,
+	 * the ARMv7-M architectural max), not 16; looping past 8 wrote into
+	 * the reserved padding between register banks. */
+	for (uint32_t i = 0; i < 8; i++) {
+		NVIC->ICER[i] = 0xFFFFFFFFU;
+		NVIC->ICPR[i] = 0xFFFFFFFFU;
+	}
 
-		__enable_irq();         //
-		((void (*)(void)) app_reset)();
+	/* */
+	HAL_RCC_DeInit();
+	HAL_DeInit();
+
+	SCB->VTOR = app_base;   // set vtor
+
+	jump_to_app(app_msp, app_reset);
+}
+
+/*
+ * Phase 2: open the command channels for the mode we settled on. Ethernet needs
+ * lwIP already initialised; CDC needs no server object at all, because
+ * usbd_cdc_if.c calls IAP_data_recv() straight from the USB receive callback.
+ */
+void IAP_servers_start(IAP_Method mode) {
+	if ((mode == IAP_ETHERNET) || (mode == IAP_ALL)) {
+		tcp_server_start();
+		openplc_udp_server_start();
 	}
 }
-//
-void IAP_init(void) {
-	bootloader_state_init();
-	server_init();
 
-	tcp_server_start();
-	openplc_udp_server_start();
-	//  udp_server_start(IAP_ETH_Trigger);
-	//  udp_server_stop();
-}
+#define IAP_IDLE_RX_STALE_MS 500U
+static volatile uint32_t s_idle_rx_last_tick;
 
 void IAP_task(void) {
 	if (data_is_ready > 0) {
 		data_is_ready = 0;
 		process_command();
+	} else if (current_status == IDLE && len_in_RX_buffer > 0
+			&& (HAL_GetTick() - s_idle_rx_last_tick) > IAP_IDLE_RX_STALE_MS) {
+		// A partial command with no terminator (missing '\n'/'\r', or a
+		// client that never finished writing) has gone quiet for too long --
+		// discard it instead of waiting forever, so it doesn't silently
+		// corrupt whatever the next real command attempt sends.
+		printf("Discarding stale partial command (%" PRIu32 " bytes, no terminator)\r\n", len_in_RX_buffer);
+		len_in_RX_buffer = 0;
 	}
 }
 
 void IAP_data_recv(IAP_Method iapM, uint8_t *Buf, uint32_t Len) {
 	current_method = iapM;
-	// 安全写入缓冲区
-	int dataLen = IAP_RX_BUFFER_SIZE >= Len ? Len : IAP_RX_BUFFER_SIZE;
+
 	if (current_status == IDLE) {
-		memcpy(RXBuffer, Buf, dataLen);
-		len_in_RX_buffer = dataLen;
-		data_is_ready = 1;
-		printf("IDLE ready \r\n");
+		uint32_t remaining = IAP_RX_BUFFER_SIZE - len_in_RX_buffer;
+		uint32_t copyLen = (Len > remaining) ? remaining : Len;
+
+		memcpy(RXBuffer + len_in_RX_buffer, Buf, copyLen);
+		len_in_RX_buffer += copyLen;
+		s_idle_rx_last_tick = HAL_GetTick();
+
+		// A text command is framed by a trailing '\n' or '\r' (see
+		// IAPTranfer_Tool's SendCommandReadResponse/SendCommandWaitForResponse
+		// and the TCP sendCommand* helpers, which send '\n'; either is
+		// accepted so a raw terminal whose Enter key only sends '\r' still
+		// works). Without this, a command longer than one USB CDC packet or
+		// one TCP segment -- e.g. "flash <size> <crc32> <128-hex-sig>
+		// <64-hex-hmac>", ~214 bytes -- can arrive split across several
+		// IAP_data_recv() calls; overwriting RXBuffer from offset 0 on every
+		// call (the old behavior) meant only the LAST fragment survived by
+		// the time process_command() ran, which is why "flash" landed as
+		// "Unknown command" the first time this was tested end-to-end on
+		// real hardware. Waiting for a terminator (or the buffer filling up,
+		// as a safety net) fixes that; IAP_task()'s stale-buffer check
+		// handles a terminator that never arrives at all.
+		if (memchr(RXBuffer, '\n', len_in_RX_buffer) != NULL
+				|| memchr(RXBuffer, '\r', len_in_RX_buffer) != NULL
+				|| len_in_RX_buffer >= IAP_RX_BUFFER_SIZE) {
+			data_is_ready = 1;
+			printf("IDLE ready \r\n");
+		}
 	} else {
 
 		//printf("--LenInRXBuffer %d : Len %d \r\n", LenInRXBuffer, Len);
@@ -420,18 +550,27 @@ void IAP_data_recv(IAP_Method iapM, uint8_t *Buf, uint32_t Len) {
 	fflush(stdout);
 }
 
+/*
+ * Both triggers go through the shared handoff module, which stores the request,
+ * verifies it actually landed, and only then resets. The previous versions wrote
+ * an RTC backup register directly and had to remember to open the backup domain
+ * first -- forgetting that is precisely what made the ethernet path fail in a
+ * way no error code or log line could show.
+ *
+ * boot_handoff_request() does not return on success. If it does return, the
+ * request was not stored, so we must NOT reset: resetting would boot the
+ * application again and look exactly like "the device ignored the command".
+ */
 void IAP_CDC_reboot_trigger(uint32_t bitrate) {
-	uint32_t regV = HAL_RTCEx_BKUPRead(&hrtc, MAGIC_BKP_REG);
-	if (bitrate == MAGIC_CDC_RATE && regV != MAGIC_CDC_FLAG) {
-		HAL_RTCEx_BKUPWrite(&hrtc, MAGIC_BKP_REG, MAGIC_CDC_FLAG);
-		HAL_NVIC_SystemReset();
+	if (bitrate == MAGIC_CDC_RATE) {
+		if (!boot_handoff_request(BOOT_REQ_CDC)) {
+			printf("Refusing to reset: CDC boot request could not be stored\r\n");
+		}
 	}
 }
 
-void IAP_ETH_reboot_trigger() {
-	uint32_t regV = HAL_RTCEx_BKUPRead(&hrtc, MAGIC_BKP_REG);
-	if (regV != MAGIC_ETH_FLAG) {
-		HAL_RTCEx_BKUPWrite(&hrtc, MAGIC_BKP_REG, MAGIC_ETH_FLAG);
-		HAL_NVIC_SystemReset();
+void IAP_ETH_reboot_trigger(void) {
+	if (!boot_handoff_request(BOOT_REQ_ETH)) {
+		printf("Refusing to reset: ethernet boot request could not be stored\r\n");
 	}
 }

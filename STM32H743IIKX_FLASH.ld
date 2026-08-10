@@ -47,7 +47,12 @@ MEMORY
   DTCMRAM (xrw)  : ORIGIN = 0x20000000, LENGTH = 128K
   RAM_D1 (xrw)   : ORIGIN = 0x24000000, LENGTH = 512K
   RAM_D2 (xrw)   : ORIGIN = 0x30000000, LENGTH = 288K
-  RAM_D3 (xrw)   : ORIGIN = 0x38000000, LENGTH = 64K
+  /* First 32 bytes of SRAM4 are carved out of the region on purpose: they hold
+     the boot-mode handoff record (see IAPServer/IAP_boot_handoff.h). Because the
+     address is outside every MEMORY region the linker cannot place anything
+     there, in this image or any future one -- a guarantee, not a convention.
+     Keep this identical to the Arduino core's variants/.../ldscript.ld. */
+  RAM_D3 (xrw)   : ORIGIN = 0x38000020, LENGTH = 64K - 32
   ITCMRAM (xrw)  : ORIGIN = 0x00000000, LENGTH = 64K
 }
 
@@ -166,17 +171,45 @@ SECTIONS
     . = ALIGN(8);
   } >RAM_D1
 
-  /* ETH_CODE: add placement of DMA descriptors and RX buffers */
+  /* ETH_CODE: add placement of DMA descriptors and RX buffers.
+   *
+   * Layout of RAM_D2 (288K). The order is deliberate:
+   *
+   *   0x30000000  lwIP heap       131048 + 24            = 131072 B -> 0x3001FFFF
+   *   0x30020000  Rx descriptors  ETH_RX_DESC_CNT(4)  * 24 =    96 B -> 0x3002005F
+   *   0x30020060  Tx descriptors  ETH_TX_DESC_CNT(4)  * 24 =    96 B -> 0x300200BF
+   *   0x30020100  Rx pbuf pool    ETH_RX_BUFFER_CNT(12) * sizeof(RxBuff_t)(32+1536)
+   *                                                      = 18816 B -> 0x30024A7F
+   *   0x30024A80  free: 141K, contiguous
+   *
+   * The heap comes first because an MPU region must be aligned to its own size.
+   * The 128K region that marks the heap non-cacheable can therefore only start
+   * at 0x30000000 or 0x30020000 -- put the descriptors first and the heap is
+   * forced up to 0x30020000, stranding the ~108K in between. Descriptors and
+   * pool are fixed-size, so nothing here moves unless MEM_SIZE changes.
+   *
+   * The heap occupies MEM_SIZE_ALIGNED + 2 * SIZEOF_STRUCT_MEM, not MEM_SIZE:
+   * lwIP adds two 12-byte sentinel headers (mem_size_t becomes u32_t once
+   * MEM_SIZE exceeds 64000). MEM_SIZE 131048 is picked so that 131048 + 24 is
+   * exactly 128K -- raising it without growing the MPU region would push the
+   * heap into the descriptors.
+   *
+   * These three addresses are the single source of truth for where the data
+   * really lives; the ETH_*Address values in the .ioc only feed CubeMX's MPU
+   * region generation. Keep both in step -- and note that an overlap here is
+   * silent, because the lwIP heap is a raw pointer, not a linker section, so ld
+   * cannot catch it.
+   */
   .lwip_sec (NOLOAD) :
   {
-    . = ABSOLUTE(0x30040000);
-    *(.RxDecripSection) 
-    
-    . = ABSOLUTE(0x30040060);
+    . = ABSOLUTE(0x30020000);
+    *(.RxDecripSection)
+
+    . = ABSOLUTE(0x30020060);
     *(.TxDecripSection)
-    
-    . = ABSOLUTE(0x30040200);
-    *(.Rx_PoolSection)  
+
+    . = ABSOLUTE(0x30020100);
+    *(.Rx_PoolSection)
   } >RAM_D2
 
 
