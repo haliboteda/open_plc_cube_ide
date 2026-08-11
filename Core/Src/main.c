@@ -33,7 +33,6 @@
 #include "lwip.h"
 
 #include "relay.h"
-#include "bootloader_state.h"
 #include "IAP_server.h"
 #include "pwm_test.h"
 #include "rs232_test.h"
@@ -122,6 +121,71 @@ void array_prinf(unsigned char *data, unsigned int len) {
 	printf("}\r\n");
 }
 
+/* ===================== TEMPORARY boot diagnostics ==========================
+ *
+ * Here to chase the "reset button does nothing until you click it several times
+ * quickly" fault. Delete this block, its call in main() and the BOOT: line once
+ * that is settled.
+ *
+ * boot_diag_first_breath() is the very first thing main() runs -- before the
+ * MPU, before the clock tree, before HAL_Init() -- so it touches raw registers
+ * only and can rely on nothing. Two jobs:
+ *
+ *   1. Latch RCC->RSR while it is still intact. boot_handoff_take() clears it
+ *      later, and the flags say what kind of reset this actually was: a real
+ *      pin reset from SW1, or a power-on / brown-out (which would mean the
+ *      button press is dropping the rail rather than pulling NRST).
+ *
+ *   2. Click RY1 at four points along the boot, so a boot that dies before
+ *      UART4 exists still says *where* it died. Count the slow clicks that come
+ *      before the one-second silence:
+ *
+ *        0  never reached main() -- so not this commit's doing: nothing in it
+ *           touches the startup file, the system file, _estack or where .data
+ *           and .bss live. Suspect the CPU never left reset.
+ *        1  died in MPU_Config() or HAL_Init()
+ *        2  died in SystemClock_Config()   <- Error_Handler() traps here, and
+ *                                             it is a silent __disable_irq()
+ *                                             plus while(1)
+ *        3  died in MX_GPIO_Init() / Enable_RX_RS232() / MX_UART4_Init()
+ *        4  boot is fine this far; the startup window and the log follow
+ *
+ *      Calibrate first: on a boot that works, all four have to be audible and
+ *      countable. If they are not, this probe proves nothing and the earlier
+ *      "no sound means the CPU never ran" reading was worthless.
+ */
+static uint32_t s_reset_flags;
+
+/* Before HAL_Init() there is no SysTick, so this one busy-waits. ~250 ms at the
+ * 64 MHz reset-default clock, which is also the only clock it ever runs at. */
+static void boot_diag_click_raw(void)
+{
+	volatile uint32_t spin;
+
+	/* RY1 is PI8. Enable GPIOI, read back so the enable has landed before the
+	 * first access, then drive PI8 as a plain push-pull output. */
+	RCC->AHB4ENR |= RCC_AHB4ENR_GPIOIEN;
+	(void)RCC->AHB4ENR;
+	GPIOI->MODER = (GPIOI->MODER & ~(3UL << (8U * 2U))) | (1UL << (8U * 2U));
+
+	GPIOI->BSRR = GPIO_PIN_8;
+	for (spin = 0U; spin < 1800000U; spin++) { }
+	GPIOI->BSRR = (uint32_t)GPIO_PIN_8 << 16U;
+	for (spin = 0U; spin < 1800000U; spin++) { }
+}
+
+/* Once HAL_Init() has run, SysTick gives the same 250 ms at either clock:
+ * HAL_RCC_ClockConfig() re-runs HAL_InitTick(), so this stays honest across
+ * SystemClock_Config() taking the core from 64 MHz to 400 MHz. */
+static void boot_diag_click(void)
+{
+	GPIOI->BSRR = GPIO_PIN_8;
+	HAL_Delay(250);
+	GPIOI->BSRR = (uint32_t)GPIO_PIN_8 << 16U;
+	HAL_Delay(250);
+}
+/* =================== end TEMPORARY boot diagnostics ======================== */
+
 /* What server_decide() settled on. Phase 2 and the superloop both key off it. */
 static IAP_Method s_boot_mode = IAP_NONE;
 
@@ -139,10 +203,10 @@ static IAP_Method s_boot_mode = IAP_NONE;
  * decision was already made and the board had jumped to the application before
  * a finger could get there.)
  *
- * BOOT0_WINDOW_STEP_MS x BOOT0_WINDOW_STEPS gives the total; three relays at
- * 500 ms each is what this board has always done, and the startup banner says
- * "hold down the BOOT0 button for 3-5 seconds while clicking", so keep it long
- * enough to match that instruction.
+ * All six relays, 500 ms each, is 3 s of window -- long enough to match the
+ * startup banner's "hold down the BOOT0 button for 3-5 seconds while clicking",
+ * and long enough that the operator hears several clicks before having to
+ * decide. BOOT0_WINDOW_STEP_MS x BOOT0_WINDOW_STEPS is the per-relay slice.
  */
 #define BOOT0_WINDOW_STEP_MS   10U
 #define BOOT0_WINDOW_STEPS     50U   /* 50 x 10 ms = 500 ms per relay */
@@ -151,7 +215,7 @@ static uint8_t boot_window_relay(void)
 {
 	uint8_t pressed = 0U;
 
-	for (RELAY_Name relay = RELAY_1; relay < RELAY_COUNT / 2; ++relay) {
+	for (RELAY_Name relay = RELAY_1; relay < RELAY_COUNT; ++relay) {
 		Relay_On(relay);
 		for (uint32_t step = 0U; step < BOOT0_WINDOW_STEPS; step++) {
 			HAL_Delay(BOOT0_WINDOW_STEP_MS);
@@ -164,24 +228,6 @@ static uint8_t boot_window_relay(void)
 	return pressed;
 }
 
-/*
- * Post-decision status click, so the mode is audible without a cable:
- *   1 click  - staying in the bootloader, waiting for an upload
- *   2 clicks - no valid application to boot
- * Booting the application says nothing extra: the window above was the sound.
- */
-static void boot_beep(uint8_t times)
-{
-	for (uint8_t i = 0; i < times; i++) {
-		Relay_On(RELAY_1);
-		HAL_Delay(100);
-		Relay_Off(RELAY_1);
-		if ((uint8_t)(i + 1U) < times) {
-			HAL_Delay(120);
-		}
-	}
-}
-
 /* USER CODE END 0 */
 
 /**
@@ -192,6 +238,9 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+  /* TEMPORARY -- mark 1. Latch RSR before anything can clear it. */
+  s_reset_flags = RCC->RSR;
+  boot_diag_click_raw();
   /* USER CODE END 1 */
 
   /* MPU Configuration--------------------------------------------------------*/
@@ -203,10 +252,29 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
+  boot_diag_click();   /* TEMPORARY -- mark 2 */
   /* USER CODE END Init */
 
+  /* Configure the system clock */
+  SystemClock_Config();
+
   /* USER CODE BEGIN SysInit */
+  /* This call is not optional, however little of the clock tree Phase 1 seems
+   * to need. Without it the whole bootloader runs on the reset defaults --
+   * VOS3, HSI at 64 MHz, FLASH_ACR.LATENCY = 0 -- and that combination is
+   * outside the reference manual's wait-state table, which allows 0 WS at VOS3
+   * only up to 45 MHz. A stock project passes through the same state, but only
+   * for the few hundred instructions before this line and with the I-cache on;
+   * here every instruction fetch for the entire boot would read flash out of
+   * spec, which showed up as the board locking up silently on roughly one reset
+   * in a few. Two more things depend on it: MX_FMC_Init()'s SDRAM refresh count
+   * is computed for a 200 MHz HCLK, and USB needs HSI48.
+   *
+   * It costs the application nothing: server_jump_to_app() calls
+   * HAL_RCC_DeInit() before jumping, so the clock tree is back at its reset
+   * defaults by the time the application's own SystemClock_Config() runs.
+   */
+
   /* ------------------------- Phase 1: decide ------------------------------
    *
    * Only what the decision itself needs comes up here. USB, lwIP, RTC, CRC and
@@ -216,21 +284,41 @@ int main(void)
    * maintained by hand and rots silently. It also means enabling FMC for the
    * SDRAM staging area can never leak into a user's sketch.
    */
+  boot_diag_click();   /* TEMPORARY -- mark 3 */
+
   MX_GPIO_Init();      /* BOOT0 input, relay outputs, RS232_Enable */
   Enable_RX_RS232();   /* the MAX3221 stays in shutdown until this pin is high, */
   MX_UART4_Init();     /* so without it the printf below reaches nothing at all */
 
+  boot_diag_click();   /* TEMPORARY -- mark 4 */
+  HAL_Delay(1000);     /* TEMPORARY -- the silence that ends the mark sequence */
+
+  /* TEMPORARY -- reset cause, from the RSR latched before anything cleared it.
+   * SYSCLK is on the same line to confirm SystemClock_Config() actually ran. */
+  printf("\r\n** BOOT: RSR=%08lX%s%s%s%s%s%s%s SYSCLK=%lu\r\n",
+         (unsigned long) s_reset_flags,
+         (s_reset_flags & RCC_RSR_PORRSTF)   ? " POR"  : "",
+         (s_reset_flags & RCC_RSR_BORRSTF)   ? " BOR"  : "",
+         (s_reset_flags & RCC_RSR_PINRSTF)   ? " PIN"  : "",
+         (s_reset_flags & RCC_RSR_SFTRSTF)   ? " SFT"  : "",
+         (s_reset_flags & RCC_RSR_IWDG1RSTF) ? " IWDG" : "",
+         (s_reset_flags & RCC_RSR_WWDG1RSTF) ? " WWDG" : "",
+         (s_reset_flags & RCC_RSR_LPWRRSTF)  ? " LPWR" : "",
+         (unsigned long) HAL_RCC_GetSysClockFreq());
+
   printf("** Checking Starting Mod ...\r\n"
 		  "** (IF You want OpenPLC to stay in upload mode, please hold down the BOOT0 button for 3-5 seconds while clicking)\r\n");
 
-  /* 1.5 s of relay clicking = the operator's window to press BOOT0. Polled
-   * throughout, so a press anywhere inside it counts. */
+  /* 3 s of relay clicking = the operator's window to press BOOT0. Polled
+   * throughout, so a press anywhere inside it counts -- and a press ends the
+   * decision there: server_decide() stays in the bootloader without consulting
+   * the handoff request or the app signature. No press and the usual checks
+   * decide, which is normally a jump to the application. */
   s_boot_mode = server_decide(boot_window_relay());
 
   if (s_boot_mode == IAP_NONE) {
     server_jump_to_app();   /* hands the hardware back; never returns */
   }
-  boot_beep(bootloader_state_app_is_valid() ? 1 : 2);
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */

@@ -351,7 +351,8 @@ IAP_Method server_decide(uint8_t boot0Pressed) {
 	/* boot0Pressed is latched by the caller across the whole startup relay
 	 * window, not sampled here: reading the pin once at this point would need
 	 * the operator to already be holding the button a few milliseconds after
-	 * reset, which is not a reaction time a human has. */
+	 * reset, which is not a reaction time a human has. A press decides the
+	 * outcome on its own -- see the branch below. */
 	printf(boot0Pressed ? "BOOT0 button is pressed!\r\n"
 	                    : "BOOT0 button is not pressed.\r\n");
 
@@ -370,30 +371,39 @@ IAP_Method server_decide(uint8_t boot0Pressed) {
 	}
 	bootloader_state_set_app_valid(app_signature_valid);
 
-	switch (req) {
-	case BOOT_REQ_CDC:
-		mode = IAP_CDC;
-		break;
-	case BOOT_REQ_ETH:
-		mode = IAP_ETHERNET;
-		break;
-	case BOOT_REQ_ALL:
-		/* Somebody asked for an upload but the record did not say over which
-		 * channel. Open both rather than guess -- see IAP_ALL in IAP_config.h. */
+	if (boot0Pressed > 0U) {
+		/* The physical escape hatch wins outright. Whoever held the button
+		 * through the relay window wants the bootloader, so nothing else gets
+		 * a vote -- not the handoff request, not the signature. We cannot know
+		 * which channel they will use, so serve all of them.
+		 *
+		 * The two reads above still had to happen: boot_handoff_take() is what
+		 * consumes the request record (leaving it would pin the *next* boot
+		 * here), and the signature result feeds the startup beep and the UDP
+		 * server name, neither of which is part of this decision. */
 		mode = IAP_ALL;
-		break;
-	default:
-		if (!app_signature_valid) {
-			printf("** App signature invalid or absent - staying in bootloader **\r\n");
-			bootloader_state_log_event(IAP_EVT_BOOT_VERIFY_FAIL, (uint32_t)IAP_NONE, 0U,
-					HAL_GetTick(), iap_auth_get_counter());
+	} else {
+		switch (req) {
+		case BOOT_REQ_CDC:
+			mode = IAP_CDC;
+			break;
+		case BOOT_REQ_ETH:
+			mode = IAP_ETHERNET;
+			break;
+		case BOOT_REQ_ALL:
+			/* Somebody asked for an upload but the record did not say over which
+			 * channel. Open both rather than guess -- see IAP_ALL in IAP_config.h. */
 			mode = IAP_ALL;
-		} else if (boot0Pressed > 0U) {
-			/* The physical escape hatch. We cannot know which channel the
-			 * operator will use, so serve all of them. */
-			mode = IAP_ALL;
+			break;
+		default:
+			if (!app_signature_valid) {
+				printf("** App signature invalid or absent - staying in bootloader **\r\n");
+				bootloader_state_log_event(IAP_EVT_BOOT_VERIFY_FAIL, (uint32_t)IAP_NONE, 0U,
+						HAL_GetTick(), iap_auth_get_counter());
+				mode = IAP_ALL;
+			}
+			break;
 		}
-		break;
 	}
 
 	/* current_method tracks the channel actually in use and is (re)set by

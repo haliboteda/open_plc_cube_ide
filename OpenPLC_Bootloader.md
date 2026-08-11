@@ -1,4 +1,4 @@
-# OpenPLC Bootloader — STM32H743 项目结构与功能概述
+# OpenPLC Bootloader - STM32H743 项目结构与功能概述
 
 ## 1. 项目定位
 
