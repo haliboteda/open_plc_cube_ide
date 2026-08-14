@@ -47,6 +47,10 @@ bool iap_auth_verify_and_consume(const uint8_t *msg, uint32_t msg_len, const uin
  * log entries -- it is not secret and is not part of any security check. */
 uint32_t iap_auth_get_counter(void);
 
+/* Reports at boot whether the VBAT-backed domain survived the last power-off.
+ * Call once, after MX_RTC_Init(). */
+void iap_auth_report_backup_domain(void);
+
 #ifdef __cplusplus
 }
 #endif

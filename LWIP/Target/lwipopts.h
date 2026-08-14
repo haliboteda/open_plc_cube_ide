@@ -110,6 +110,11 @@
 /*-----------------------------------------------------------------------------*/
 /* USER CODE BEGIN 1 */
 
+/* Report the address as soon as DHCP hands one out. CubeMX does not expose this
+ * option, so the #undef keeps a future regeneration from clashing with it. */
+#undef LWIP_NETIF_STATUS_CALLBACK
+#define LWIP_NETIF_STATUS_CALLBACK 1
+
 /* USER CODE END 1 */
 
 #ifdef __cplusplus

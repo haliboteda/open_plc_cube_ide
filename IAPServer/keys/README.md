@@ -1,57 +1,78 @@
-# Firmware signing keys
+# IAP keys
 
-This project is open source, so the code that verifies a firmware signature
-is public -- that is fine, and expected. What must never be public is the
-**private** key that produces valid signatures. This directory ships a
-clearly-marked placeholder keypair so the project builds out of the box;
-you must replace it before shipping anything real.
+Everything the IAP path treats as a secret lives in this directory. The code
+that verifies a signature is public and that is fine; the private key that
+produces valid signatures is not.
 
 ## What's here
 
-- `fw_signing_key.TEST_ONLY.pem` / `fw_signing_key.TEST_ONLY.pub.pem` --
-  a placeholder ECDSA P-256 keypair. The private key is **public** (it's
-  committed to this repo), so anyone can produce a signature that the
-  placeholder public key (`IAPServer/fw_pubkey.c`) will accept. Fine for
-  bring-up and testing on your bench; never acceptable for a device that
-  leaves your desk.
-- `generate_keys.sh` -- generates a fresh keypair and prints the C array to
-  paste into `IAPServer/fw_pubkey.c`.
-- `sign_firmware.sh` -- signs a compiled `.bin` for release, producing the
-  `(sha256, signature, size)` triple the IAP transfer tool sends to a device
-  alongside the image.
+| File | Holds | Committed? |
+| --- | --- | --- |
+| `iap_fixed_password.txt` | The shared HMAC password | yes - placeholder |
+| `fw_pubkey.inc` | The firmware signing **public** key | yes - public by design |
+| `fw_signing_key.TEST_ONLY.pem` | Placeholder signing **private** key | yes - see below |
+| `fw_signing_key.pem` | Your real signing private key | **no** (gitignored) |
+| `rotate_keys.sh` | Replaces both secrets | yes |
+| `backup/` | Snapshots taken before each rotation | **no** (gitignored) |
 
-## Before building anything for real deployment
+`iap_fixed_password.txt` and `fw_pubkey.inc` are `#include`d directly by
+`iap_keyderive.c` and `fw_pubkey.c`. No generator step, no generated headers -
+editing a file here and rebuilding is the whole mechanism. Keep the quotes in
+the password file: it is a C string literal.
 
-1. Run `./generate_keys.sh my_release_key` (pick your own name). This writes
-   `my_release_key.pem` (private) and `my_release_key.pub.pem`, and prints a
-   C byte array.
-2. Paste that array into `IAPServer/fw_pubkey.c`, replacing the placeholder.
-   Rebuild the bootloader with the new public key baked in.
-3. Move `my_release_key.pem` **off this machine and out of this repo** --
-   password manager, offline machine, HSM, whatever your release process
-   can keep away from git and away from the network. Losing it means you
-   can never sign an update again; leaking it means anyone can.
-4. Delete or ignore the placeholder `fw_signing_key.TEST_ONLY.*` files in
-   your own deployment if you want (they don't need to exist for this to
-   work -- they're only here so a fresh clone builds and boots without
-   extra setup).
-5. When you cut a release, run
-   `./sign_firmware.sh app.bin my_release_key.pem` and feed the resulting
-   `.sha256`/`.sig`/`.size` into your release/upload process.
+## Changing the secrets
 
-## Why this key is separate from the per-device HMAC key
+```sh
+./rotate_keys.sh              # new random password + new keypair
+./rotate_keys.sh --dry-run    # show what would change, write nothing
+```
 
-The IAP protocol has two different keys doing two different jobs (see the
-project's security design notes if you have them):
+It finds the Arduino core and IAPTool by itself, backs up every file it is
+about to replace, and writes the new password and private key to all the places
+that need a copy. Useful options:
 
-- **This ECDSA keypair** decides whether the bootloader trusts a firmware
-  image enough to execute it. One keypair for the whole product/release
-  line; the private key never touches a device.
-- **Per-device HMAC secrets** (provisioned separately, at manufacturing
-  time -- not part of this repo) gate who is allowed to *start* an update
-  session at all. Each device gets its own secret.
+| Option | Effect |
+| --- | --- |
+| `--password=<text>` | Use your own password instead of a generated one |
+| `--password-only` | Leave the signing key alone |
+| `--key-only` | Leave the password alone |
+| `--core=<dir>` / `--tools=<dir>` | Point at an Arduino install it did not find |
+| `--list-backups` / `--restore=<stamp>` | Roll a rotation back |
 
-Keeping these separate matters: if a device is physically compromised and
-its HMAC secret extracted, the attacker still cannot forge a firmware
-signature, because the ECDSA private key was never on the device in the
-first place.
+It needs only a POSIX shell and the `IAPTool` binary that already ships in the
+Arduino package. On Windows the package's `busybox.exe sh` runs it - no
+openssl, no bash, no Go toolchain.
+
+## After rotating: three steps that are not optional
+
+1. Rebuild the bootloader. The password and the public key are compiled in.
+2. **Flash it over ST-Link or DFU.** IAP writes the application region only, so
+   it can never update the bootloader that holds these secrets.
+3. Rebuild and upload your sketch.
+
+Until step 2 is done on a given board, that board still holds the old password
+and will not answer IAPTool. This is why `rotate_keys.sh` asks for confirmation.
+
+## The two secrets do different jobs
+
+- **`fw_signing_key.pem` (ECDSA P-256)** decides whether the bootloader will
+  *execute* an image. One keypair for the whole product line. The private half
+  is never on a device - only signatures are.
+- **`iap_fixed_password.txt` (HMAC-SHA256)** decides who may *start* an update
+  at all. Mixed with each chip's 96-bit UID to derive a per-device key.
+
+Keeping them separate matters: a password lifted out of one chip lets an
+attacker open update sessions, but still not produce firmware that boots.
+
+## Before shipping
+
+The placeholder signing key in this repo is public - anyone who cloned the
+project can sign an image the placeholder `fw_pubkey.inc` accepts, and the
+password still reads `IAP-FIXED-PASSWORD-TEST-ONLY-CHANGE-ME`. Run
+`./rotate_keys.sh`, then move `fw_signing_key.pem` off this machine: losing it
+means you can never sign an update again, leaking it means anyone can.
+
+Note the deliberate trade-off already baked into this design: the signing key
+ships inside the Arduino package, because users compile their own PLC programs.
+That makes it effectively public. The signature guards against corrupted images
+and remote injection - **not** against the person holding the board.

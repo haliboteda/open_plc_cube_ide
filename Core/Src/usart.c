@@ -143,13 +143,12 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 
 /* USER CODE BEGIN 1 */
 
+/* The MAX3221 stays in shutdown until RS232_Enable (PB10) is driven high. */
 void Enable_RX_RS232() {
-    // Hier setzen Sie den Pin RS232_ENABLE_Pin auf HIGH (GPIO_PIN_SET)
     HAL_GPIO_WritePin(RS232_Enable_GPIO_Port, RS232_Enable_Pin, GPIO_PIN_SET);
 }
 
 void Disable_RX_RS232() {
-    // Hier setzen Sie den Pin RS232_ENABLE_Pin auf LOW (GPIO_PIN_RESET)
     HAL_GPIO_WritePin(RS232_Enable_GPIO_Port, RS232_Enable_Pin, GPIO_PIN_RESET);
 }
 

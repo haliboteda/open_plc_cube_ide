@@ -32,7 +32,14 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+/* The fault handlers have to be naked, which cannot be expressed inside the
+ * bodies CubeMX generates. Rename the generated ones out of the way; the real
+ * ones are defined in USER CODE 1 at the end of this file, so regenerating from
+ * the .ioc no longer removes them. */
+#define HardFault_Handler   HardFault_Handler_generated_unused
+#define MemManage_Handler   MemManage_Handler_generated_unused
+#define BusFault_Handler    BusFault_Handler_generated_unused
+#define UsageFault_Handler  UsageFault_Handler_generated_unused
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -80,72 +87,64 @@ void NMI_Handler(void)
   /* USER CODE END NonMaskableInt_IRQn 1 */
 }
 
-/*
- * The four fault handlers below are naked on purpose, and that replaces the
- * bodies CubeMX generates. Regenerating from the .ioc puts the plain versions
- * back and the register dump silently goes wrong again -- so if the dump ever
- * starts printing a stack address where xPSR should be, look here first.
- *
- * Why naked: the exception frame sits at the stack pointer *as it was on
- * exception entry*. A normal C function has already run its prologue by the
- * time its first statement executes, so __get_MSP() read from inside the
- * handler points below the frame by however many bytes that prologue used.
- * That is what the previous version did, which is why its R0/R1 landed near
- * the truth while LR, PC and xPSR were garbage.
- *
- * EXC_RETURN (in LR on entry) bit 2 says which stack was in use: clear = MSP,
- * set = PSP. Both are passed on so the report can say which.
- */
-__attribute__((naked)) void HardFault_Handler(void)
+/**
+  * @brief This function handles Hard fault interrupt.
+  */
+void HardFault_Handler(void)
 {
-  __asm volatile (
-    "tst   lr, #4        \n"
-    "ite   eq            \n"
-    "mrseq r0, msp       \n"
-    "mrsne r0, psp       \n"
-    "mov   r1, lr        \n"
-    "movs  r2, #1        \n"
-    "b     IT_Fault_Report\n"
-  );
+  /* USER CODE BEGIN HardFault_IRQn 0 */
+
+  /* USER CODE END HardFault_IRQn 0 */
+  while (1)
+  {
+    /* USER CODE BEGIN W1_HardFault_IRQn 0 */
+    /* USER CODE END W1_HardFault_IRQn 0 */
+  }
 }
 
-__attribute__((naked)) void MemManage_Handler(void)
+/**
+  * @brief This function handles Memory management fault.
+  */
+void MemManage_Handler(void)
 {
-  __asm volatile (
-    "tst   lr, #4        \n"
-    "ite   eq            \n"
-    "mrseq r0, msp       \n"
-    "mrsne r0, psp       \n"
-    "mov   r1, lr        \n"
-    "movs  r2, #2        \n"
-    "b     IT_Fault_Report\n"
-  );
+  /* USER CODE BEGIN MemoryManagement_IRQn 0 */
+
+  /* USER CODE END MemoryManagement_IRQn 0 */
+  while (1)
+  {
+    /* USER CODE BEGIN W1_MemoryManagement_IRQn 0 */
+    /* USER CODE END W1_MemoryManagement_IRQn 0 */
+  }
 }
 
-__attribute__((naked)) void BusFault_Handler(void)
+/**
+  * @brief This function handles Pre-fetch fault, memory access fault.
+  */
+void BusFault_Handler(void)
 {
-  __asm volatile (
-    "tst   lr, #4        \n"
-    "ite   eq            \n"
-    "mrseq r0, msp       \n"
-    "mrsne r0, psp       \n"
-    "mov   r1, lr        \n"
-    "movs  r2, #3        \n"
-    "b     IT_Fault_Report\n"
-  );
+  /* USER CODE BEGIN BusFault_IRQn 0 */
+
+  /* USER CODE END BusFault_IRQn 0 */
+  while (1)
+  {
+    /* USER CODE BEGIN W1_BusFault_IRQn 0 */
+    /* USER CODE END W1_BusFault_IRQn 0 */
+  }
 }
 
-__attribute__((naked)) void UsageFault_Handler(void)
+/**
+  * @brief This function handles Undefined instruction or illegal state.
+  */
+void UsageFault_Handler(void)
 {
-  __asm volatile (
-    "tst   lr, #4        \n"
-    "ite   eq            \n"
-    "mrseq r0, msp       \n"
-    "mrsne r0, psp       \n"
-    "mov   r1, lr        \n"
-    "movs  r2, #4        \n"
-    "b     IT_Fault_Report\n"
-  );
+  /* USER CODE BEGIN UsageFault_IRQn 0 */
+
+  /* USER CODE END UsageFault_IRQn 0 */
+  while (1)
+  {
+    /* USER CODE BEGIN W1_UsageFault_IRQn 0 */
+    /* USER CODE END W1_UsageFault_IRQn 0 */
+  }
 }
 
 /**
@@ -237,6 +236,69 @@ void OTG_FS_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+#undef HardFault_Handler
+#undef MemManage_Handler
+#undef BusFault_Handler
+#undef UsageFault_Handler
+
+/*
+ * The real fault handlers. Naked so that no compiler prologue runs before the
+ * stack pointer is read: the exception frame sits where SP was on exception
+ * entry. EXC_RETURN bit 2 says which stack the core used, and is passed on so
+ * the report can name it.
+ */
+__attribute__((naked)) void HardFault_Handler(void)
+{
+  __asm volatile (
+    "tst   lr, #4        \n"
+    "ite   eq            \n"
+    "mrseq r0, msp       \n"
+    "mrsne r0, psp       \n"
+    "mov   r1, lr        \n"
+    "movs  r2, #1        \n"
+    "b     IT_Fault_Report\n"
+  );
+}
+
+__attribute__((naked)) void MemManage_Handler(void)
+{
+  __asm volatile (
+    "tst   lr, #4        \n"
+    "ite   eq            \n"
+    "mrseq r0, msp       \n"
+    "mrsne r0, psp       \n"
+    "mov   r1, lr        \n"
+    "movs  r2, #2        \n"
+    "b     IT_Fault_Report\n"
+  );
+}
+
+__attribute__((naked)) void BusFault_Handler(void)
+{
+  __asm volatile (
+    "tst   lr, #4        \n"
+    "ite   eq            \n"
+    "mrseq r0, msp       \n"
+    "mrsne r0, psp       \n"
+    "mov   r1, lr        \n"
+    "movs  r2, #3        \n"
+    "b     IT_Fault_Report\n"
+  );
+}
+
+__attribute__((naked)) void UsageFault_Handler(void)
+{
+  __asm volatile (
+    "tst   lr, #4        \n"
+    "ite   eq            \n"
+    "mrseq r0, msp       \n"
+    "mrsne r0, psp       \n"
+    "mov   r1, lr        \n"
+    "movs  r2, #4        \n"
+    "b     IT_Fault_Report\n"
+  );
+}
+
 /*
  * Called from the naked handlers above with the exception frame still intact.
  * `frame` is the stack pointer at exception entry, `exc_return` is the LR value
@@ -317,6 +379,10 @@ void IT_Fault_Report(uint32_t *frame, uint32_t exc_return, uint32_t which)
     }
 
     fflush(stdout);
+
+    /* Deliberately hangs. Never reset to recover here: a fault that resets
+     * itself away leaves no evidence and turns a reproducible bug into an
+     * intermittent one. The board stays put with the report on the wire. */
     while (1) { }
 }
 /* USER CODE END 1 */

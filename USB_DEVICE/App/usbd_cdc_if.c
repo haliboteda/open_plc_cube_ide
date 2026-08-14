@@ -96,7 +96,11 @@ uint8_t UserRxBufferFS[APP_RX_DATA_SIZE];
 uint8_t UserTxBufferFS[APP_TX_DATA_SIZE];
 
 /* USER CODE BEGIN PRIVATE_VARIABLES */
-
+/* Echoed back to the host on GET_LINE_CODING. No UART sits behind the CDC
+ * endpoint, so the values only have to stay consistent -- but they must be
+ * filled in: the stack returns this handler's buffer as-is, and an unanswered
+ * GET_LINE_CODING leaves the host reading uninitialised memory. */
+static USBD_CDC_LineCodingTypeDef LineCoding = { 115200U, 0U, 0U, 8U };
 /* USER CODE END PRIVATE_VARIABLES */
 
 /**
@@ -182,59 +186,31 @@ static int8_t CDC_DeInit_FS(void)
 static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 {
   /* USER CODE BEGIN 5 */
-	//USBD_CDC_LineCodingTypeDef *pline_coding = (USBD_CDC_LineCodingTypeDef*) pbuf;
+	/* Line coding layout: bitrate u32 | stop bits u8 | parity u8 | data bits u8.
+	 * Only these two requests are answered; every other class request is
+	 * accepted and ignored. The 1200-baud knock belongs to the application
+	 * image, not here. */
 	switch (cmd) {
-	case CDC_SEND_ENCAPSULATED_COMMAND:
-
-		break;
-
-	case CDC_GET_ENCAPSULATED_RESPONSE:
-
-		break;
-
-	case CDC_SET_COMM_FEATURE:
-
-		break;
-
-	case CDC_GET_COMM_FEATURE:
-
-		break;
-
-	case CDC_CLEAR_COMM_FEATURE:
-
-		break;
-
-		/*******************************************************************************/
-		/* Line Coding Structure                                                       */
-		/*-----------------------------------------------------------------------------*/
-		/* Offset | Field       | Size | Value  | Description                          */
-		/* 0      | dwDTERate   |   4  | Number |Data terminal rate, in bits per second*/
-		/* 4      | bCharFormat |   1  | Number | Stop bits                            */
-		/*                                        0 - 1 Stop bit                       */
-		/*                                        1 - 1.5 Stop bits                    */
-		/*                                        2 - 2 Stop bits                      */
-		/* 5      | bParityType |  1   | Number | Parity                               */
-		/*                                        0 - None                             */
-		/*                                        1 - Odd                              */
-		/*                                        2 - Even                             */
-		/*                                        3 - Mark                             */
-		/*                                        4 - Space                            */
-		/* 6      | bDataBits  |   1   | Number Data bits (5, 6, 7, 8 or 16).          */
-		/*******************************************************************************/
 	case CDC_SET_LINE_CODING:
-//		IAP_CDC_Trigger(pline_coding->bitrate);
+		if (length >= 7U) {
+			LineCoding.bitrate    = (uint32_t) pbuf[0]
+			                      | ((uint32_t) pbuf[1] << 8)
+			                      | ((uint32_t) pbuf[2] << 16)
+			                      | ((uint32_t) pbuf[3] << 24);
+			LineCoding.format     = pbuf[4];
+			LineCoding.paritytype = pbuf[5];
+			LineCoding.datatype   = pbuf[6];
+		}
 		break;
 
 	case CDC_GET_LINE_CODING:
-
-		break;
-
-	case CDC_SET_CONTROL_LINE_STATE:
-
-		break;
-
-	case CDC_SEND_BREAK:
-
+		pbuf[0] = (uint8_t) (LineCoding.bitrate);
+		pbuf[1] = (uint8_t) (LineCoding.bitrate >> 8);
+		pbuf[2] = (uint8_t) (LineCoding.bitrate >> 16);
+		pbuf[3] = (uint8_t) (LineCoding.bitrate >> 24);
+		pbuf[4] = LineCoding.format;
+		pbuf[5] = LineCoding.paritytype;
+		pbuf[6] = LineCoding.datatype;
 		break;
 
 	default:

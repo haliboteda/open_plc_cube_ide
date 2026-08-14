@@ -53,12 +53,12 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-void array_prinf(unsigned char *data, unsigned int len);
+
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define Boot0_Pin GPIO_PIN_9
-#define Boot0_GPIO_Port GPIOG
+#define BOOT0_Pin GPIO_PIN_9
+#define BOOT0_GPIO_Port GPIOG
 #define RY1_Pin GPIO_PIN_8
 #define RY1_GPIO_Port GPIOI
 #define RY6_Pin GPIO_PIN_3

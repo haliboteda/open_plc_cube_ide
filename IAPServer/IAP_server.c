@@ -12,6 +12,7 @@
 #include "md5.h"
 #include "sha256.h"
 #include "fw_verify.h"
+#include "fw_pubkey.h"
 #include "bootloader_state.h"
 #include "iap_auth.h"
 #include "iap_keyderive.h"
@@ -106,17 +107,32 @@ static bool hex_decode(const char *hex, uint8_t *out, uint32_t out_len) {
 	return true;
 }
 
+void iap_identity_string(char *out, uint32_t out_len)
+{
+	char uid_hex[IAP_MACHINE_ID_HEX_LEN + 1U] = {0};
+	/* Split on "_" by the PC tool (parseBoardInfoFromReply), so no field may
+	 * contain one. */
+	const char *role = bootloader_state_app_is_valid() ? UDP_SERVER_NAME : UDP_SERVER_NAME "-INVALID";
+
+	iap_keyderive_get_machine_id_hex(uid_hex);
+	(void)snprintf(out, out_len, "%s_%s_%s_%s",
+			OPENPLC_DEVICE_NAME, uid_hex, role, OPENPLC_FW_VERSION);
+}
+
 void process_command() {
 	if (current_status == IDLE) {
 		// check the command type
-		if (strncmp((char *)RXBuffer, "ping", 4) == 0) {
+		if (strncmp((char *)RXBuffer, "openplc_server_where_r_y", 24) == 0) {
+			// Same string the UDP discovery reply carries, so a PC tool identifies
+			// a board the same way on both channels: name_uid_role_version, with
+			// role telling BOOTLD from BOOTLD-INVALID.
+			char identity[96];
+			iap_identity_string(identity, sizeof(identity));
+			send_response(identity);
+		} else if (strncmp((char *)RXBuffer, "ping", 4) == 0) {
 			send_response("OK");
 		} else if (strncmp((char *)RXBuffer, "info", 4) == 0) {
 			send_response(BOOT_LOADER_VERSION);
-		} else if (strncmp((char *)RXBuffer, "run", 3) == 0) {
-			// jump to App
-			reset_buf();
-			HAL_NVIC_SystemReset();
 		} else if (strncmp((char *)RXBuffer, "authchallenge", 13) == 0) {
 			char nonce_hex[IAP_AUTH_NONCE_SIZE * 2U + 1U];
 			iap_auth_issue_challenge(nonce_hex);
@@ -138,9 +154,19 @@ void process_command() {
 			uint32_t v = bootloader_state_get_metadata(&meta) ? meta.fw_version : 0U;
 			snprintf(verbuf, sizeof(verbuf), "%" PRIu32, v);
 			send_response(verbuf);
+		} else if (strncmp((char *)RXBuffer, "getpubkey", 9) == 0) {
+			// Lets the PC tool confirm its signing key matches the key this
+			// bootloader verifies against, before it spends time sending an
+			// image that would be rejected at the end.
+			char pubhex[sizeof(fw_public_key) * 2U + 1U];
+			uint32_t i;
+			for (i = 0; i < (uint32_t)sizeof(fw_public_key); i++) {
+				(void)sprintf(&pubhex[i * 2U], "%02x", fw_public_key[i]);
+			}
+			send_response(pubhex);
 		} else if (strncmp((char *)RXBuffer, "flash", 5) == 0) {
 			// decode flash command: "flash <size> <crc32hex> <signature_hex> <hmac_hex> [version]"
-			// - signature_hex: 64-byte ECDSA r||s from keys/sign_firmware.sh (128 hex chars)
+			// - signature_hex: 64-byte ECDSA r||s from IAPTool sign / IAPTool cdc (128 hex chars)
 			// - hmac_hex: HMAC-SHA256(auth_key, nonce || "flash <size> <crc32hex> <signature_hex>[ <version>]")
 			//   for the nonce most recently returned by "authchallenge" (32 hex chars)
 			// - version: optional decimal firmware version; omitted by older PC
@@ -188,10 +214,11 @@ void process_command() {
 					printf("flash command missing/invalid signature - refusing to erase\r\n");
 					send_response("ERR");
 				} else if (!authOk) {
-					printf("flash command failed HMAC auth - refusing to erase\r\n");
 					send_response("ERR");
-					bootloader_state_log_event(IAP_EVT_AUTH_FAIL, (uint32_t)current_method,
-							tcp_server_get_client_ip(), HAL_GetTick(), iap_auth_get_counter());
+					/* RAM only: this is the one rejection path an unauthenticated
+					 * caller can reach, so it must never touch Flash. */
+					bootloader_state_note_auth_fail((uint32_t)current_method,
+							tcp_server_get_client_ip(), HAL_GetTick());
 				} else {
 					printf("File size %" PRIu32 ", checksum %" PRIx32 ". Wait for erasing flash! \r\n",
 	                        expected_size, expected_checksum);
@@ -281,18 +308,12 @@ void process_command() {
 }
 
 /*
- * Raw, silent read of the BOOT0 / KNX-programming button (SW2 on PG9).
- *
- * Silent on purpose: the caller polls this in a loop for the whole length of the
- * startup relay window, so printing here would flood the log. server_decide()
- * reports the latched outcome once.
- *
- * Reads HIGH when pressed: SW2 ties the pin to 3V3, and the pin is configured
- * GPIO_Input + PULLDOWN, so it sits low when released. The macro name follows
- * the .ioc's User Label for PG9 and changes if that label is retyped.
+ * Raw, silent read of the BOOT0 / KNX-programming button (SW2 on PG9). Silent
+ * because the caller polls it throughout the startup relay window. Reads the
+ * pin as MX_GPIO_Init() left it; HIGH means pressed.
  */
 uint8_t boot0_is_pressed(void) {
-	return (HAL_GPIO_ReadPin(Boot0_GPIO_Port, Boot0_Pin) == GPIO_PIN_SET) ? 1U : 0U;
+	return (HAL_GPIO_ReadPin(BOOT0_GPIO_Port, BOOT0_Pin) == GPIO_PIN_SET) ? 1U : 0U;
 }
 // __set_MSP() from inside an ordinary C function is unsafe if anything else
 // in that function runs afterward: the compiler doesn't know the hardware
@@ -353,6 +374,8 @@ IAP_Method server_decide(uint8_t boot0Pressed) {
 	 * the operator to already be holding the button a few milliseconds after
 	 * reset, which is not a reaction time a human has. A press decides the
 	 * outcome on its own -- see the branch below. */
+	const char *reason = "";
+
 	printf(boot0Pressed ? "BOOT0 button is pressed!\r\n"
 	                    : "BOOT0 button is not pressed.\r\n");
 
@@ -382,25 +405,37 @@ IAP_Method server_decide(uint8_t boot0Pressed) {
 		 * here), and the signature result feeds the startup beep and the UDP
 		 * server name, neither of which is part of this decision. */
 		mode = IAP_ALL;
+		reason = "BOOT0 held";
 	} else {
 		switch (req) {
 		case BOOT_REQ_CDC:
 			mode = IAP_CDC;
+			reason = "CDC upload requested";
 			break;
 		case BOOT_REQ_ETH:
 			mode = IAP_ETHERNET;
+			reason = "ethernet upload requested";
 			break;
 		case BOOT_REQ_ALL:
 			/* Somebody asked for an upload but the record did not say over which
 			 * channel. Open both rather than guess -- see IAP_ALL in IAP_config.h. */
 			mode = IAP_ALL;
+			reason = "upload requested, channel unknown";
 			break;
 		default:
 			if (!app_signature_valid) {
 				printf("** App signature invalid or absent - staying in bootloader **\r\n");
-				bootloader_state_log_event(IAP_EVT_BOOT_VERIFY_FAIL, (uint32_t)IAP_NONE, 0U,
-						HAL_GetTick(), iap_auth_get_counter());
+				/* Only the first boot in a run of failures is recorded: this path
+				 * needs no credential, so logging every power-up would let anyone
+				 * with a power switch fill the journal and push older evidence out.
+				 * Counter is 0 here by definition: no challenge has been issued
+				 * this boot, and the RTC is not initialised until Phase 2. */
+				if (bootloader_state_last_log_event() != (uint32_t)IAP_EVT_BOOT_VERIFY_FAIL) {
+					bootloader_state_log_event(IAP_EVT_BOOT_VERIFY_FAIL, (uint32_t)IAP_NONE, 0U,
+							HAL_GetTick(), 0U);
+				}
 				mode = IAP_ALL;
+				reason = "no valid application";
 			}
 			break;
 		}
@@ -415,7 +450,7 @@ IAP_Method server_decide(uint8_t boot0Pressed) {
 	}
 
 	if (mode != IAP_NONE) {
-		printf("** UPLOAD Mod ...\r\n");
+		printf("** UPLOAD Mod ... (%s)\r\n", reason);
 		printf("** Please input your command: \r\n");
 	} else {
 		printf("** APP Mod ...\r\n");
@@ -439,8 +474,11 @@ void server_jump_to_app(void) {
 	HAL_MPU_Disable();
 
 	/* UART4 is the only peripheral Phase 1 brought up (for the boot log). Its
-	 * MspDeInit also releases the PC10/PC11 pins. */
+	 * MspDeInit also releases the PC10/PC11 pins; the MAX3221 enable is a plain
+	 * GPIO and has to be handed back separately, so the application starts with
+	 * the transceiver in the same shutdown state a cold board has. */
 	HAL_UART_DeInit(&huart4);
+	Disable_RX_RS232();
 
 	__disable_irq();
 
@@ -460,6 +498,12 @@ void server_jump_to_app(void) {
 	/* */
 	HAL_RCC_DeInit();
 	HAL_DeInit();
+
+	/* Hand back a cold cache. No-op while the I-cache is off, and correct the
+	 * moment it is switched on in the .ioc -- the application must not inherit
+	 * cache lines holding bootloader instructions. CMSIS invalidates as part of
+	 * the disable, so nothing else is needed. */
+	SCB_DisableICache();
 
 	SCB->VTOR = app_base;   // set vtor
 
@@ -536,6 +580,8 @@ void IAP_data_recv(IAP_Method iapM, uint8_t *Buf, uint32_t Len) {
 			printf("RX overflow: Len %" PRIu32 " exceeds remaining buffer %" PRIu32 ". Aborting transfer.\r\n",
 					Len, remaining);
 			send_response("ERR");
+			bootloader_state_log_event(IAP_EVT_OVERFLOW_ABORT, (uint32_t)current_method,
+					tcp_server_get_client_ip(), HAL_GetTick(), iap_auth_get_counter());
 			reset_buf();
 			fflush(stdout);
 			return;
@@ -560,27 +606,6 @@ void IAP_data_recv(IAP_Method iapM, uint8_t *Buf, uint32_t Len) {
 	fflush(stdout);
 }
 
-/*
- * Both triggers go through the shared handoff module, which stores the request,
- * verifies it actually landed, and only then resets. The previous versions wrote
- * an RTC backup register directly and had to remember to open the backup domain
- * first -- forgetting that is precisely what made the ethernet path fail in a
- * way no error code or log line could show.
- *
- * boot_handoff_request() does not return on success. If it does return, the
- * request was not stored, so we must NOT reset: resetting would boot the
- * application again and look exactly like "the device ignored the command".
- */
-void IAP_CDC_reboot_trigger(uint32_t bitrate) {
-	if (bitrate == MAGIC_CDC_RATE) {
-		if (!boot_handoff_request(BOOT_REQ_CDC)) {
-			printf("Refusing to reset: CDC boot request could not be stored\r\n");
-		}
-	}
-}
-
-void IAP_ETH_reboot_trigger(void) {
-	if (!boot_handoff_request(BOOT_REQ_ETH)) {
-		printf("Refusing to reset: ethernet boot request could not be stored\r\n");
-	}
-}
+/* The CDC 1200-baud knock and the UDP reboot request are issued by the
+ * application image, which calls boot_handoff_request() directly. The
+ * bootloader only ever consumes the record, in server_decide(). */

@@ -764,8 +764,14 @@ void HAL_ETH_RxLinkCallback(void **pStart, void **pEnd, uint8_t *buff, uint16_t 
     p->tot_len += Length;
   }
 
-  /* Invalidate data cache because Rx DMA's writing to physical memory makes it stale. */
-  SCB_InvalidateDCache_by_Addr((uint32_t *)buff, Length);
+  /* Invalidate data cache because Rx DMA's writing to physical memory makes it
+   * stale. Skipped while the D-cache is off: there is nothing to invalidate, and
+   * every DCIMVAC write is a tag lookup that costs time for no effect. The guard
+   * also means enabling the D-cache in the .ioc restores this automatically. */
+  if ((SCB->CCR & SCB_CCR_DC_Msk) != 0U)
+  {
+    SCB_InvalidateDCache_by_Addr((uint32_t *)buff, Length);
+  }
 
 /* USER CODE END HAL ETH RxLinkCallback */
 }

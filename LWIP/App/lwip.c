@@ -28,7 +28,28 @@
 #include "ethernetif.h"
 
 /* USER CODE BEGIN 0 */
+#include <stdio.h>
+#include "IAP_config.h"
 
+/* Announce the address whenever it changes. tcp_server_start() runs before DHCP
+ * has answered, so the listening banner cannot carry it. */
+static void ethernet_addr_status_updated(struct netif *netif)
+{
+  static uint32_t last_addr = 0u;
+  uint32_t addr = netif_ip4_addr(netif)->addr;
+
+  if (addr == last_addr) {
+    return;
+  }
+  last_addr = addr;
+
+  if (addr == 0u) {
+    printf("[NET] Address lost\n");
+  } else {
+    printf("[NET] IP %s, IAP server reachable on port %d\n",
+           ip4addr_ntoa(netif_ip4_addr(netif)), OPENPLC_SERVER_PORT);
+  }
+}
 /* USER CODE END 0 */
 /* Private function prototypes -----------------------------------------------*/
 static void ethernet_link_status_updated(struct netif *netif);
@@ -83,7 +104,7 @@ void MX_LWIP_Init(void)
   dhcp_start(&gnetif);
 
 /* USER CODE BEGIN 3 */
-
+  netif_set_status_callback(&gnetif, ethernet_addr_status_updated);
 /* USER CODE END 3 */
 }
 

@@ -43,7 +43,15 @@ _Min_Stack_Size = 0x2000; /* required amount of stack */
 /* Specify the memory areas */
 MEMORY
 {
-  FLASH (rx)     : ORIGIN = 0x08000000, LENGTH = 2048K
+  /* The device has 2048K of flash, but only the first 128K belong to the
+     bootloader: the application starts at 0x08020000 (IAP_APP_ADDRESS in
+     Core/Inc/usbd_cdc_flash.h, and build.flash_offset=0x20000 in the Arduino
+     core's platform.txt). Declaring the full 2048K here would let the linker
+     place bootloader code on top of the application without a word of warning.
+     With 128K the linker reports "region FLASH overflowed" instead.
+     Raising this limit means raising the application base in all three places
+     at once -- here, usbd_cdc_flash.h, and platform.txt. */
+  FLASH (rx)     : ORIGIN = 0x08000000, LENGTH = 128K
   DTCMRAM (xrw)  : ORIGIN = 0x20000000, LENGTH = 128K
   RAM_D1 (xrw)   : ORIGIN = 0x24000000, LENGTH = 512K
   RAM_D2 (xrw)   : ORIGIN = 0x30000000, LENGTH = 288K

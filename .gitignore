@@ -2,3 +2,9 @@
 .vscode/
 Debug/
 .idea/
+
+# Secrets produced by IAPServer/keys/rotate_keys.sh. The backups hold the
+# private key and the password in the clear.
+IAPServer/keys/fw_signing_key.pem
+IAPServer/keys/backup/
+*.bak

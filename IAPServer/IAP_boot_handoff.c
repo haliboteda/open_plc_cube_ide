@@ -13,6 +13,8 @@
 static bool                  s_taken;
 static boot_req_t            s_taken_mode = BOOT_REQ_NONE;
 static boot_handoff_status_t s_status     = BOOT_HANDOFF_OK;
+static uint32_t              s_reset_rsr;
+static bool                  s_rsr_latched;
 
 static volatile boot_handoff_t *record(void)
 {
@@ -52,6 +54,37 @@ static void clear_record(void)
 	h->mode    = 0U;
 	h->check   = 0U;
 	sync_to_memory();
+}
+
+/*
+ * Cover the whole reserved area, not just the fields this version defines.
+ *
+ * A power-on reset leaves SRAM4 and its ECC check bits random, and the two do
+ * not agree, so the first access to any word here has to be a write -- reading
+ * one first can raise an uncorrectable ECC error and take a BusFault. Only the
+ * cold-boot path calls this, and after it every word in the region is safe to
+ * read for the rest of the power cycle, including the bytes past the record
+ * that a later version may start using. clear_record() stays scoped to the
+ * record itself so that consuming a request never wipes a neighbour.
+ */
+static void init_reserved_area(void)
+{
+	volatile uint32_t *word = (volatile uint32_t *)BOOT_HANDOFF_ADDR;
+
+	for (uint32_t i = 0U; i < (BOOT_HANDOFF_SIZE / sizeof(uint32_t)); i++) {
+		word[i] = 0U;
+	}
+	sync_to_memory();
+}
+
+void boot_handoff_latch_reset_cause(void)
+{
+	if (s_rsr_latched) {
+		return;
+	}
+	s_reset_rsr   = RCC->RSR;
+	s_rsr_latched = true;
+	__HAL_RCC_CLEAR_RESET_FLAGS();
 }
 
 bool boot_handoff_request(boot_req_t mode)
@@ -99,20 +132,20 @@ boot_req_t boot_handoff_take(void)
 	s_taken = true;
 
 	/*
-	 * A power-on reset leaves SRAM undefined, and on the H7 every internal SRAM
-	 * carries ECC -- reading a location that has never been written since power
-	 * up is best avoided. So on a cold boot we only ever write. Any genuine
-	 * request must have come from a warm reset, which means this is also the
-	 * only path that ever reads the record.
+	 * On a cold boot we only ever write -- see init_reserved_area(). A genuine
+	 * request can only have come from a warm reset, so that is also the only
+	 * path that reads the record.
 	 *
-	 * This must run before anything else clears RCC->RSR, which is why
-	 * boot_handoff_take() belongs at the very top of the boot sequence.
+	 * The reset cause is normally latched much earlier, by the call in main().
+	 * Doing it here as well keeps this function correct on its own: RCC->RSR
+	 * survives until someone writes RMVF, and HAL_RCC_DeInit() does exactly
+	 * that, so whoever reads it last would see nothing.
 	 */
-	cold = (__HAL_RCC_GET_FLAG(RCC_FLAG_PORRST) != RESET);
-	__HAL_RCC_CLEAR_RESET_FLAGS();
+	boot_handoff_latch_reset_cause();
+	cold = ((s_reset_rsr & RCC_RSR_PORRSTF) != 0U);
 
 	if (cold) {
-		clear_record();
+		init_reserved_area();
 		s_status     = BOOT_HANDOFF_COLD_BOOT;
 		s_taken_mode = BOOT_REQ_NONE;
 		return s_taken_mode;

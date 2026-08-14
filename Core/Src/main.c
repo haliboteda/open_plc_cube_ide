@@ -23,9 +23,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-/* These peripherals are no longer called from the generated init block ("Do not
- * generate function call" in CubeMX), so main.c has to reach their MX_*_Init()
- * itself -- see Phase 2 below for when each one is actually needed. */
+/* Phase 2 peripherals: CubeMX no longer emits their init calls. */
 #include "rtc.h"
 #include "crc.h"
 #include "fmc.h"
@@ -34,23 +32,17 @@
 
 #include "relay.h"
 #include "IAP_server.h"
-#include "pwm_test.h"
-#include "rs232_test.h"
-#include "adc_test.h"
-#include "sdram_test.h"
-#include "sd_test.h"
+#include "IAP_boot_handoff.h"
+#include "iap_auth.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 #ifdef __GNUC__
-/* With GCC/RAISONANCE, small printf (option LD Linker->Libraries->Small printf
- set to 'Yes') calls __io_putchar() */
 #define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
 #else
 #define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
 #endif /* __GNUC__ */
-
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -73,17 +65,12 @@
 void SystemClock_Config(void);
 static void MPU_Config(void);
 /* USER CODE BEGIN PFP */
-// RS232
-/*
- * Bounded stand-in for CMSIS ITM_SendChar(): that one spins forever waiting for
- * the trace FIFO if ITM is enabled but nothing is draining it -- e.g. a debug
- * session that died with the enable bits still set. That is the same hang we
- * remove from the UART path below, so it would be odd to add it back here.
- */
+
+/* Bounded stand-in for ITM_SendChar(): never spin forever on the trace FIFO. */
 static void itm_putchar_bounded(uint8_t ch)
 {
 	if (((ITM->TCR & ITM_TCR_ITMENA_Msk) == 0UL) || ((ITM->TER & 1UL) == 0UL)) {
-		return;   /* no debugger has enabled the trace port -- nothing to do */
+		return;
 	}
 	for (uint32_t spins = 0U; spins < 1000U; spins++) {
 		if (ITM->PORT[0U].u32 != 0UL) {
@@ -91,18 +78,12 @@ static void itm_putchar_bounded(uint8_t ch)
 			return;
 		}
 	}
-	/* FIFO never drained: drop the character rather than wedge the board. */
 }
 
+/* stdout goes to SWO/ITM and RS232, both bounded: a bootloader must never hang
+ * on a log line. */
 PUTCHAR_PROTOTYPE {
-	/* Two sinks. SWO/ITM costs nothing when no debugger is attached and lets the
-	 * boot log be read in CubeIDE's SWV console without wiring up an RS232
-	 * adapter; RS232 stays for field diagnostics, where there is no debugger. */
 	itm_putchar_bounded((uint8_t) ch);
-
-	/* Bounded timeout rather than HAL_MAX_DELAY: a bootloader is the last place
-	 * that should be able to hang forever on a log line. Losing a character is
-	 * strictly better than wedging the board. */
 	(void) HAL_UART_Transmit(&huart4, (uint8_t*) &ch, 1, 10);
 	return ch;
 }
@@ -110,122 +91,23 @@ PUTCHAR_PROTOTYPE {
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-void array_prinf(unsigned char *data, unsigned int len) {
-	printf("{\r\n");
-	for (int i = 0; i < len; i++) {
-		printf("0x%02x,", data[i]);
 
-		if ((len % 8) == 7)
-			printf("\r\n");
-	}
-	printf("}\r\n");
-}
-
-/* ===================== TEMPORARY boot diagnostics ==========================
- *
- * Here to chase the "reset button does nothing until you click it several times
- * quickly" fault. Delete this block, its call in main() and the BOOT: line once
- * that is settled.
- *
- * boot_diag_first_breath() is the very first thing main() runs -- before the
- * MPU, before the clock tree, before HAL_Init() -- so it touches raw registers
- * only and can rely on nothing. Two jobs:
- *
- *   1. Latch RCC->RSR while it is still intact. boot_handoff_take() clears it
- *      later, and the flags say what kind of reset this actually was: a real
- *      pin reset from SW1, or a power-on / brown-out (which would mean the
- *      button press is dropping the rail rather than pulling NRST).
- *
- *   2. Click RY1 at four points along the boot, so a boot that dies before
- *      UART4 exists still says *where* it died. Count the slow clicks that come
- *      before the one-second silence:
- *
- *        0  never reached main() -- so not this commit's doing: nothing in it
- *           touches the startup file, the system file, _estack or where .data
- *           and .bss live. Suspect the CPU never left reset.
- *        1  died in MPU_Config() or HAL_Init()
- *        2  died in SystemClock_Config()   <- Error_Handler() traps here, and
- *                                             it is a silent __disable_irq()
- *                                             plus while(1)
- *        3  died in MX_GPIO_Init() / Enable_RX_RS232() / MX_UART4_Init()
- *        4  boot is fine this far; the startup window and the log follow
- *
- *      Calibrate first: on a boot that works, all four have to be audible and
- *      countable. If they are not, this probe proves nothing and the earlier
- *      "no sound means the CPU never ran" reading was worthless.
- */
-static uint32_t s_reset_flags;
-
-/* Before HAL_Init() there is no SysTick, so this one busy-waits. ~250 ms at the
- * 64 MHz reset-default clock, which is also the only clock it ever runs at. */
-static void boot_diag_click_raw(void)
-{
-	volatile uint32_t spin;
-
-	/* RY1 is PI8. Enable GPIOI, read back so the enable has landed before the
-	 * first access, then drive PI8 as a plain push-pull output. */
-	RCC->AHB4ENR |= RCC_AHB4ENR_GPIOIEN;
-	(void)RCC->AHB4ENR;
-	GPIOI->MODER = (GPIOI->MODER & ~(3UL << (8U * 2U))) | (1UL << (8U * 2U));
-
-	GPIOI->BSRR = GPIO_PIN_8;
-	for (spin = 0U; spin < 1800000U; spin++) { }
-	GPIOI->BSRR = (uint32_t)GPIO_PIN_8 << 16U;
-	for (spin = 0U; spin < 1800000U; spin++) { }
-}
-
-/* Once HAL_Init() has run, SysTick gives the same 250 ms at either clock:
- * HAL_RCC_ClockConfig() re-runs HAL_InitTick(), so this stays honest across
- * SystemClock_Config() taking the core from 64 MHz to 400 MHz. */
-static void boot_diag_click(void)
-{
-	GPIOI->BSRR = GPIO_PIN_8;
-	HAL_Delay(250);
-	GPIOI->BSRR = (uint32_t)GPIO_PIN_8 << 16U;
-	HAL_Delay(250);
-}
-/* =================== end TEMPORARY boot diagnostics ======================== */
-
-/* What server_decide() settled on. Phase 2 and the superloop both key off it. */
+/* What server_decide() settled on. Phase 2 and the superloop key off it. */
 static IAP_Method s_boot_mode = IAP_NONE;
 
-/*
- * Startup relay window.
- *
- * The clicking is not decoration: it IS the window in which the operator can
- * press BOOT0 to interrupt the normal boot, and the only cue that the window is
- * open. The board gives no other feedback with nothing plugged in.
- *
- * So the pin is polled for the whole duration and the result latched, rather
- * than read once when the clicking stops. A press-and-release anywhere inside
- * the window counts. (Reading the pin a few milliseconds after reset, as an
- * earlier version of this did, asks for a reaction time no human has -- the
- * decision was already made and the board had jumped to the application before
- * a finger could get there.)
- *
- * All six relays, 500 ms each, is 3 s of window -- long enough to match the
- * startup banner's "hold down the BOOT0 button for 3-5 seconds while clicking",
- * and long enough that the operator hears several clicks before having to
- * decide. BOOT0_WINDOW_STEP_MS x BOOT0_WINDOW_STEPS is the per-relay slice.
- */
-#define BOOT0_WINDOW_STEP_MS   10U
-#define BOOT0_WINDOW_STEPS     50U   /* 50 x 10 ms = 500 ms per relay */
+/* Startup window: the relay clicks are the operator's cue to press BOOT0.
+ * 3 relays x 500 ms = 1.5 s, then one read. */
+#define BOOT0_WINDOW_MS        500U
+#define BOOT0_WINDOW_RELAYS    3U
 
 static uint8_t boot_window_relay(void)
 {
-	uint8_t pressed = 0U;
-
-	for (RELAY_Name relay = RELAY_1; relay < RELAY_COUNT; ++relay) {
-		Relay_On(relay);
-		for (uint32_t step = 0U; step < BOOT0_WINDOW_STEPS; step++) {
-			HAL_Delay(BOOT0_WINDOW_STEP_MS);
-			if (boot0_is_pressed()) {
-				pressed = 1U;   /* latch: do not require it to still be held */
-			}
-		}
-		Relay_Off(relay);
+	for (uint32_t i = 0U; i < BOOT0_WINDOW_RELAYS; i++) {
+		Relay_On((RELAY_Name) i);
+		HAL_Delay(BOOT0_WINDOW_MS);
+		Relay_Off((RELAY_Name) i);
 	}
-	return pressed;
+	return boot0_is_pressed();
 }
 
 /* USER CODE END 0 */
@@ -238,13 +120,40 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-  /* TEMPORARY -- mark 1. Latch RSR before anything can clear it. */
-  s_reset_flags = RCC->RSR;
-  boot_diag_click_raw();
+
+  /* Latch the reset cause before anything can clear RCC->RSR. The cold-boot
+   * test that keeps us from reading never-written ECC SRAM depends on it. */
+  boot_handoff_latch_reset_cause();
+
+  /* Enable the three configurable fault exceptions. Left at their reset default
+   * they stay disabled and every MemManage / BusFault / UsageFault escalates to
+   * HardFault, so IT_Fault_Report() can only ever report "HardFault" and the
+   * stacked PC is the escalation point rather than the faulting instruction.
+   * Enabled, each fault takes its own vector and the report names it directly.
+   *
+   * First statement in main(): SCB needs no clock and no init, so this covers
+   * the whole boot. A fault before MX_UART4_Init() still reports over SWO/ITM. */
+  SCB->SHCSR |= SCB_SHCSR_MEMFAULTENA_Msk | SCB_SHCSR_BUSFAULTENA_Msk
+              | SCB_SHCSR_USGFAULTENA_Msk;
+
+  /* Initialise the D-cache RAMs even though the D-cache stays off. They come up
+   * random at power-on, tag and ECC bits included, and any invalidate-by-address
+   * has to look a tag up before it can act -- landing on a random entry whose
+   * ECC does not check out raises an imprecise BusFault. This pass walks the
+   * cache by set and way, which writes the tags instead of looking them up, so
+   * it is safe on an uninitialised cache; SCB_EnableDCache() opens with the same
+   * step for the same reason. Costs tens of microseconds, once. */
+  SCB_InvalidateDCache();
+
   /* USER CODE END 1 */
 
   /* MPU Configuration--------------------------------------------------------*/
   MPU_Config();
+
+  /* Enable the CPU Cache */
+
+  /* Enable I-Cache---------------------------------------------------------*/
+  SCB_EnableICache();
 
   /* MCU Configuration--------------------------------------------------------*/
 
@@ -252,68 +161,22 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-  boot_diag_click();   /* TEMPORARY -- mark 2 */
+
   /* USER CODE END Init */
 
-  /* Configure the system clock */
+  /* USER CODE BEGIN SysInit */
+
   SystemClock_Config();
 
-  /* USER CODE BEGIN SysInit */
-  /* This call is not optional, however little of the clock tree Phase 1 seems
-   * to need. Without it the whole bootloader runs on the reset defaults --
-   * VOS3, HSI at 64 MHz, FLASH_ACR.LATENCY = 0 -- and that combination is
-   * outside the reference manual's wait-state table, which allows 0 WS at VOS3
-   * only up to 45 MHz. A stock project passes through the same state, but only
-   * for the few hundred instructions before this line and with the I-cache on;
-   * here every instruction fetch for the entire boot would read flash out of
-   * spec, which showed up as the board locking up silently on roughly one reset
-   * in a few. Two more things depend on it: MX_FMC_Init()'s SDRAM refresh count
-   * is computed for a 200 MHz HCLK, and USB needs HSI48.
-   *
-   * It costs the application nothing: server_jump_to_app() calls
-   * HAL_RCC_DeInit() before jumping, so the clock tree is back at its reset
-   * defaults by the time the application's own SystemClock_Config() runs.
-   */
-
-  /* ------------------------- Phase 1: decide ------------------------------
-   *
-   * Only what the decision itself needs comes up here. USB, lwIP, RTC, CRC and
-   * FMC all wait for Phase 2, which runs *only* when we stay in the bootloader.
-   * That is what keeps the application from inheriting our peripheral state:
-   * "never initialised" cannot be got wrong, whereas a de-init list has to be
-   * maintained by hand and rots silently. It also means enabling FMC for the
-   * SDRAM staging area can never leak into a user's sketch.
-   */
-  boot_diag_click();   /* TEMPORARY -- mark 3 */
-
-  MX_GPIO_Init();      /* BOOT0 input, relay outputs, RS232_Enable */
-  Enable_RX_RS232();   /* the MAX3221 stays in shutdown until this pin is high, */
-  MX_UART4_Init();     /* so without it the printf below reaches nothing at all */
-
-  boot_diag_click();   /* TEMPORARY -- mark 4 */
-  HAL_Delay(1000);     /* TEMPORARY -- the silence that ends the mark sequence */
-
-  /* TEMPORARY -- reset cause, from the RSR latched before anything cleared it.
-   * SYSCLK is on the same line to confirm SystemClock_Config() actually ran. */
-  printf("\r\n** BOOT: RSR=%08lX%s%s%s%s%s%s%s SYSCLK=%lu\r\n",
-         (unsigned long) s_reset_flags,
-         (s_reset_flags & RCC_RSR_PORRSTF)   ? " POR"  : "",
-         (s_reset_flags & RCC_RSR_BORRSTF)   ? " BOR"  : "",
-         (s_reset_flags & RCC_RSR_PINRSTF)   ? " PIN"  : "",
-         (s_reset_flags & RCC_RSR_SFTRSTF)   ? " SFT"  : "",
-         (s_reset_flags & RCC_RSR_IWDG1RSTF) ? " IWDG" : "",
-         (s_reset_flags & RCC_RSR_WWDG1RSTF) ? " WWDG" : "",
-         (s_reset_flags & RCC_RSR_LPWRRSTF)  ? " LPWR" : "",
-         (unsigned long) HAL_RCC_GetSysClockFreq());
+  /* Phase 1: decide. Only what the decision itself needs is brought up here, so
+   * the application inherits none of our peripheral state on the jump path. */
+  MX_GPIO_Init();      /* BOOT0 net, relay outputs, RS232_Enable */
+  Enable_RX_RS232();   /* the MAX3221 stays in shutdown until this pin is high */
+  MX_UART4_Init();
 
   printf("** Checking Starting Mod ...\r\n"
 		  "** (IF You want OpenPLC to stay in upload mode, please hold down the BOOT0 button for 3-5 seconds while clicking)\r\n");
 
-  /* 3 s of relay clicking = the operator's window to press BOOT0. Polled
-   * throughout, so a press anywhere inside it counts -- and a press ends the
-   * decision there: server_decide() stays in the bootloader without consulting
-   * the handoff request or the app signature. No press and the usual checks
-   * decide, which is normally a jump to the application. */
   s_boot_mode = server_decide(boot_window_relay());
 
   if (s_boot_mode == IAP_NONE) {
@@ -324,37 +187,24 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   /* USER CODE BEGIN 2 */
-  /* ------------------- Phase 2: staying in the bootloader ------------------ */
 
-  /* The generated MX_GPIO_Init() above runs a second time and pulls
-   * RS232_Enable low again (gpio.c writes every output low before configuring
-   * it), so re-assert it. Suppressing that call in CubeMX, or setting the pin's
-   * default output level to High, would make this line unnecessary. */
+  /* Phase 2: staying in the bootloader. */
+
+  /* MX_GPIO_Init() above drove RS232_Enable low again. */
   Enable_RX_RS232();
 
   MX_RTC_Init();   /* iap_auth's nonce counter lives in a backup register */
+  iap_auth_report_backup_domain();
   MX_CRC_Init();   /* upload checksum */
   MX_FMC_Init();   /* external SDRAM: staging area for the incoming image */
 
-  /* Bring up only the channel we were asked for. IAP_ALL means we could not tell
-   * which one the operator is on, so open both rather than guess. */
+  /* IAP_ALL means the channel is unknown, so open both rather than guess. */
   if ((s_boot_mode == IAP_CDC) || (s_boot_mode == IAP_ALL)) {
     MX_USB_DEVICE_Init();
   }
   if ((s_boot_mode == IAP_ETHERNET) || (s_boot_mode == IAP_ALL)) {
     MX_LWIP_Init();
   }
-
-  // Only one of these runs forever and hijacks the boot - uncomment the one
-  // you're currently bringing up, leave the rest commented out.
-  // PWM_Test_Run();        // Digital Out 6 breathing LED
-  //ADC_Test_Run();        // on-board temp sensors (PA0/PA3)
-  //RS232_Test_Run();         // RS232 RX echo
-  //SDRAM_Test_Capacity();            // external SDRAM: how big is it really?
-  //SDRAM_Test_Retention();          // external SDRAM: random addr, wait 5s, read back
-  //SDRAM_Test_CubeProgrammerVerify(); // external SDRAM: write via CubeProgrammer, verify CRC32 here
-  //SD_Test_Info();                   // microSD: is a card detected, how big is it?
-  //SD_Test_FileIntegrity();          // microSD: FatFs write+read-back+CRC32 on the inserted card
 
   IAP_servers_start(s_boot_mode);
   /* USER CODE END 2 */
@@ -366,8 +216,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     IAP_task();
-    /* Guarded: MX_LWIP_Init() only ran for the ethernet modes, and calling
-     * MX_LWIP_Process() on an uninitialised stack is not harmless. */
+    /* MX_LWIP_Init() only ran for the ethernet modes. */
     if ((s_boot_mode == IAP_ETHERNET) || (s_boot_mode == IAP_ALL)) {
       MX_LWIP_Process();
     }

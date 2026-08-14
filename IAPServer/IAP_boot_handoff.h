@@ -89,10 +89,15 @@ typedef enum {
  * from "the device ignored my command" and costs hours to diagnose. */
 bool boot_handoff_request(boot_req_t mode);
 
+/* Latch RCC->RSR and clear it. Call this as the first statement of main():
+ * the cold-boot test depends on the POR flag, and HAL_RCC_DeInit() wipes the
+ * whole register, so the value has to be captured before anything else runs.
+ * Idempotent -- boot_handoff_take() calls it too, in case main() did not. */
+void boot_handoff_latch_reset_cause(void);
+
 /* Read the pending request and clear it in the same breath, so a stale record
  * can never pin the board in the bootloader. Only the bootloader may call this,
- * once, before anything else has had a chance to clear RCC->RSR. Repeat calls
- * return the cached result. */
+ * once. Repeat calls return the cached result. */
 boot_req_t boot_handoff_take(void);
 
 /* Valid after boot_handoff_take(). */

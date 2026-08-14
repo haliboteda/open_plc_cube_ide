@@ -12,53 +12,116 @@
 #include "IAP_server.h"
 #include "string.h"
 
-extern struct netif gnetif;
 static struct tcp_pcb *server_pcb;
 static struct tcp_pcb *client_pcb;
 
+/* Drop a session that goes quiet, so one stalled peer cannot hold the single
+ * session slot. Interval is in 500 ms lwIP coarse ticks, so this polls once a
+ * second and gives up after 60 s. */
+#define TCP_POLL_INTERVAL   2U
+#define TCP_IDLE_POLL_LIMIT 60U
+
+static uint32_t idle_polls;
+
 static void tcp_server_close(struct tcp_pcb *pcb) {
-	if (pcb) {
-		tcp_arg(pcb, NULL);
-		tcp_sent(pcb, NULL);
-		tcp_recv(pcb, NULL);
-		tcp_err(pcb, NULL);
-		tcp_close(pcb);
+	if (pcb == NULL) {
+		return;
 	}
-	client_pcb = NULL;
-	reset_buf();
-	TCP_PRINT("Client disconnected.");
+
+	tcp_arg(pcb, NULL);
+	tcp_sent(pcb, NULL);
+	tcp_recv(pcb, NULL);
+	tcp_err(pcb, NULL);
+	tcp_poll(pcb, NULL, 0);
+	tcp_close(pcb);
+
+	/* Only the session that owns the shared receive state may clear it --
+	 * otherwise any stranger's connect/disconnect aborts a transfer in
+	 * flight. */
+	if (pcb == client_pcb) {
+		client_pcb = NULL;
+		reset_buf();
+		TCP_PRINT("Client disconnected.");
+	}
 }
 
 static err_t _recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err) {
+	(void)arg;
+
 	if (err != ERR_OK || p == NULL) {
-		tcp_server_close(pcb);  // 安全关闭连接
+		tcp_server_close(pcb);
 		return ERR_OK;
 	}
 
+	if (pcb != client_pcb) {
+		/* Not the owning session: drop the data instead of mixing it into
+		 * the image being received. */
+		tcp_recved(pcb, p->tot_len);
+		pbuf_free(p);
+		return ERR_OK;
+	}
+
+	idle_polls = 0U;
+
 	struct pbuf *q = p;
 	while (q != NULL) {
-//		TCP_PRINT("_recv: %d of total: %d\r\n", q->len, q->tot_len);
 		IAP_data_recv(IAP_ETHERNET, q->payload, q->len);
 		q = q->next;
 	}
 
 	tcp_recved(pcb, p->tot_len);
 
-	pbuf_free(p);  //
+	pbuf_free(p);
 	return ERR_OK;
 }
 
 static void _err(void *arg, err_t err) {
+	TCP_PRINT("TCP connection error: %d", err);
+
+	/* lwIP has already freed the pcb; arg carries which one it was. */
+	if (arg == (void *)client_pcb) {
+		client_pcb = NULL;
+		reset_buf();
+	}
+}
+
+static err_t _poll(void *arg, struct tcp_pcb *pcb) {
 	(void)arg;
-	TCP_PRINT("TCP connection error: %d\r\n", err);
-	client_pcb = NULL;
-	reset_buf();  // 清空 buffer
+
+	if (pcb != client_pcb) {
+		return ERR_OK;
+	}
+	if (++idle_polls > TCP_IDLE_POLL_LIMIT) {
+		TCP_PRINT("Idle client timed out.");
+		client_pcb = NULL;
+		reset_buf();
+		tcp_abort(pcb);
+		return ERR_ABRT;
+	}
+	return ERR_OK;
 }
 
 static err_t _accept(void *arg, struct tcp_pcb *pcb, err_t err) {
+	(void)arg;
+
+	if ((err != ERR_OK) || (pcb == NULL)) {
+		return ERR_VAL;
+	}
+
+	/* One session at a time. A second connection would otherwise take over
+	 * the reply channel and feed the same receive buffer. lwIP aborts the
+	 * refused pcb for us. */
+	if (client_pcb != NULL) {
+		TCP_PRINT("Refused second connection.");
+		return ERR_MEM;
+	}
+
 	client_pcb = pcb;
+	idle_polls = 0U;
+	tcp_arg(pcb, pcb);
 	tcp_recv(pcb, _recv);
 	tcp_err(pcb, _err);
+	tcp_poll(pcb, _poll, TCP_POLL_INTERVAL);
 	return ERR_OK;
 }
 
@@ -77,7 +140,7 @@ void tcp_server_start(void) {
 
 	server_pcb = tcp_listen(server_pcb);
 	tcp_accept(server_pcb, _accept);
-	TCP_PRINT("Server listening on port %d IP %s", OPENPLC_SERVER_PORT, ip4addr_ntoa(netif_ip4_addr(&gnetif)));
+	// TCP_PRINT("Server listening on port %d", OPENPLC_SERVER_PORT);
 }
 
 

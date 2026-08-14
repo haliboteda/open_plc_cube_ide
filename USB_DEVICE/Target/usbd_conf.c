@@ -263,7 +263,12 @@ void HAL_PCD_ResumeCallback(PCD_HandleTypeDef *hpcd)
 #endif /* USE_HAL_PCD_REGISTER_CALLBACKS */
 {
   /* USER CODE BEGIN 3 */
-
+  /* Undo the gating HAL_PCD_SuspendCallback() did. Nothing else does it: the
+   * macro appears nowhere in stm32h7xx_hal_pcd.c, and CubeMX only emits the
+   * gate. Without this the PHY clock stays off after the first host suspend --
+   * which Windows does to any idle port -- and the device never answers again.
+   * The Arduino core's copy of this file already ungates here. */
+  __HAL_PCD_UNGATE_PHYCLOCK(hpcd);
   /* USER CODE END 3 */
   USBD_LL_Resume((USBD_HandleTypeDef*)hpcd->pData);
 }

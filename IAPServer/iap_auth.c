@@ -22,10 +22,19 @@
 #include "main.h"
 #include <string.h>
 #include <stdio.h>
+#include <inttypes.h>
 
 #ifndef IAP_AUTH_COUNTER_BKP_REG
 #define IAP_AUTH_COUNTER_BKP_REG RTC_BKP_DR1
 #endif
+
+/* Second register holds a fixed witness value. It can only read back correctly
+ * if the backup domain survived, which is what tells us the VBAT cell is doing
+ * its job -- nonce uniqueness across power cycles depends on it. */
+#ifndef IAP_VBAT_WITNESS_BKP_REG
+#define IAP_VBAT_WITNESS_BKP_REG RTC_BKP_DR2
+#endif
+#define IAP_VBAT_WITNESS_VALUE 0x56424154U /* 'VBAT' */
 
 static uint8_t  s_nonce[IAP_AUTH_NONCE_SIZE];
 static bool     s_nonce_pending;
@@ -111,4 +120,22 @@ bool iap_auth_verify_and_consume(const uint8_t *msg, uint32_t msg_len, const uin
 uint32_t iap_auth_get_counter(void)
 {
 	return HAL_RTCEx_BKUPRead(&hrtc, IAP_AUTH_COUNTER_BKP_REG);
+}
+
+void iap_auth_report_backup_domain(void)
+{
+	uint32_t witness = HAL_RTCEx_BKUPRead(&hrtc, IAP_VBAT_WITNESS_BKP_REG);
+
+	if (witness == IAP_VBAT_WITNESS_VALUE) {
+		printf("Backup domain retained, nonce counter = %" PRIu32 "\r\n",
+				HAL_RTCEx_BKUPRead(&hrtc, IAP_AUTH_COUNTER_BKP_REG));
+		return;
+	}
+
+	printf("** Backup domain was lost - RTC battery absent or empty. **\r\n"
+			"** Nonce counter restarted from zero; replay protection is weakened. **\r\n");
+
+	HAL_PWR_EnableBkUpAccess();
+	HAL_RTCEx_BKUPWrite(&hrtc, IAP_VBAT_WITNESS_BKP_REG, IAP_VBAT_WITNESS_VALUE);
+	HAL_PWR_DisableBkUpAccess();
 }

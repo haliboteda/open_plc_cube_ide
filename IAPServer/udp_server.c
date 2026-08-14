@@ -8,6 +8,7 @@
 #include "lwip/ip4_addr.h"
 #include "lwip/netif.h"
 #include "IAP_config.h"
+#include "IAP_server.h"
 #include "bootloader_state.h"
 #include "iap_keyderive.h"
 
@@ -101,17 +102,12 @@ static void udp_server_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p,
       (strcmp(recv_buf, "openplc_discover") == 0) ||
       (strcmp(recv_buf, "openplc_server_where_r_y") == 0) ||
       (strcmp(recv_buf, "ping") == 0)) {
-    char uid_hex[IAP_MACHINE_ID_HEX_LEN + 1U] = {0};
     char reply_msg[96] = {0};
     if (!discovery_reply_allowed(addr)) {
       return;
     }
-    // Note: the reply is joined/split on "_" (see PC tool's parseBoardInfoFromReply),
-    // so this suffix must not itself contain an underscore.
-    const char *role = bootloader_state_app_is_valid() ? UDP_SERVER_NAME : UDP_SERVER_NAME "-INVALID";
-    iap_keyderive_get_machine_id_hex(uid_hex);
-    (void)snprintf(reply_msg, sizeof(reply_msg), "%s_%s_%s_%s",
-                   OPENPLC_DEVICE_NAME, uid_hex, role, OPENPLC_CUSAPP_VERSION);
+    /* Shared with the CDC probe so the two channels cannot drift apart. */
+    iap_identity_string(reply_msg, sizeof(reply_msg));
     openplc_udp_reply(pcb, addr, port, reply_msg);
 //  } else if (strcmp(recv_buf, "openplc_server_reboot") == 0) {
 //    if (udp_reboot_callback != NULL) {

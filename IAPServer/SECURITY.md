@@ -123,8 +123,8 @@ key was never on the device.
 
 - **ECDSA signing key**: `fw_signing_key.TEST_ONLY.pem` is a public test
   key - anyone with this repo can sign an image the placeholder public key
-  accepts. Run `generate_keys.sh`, paste the new public key into
-  `fw_pubkey.c`, keep the private key off any repo/network.
+  accepts. Run `keys/rotate_keys.sh`, rebuild and re-flash the bootloader
+  over ST-Link, keep the private key off any repo/network.
 - **HMAC session key**: derived per-device now (`iap_keyderive.c`, mirrored
   in Arduino core and in the PC tool's `iapcrypto` package) as
   `HMAC-SHA256(fixed_password, device_UID)`, replacing the single global

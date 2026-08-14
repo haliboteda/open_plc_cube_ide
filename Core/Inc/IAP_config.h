@@ -8,7 +8,15 @@
 #ifndef INC_IAP_CONFIG_H_
 #define INC_IAP_CONFIG_H_
 
-#define BOOT_LOADER_VERSION "Boot Loader 0.1.2\r\n"
+/* This bootloader's own version. Reported in the identity string and by "info",
+ * both derived from here so the two can never disagree. Not the application's
+ * version -- that one is a uint32 supplied at flash time and kept in the state
+ * sector's metadata (see "getversion"). */
+#ifndef OPENPLC_FW_VERSION
+#define OPENPLC_FW_VERSION "0.1.2"
+#endif
+
+#define BOOT_LOADER_VERSION "Boot Loader " OPENPLC_FW_VERSION "\r\n"
 
 #define IAP_RX_BUFFER_SIZE 8 * 1024
 
@@ -20,24 +28,12 @@
 #define OPENPLC_DEVICE_NAME "STM32H743"
 #endif
 
-#ifndef OPENPLC_CUSAPP_VERSION
-#define OPENPLC_CUSAPP_VERSION "0.1.2"
-#endif
-
+/* Role, the third field of the identity string. The application image defines
+ * this as "CUSAPP" -- the two must differ, that is how a PC tool tells the
+ * bootloader from a running application. */
 #ifndef UDP_SERVER_NAME
 #define UDP_SERVER_NAME "BOOTLD"
 #endif
-
-/* The baud rate the PC tool opens the CDC port at to ask for upload mode. Not a
- * flag -- this one stays. */
-#ifndef MAGIC_CDC_RATE
-#define MAGIC_CDC_RATE 1200U
-#endif
-
-/* MAGIC_APP_FLAG / MAGIC_ETH_FLAG / MAGIC_CDC_FLAG / MAGIC_BKP_REG are gone.
- * The boot-mode request no longer lives in an RTC backup register; see
- * IAPServer/IAP_boot_handoff.h for the replacement and for why the register was
- * the wrong place for it. */
 
 typedef enum {
 	IDLE, FLASH_RECEIVE

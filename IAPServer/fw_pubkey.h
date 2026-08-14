@@ -2,11 +2,8 @@
  * fw_pubkey.h
  *
  * *** THIS SHIPS WITH A PLACEHOLDER / TEST-ONLY KEY. ***
- * See IAPServer/keys/README.md before building anything for production.
- * The matching private key (IAPServer/keys/fw_signing_key.TEST_ONLY.pem)
- * is public -- anyone can sign a "valid" firmware image with it. Run
- * IAPServer/keys/generate_keys.sh to create your own keypair, replace
- * fw_public_key below with the output, and keep the private key offline.
+ * The matching private key is public -- anyone can sign a "valid" firmware
+ * image with it. Run IAPServer/keys/rotate_keys.sh before shipping.
  */
 
 #ifndef IAPSERVER_FW_PUBKEY_H_
