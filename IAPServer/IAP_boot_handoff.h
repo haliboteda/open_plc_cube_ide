@@ -95,6 +95,13 @@ bool boot_handoff_request(boot_req_t mode);
  * Idempotent -- boot_handoff_take() calls it too, in case main() did not. */
 void boot_handoff_latch_reset_cause(void);
 
+/* The latched RCC->RSR, and that value decoded into a name ("POR", "IWDG", ...).
+ * Only the bootloader can report this: it clears the register and then *jumps*
+ * to the application, so by the time the application runs there is nothing left
+ * in RSR to read. */
+uint32_t boot_handoff_reset_rsr(void);
+const char *boot_handoff_reset_cause_str(void);
+
 /* Read the pending request and clear it in the same breath, so a stale record
  * can never pin the board in the bootloader. Only the bootloader may call this,
  * once. Repeat calls return the cached result. */

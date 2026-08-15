@@ -46,8 +46,12 @@ static void ethernet_addr_status_updated(struct netif *netif)
   if (addr == 0u) {
     printf("[NET] Address lost\n");
   } else {
-    printf("[NET] IP %s, IAP server reachable on port %d\n",
-           ip4addr_ntoa(netif_ip4_addr(netif)), OPENPLC_SERVER_PORT);
+    printf("[NET] IP %s, MAC %02X:%02X:%02X:%02X:%02X:%02X,"
+           " IAP server reachable on port %d\n",
+           ip4addr_ntoa(netif_ip4_addr(netif)),
+           netif->hwaddr[0], netif->hwaddr[1], netif->hwaddr[2],
+           netif->hwaddr[3], netif->hwaddr[4], netif->hwaddr[5],
+           OPENPLC_SERVER_PORT);
   }
 }
 /* USER CODE END 0 */

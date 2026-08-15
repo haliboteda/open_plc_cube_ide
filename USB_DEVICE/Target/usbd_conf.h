@@ -71,12 +71,6 @@
 /*---------- -----------*/
 #define USBD_DEBUG_LEVEL     0U
 /*---------- -----------*/
-/* Must stay 0: at 1 the stack answers GET_DESCRIPTOR(BOS) and tells the host
- * this device does USB 2.0 Link Power Management, while USBD_LL_Init() brings
- * the OTG core up with lpm_enable = DISABLE, so the core ignores every LPM
- * token that claim invites. The Arduino core pairs 0 with DISABLE; this file is
- * the odd one out. NOT inside a USER CODE block -- recheck after any CubeMX
- * regeneration. */
 #define USBD_LPM_ENABLED     0U
 /*---------- -----------*/
 #define USBD_SELF_POWERED     1U

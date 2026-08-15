@@ -125,15 +125,25 @@ uint32_t iap_auth_get_counter(void)
 void iap_auth_report_backup_domain(void)
 {
 	uint32_t witness = HAL_RTCEx_BKUPRead(&hrtc, IAP_VBAT_WITNESS_BKP_REG);
+	uint32_t counter = HAL_RTCEx_BKUPRead(&hrtc, IAP_AUTH_COUNTER_BKP_REG);
 
 	if (witness == IAP_VBAT_WITNESS_VALUE) {
-		printf("Backup domain retained, nonce counter = %" PRIu32 "\r\n",
-				HAL_RTCEx_BKUPRead(&hrtc, IAP_AUTH_COUNTER_BKP_REG));
+		printf("Backup domain retained, nonce counter = %" PRIu32 "\r\n", counter);
 		return;
 	}
 
-	printf("** Backup domain was lost - RTC battery absent or empty. **\r\n"
-			"** Nonce counter restarted from zero; replay protection is weakened. **\r\n");
+	/* Losing the domain zeroes every register in it, so a counter that is still
+	 * counting means the witness read is wrong rather than the domain gone.
+	 * Report what was actually read: claiming replay protection is weakened when
+	 * it is not costs more than saying nothing. */
+	if (counter != 0U) {
+		printf("** Backup domain witness missing, but nonce counter = %" PRIu32 ". **\r\n"
+				"** Domain contents survived; treating the witness read as unreliable. **\r\n",
+				counter);
+	} else {
+		printf("** Backup domain was lost - RTC battery absent or empty. **\r\n"
+				"** Nonce counter is zero; replay protection is weakened. **\r\n");
+	}
 
 	HAL_PWR_EnableBkUpAccess();
 	HAL_RTCEx_BKUPWrite(&hrtc, IAP_VBAT_WITNESS_BKP_REG, IAP_VBAT_WITNESS_VALUE);

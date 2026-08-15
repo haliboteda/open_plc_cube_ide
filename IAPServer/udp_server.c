@@ -1,6 +1,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <inttypes.h>
 
 #include "lwip/pbuf.h"
 #include "lwip/udp.h"
@@ -18,66 +19,69 @@ extern struct netif gnetif;
 static struct udp_pcb *udp_server_pcb = NULL;
 
 /* Discovery replies need no authentication (see SECURITY.md, Step 2) -- the
- * UID they carry is the very lookup key a per-device secret would be
- * indexed by, so gating a reply on one would be circular. What they do need
- * is a cap on how often a given source gets a reply, so a spoofed-source
- * flood of "openplc_server_where_r_y" can't turn this device into a
- * reflection/amplification tool against some third IP on the LAN. This is a
- * small fixed-size LRU of recently-seen sources, not a security boundary --
- * it only bounds abuse, it doesn't require the sender to prove anything. */
-#define DISCOVERY_MIN_REPLY_INTERVAL_MS 2000U
-#define DISCOVERY_RATE_SLOTS 8U
+ * UID they carry is the very lookup key a per-device secret would be indexed
+ * by, so gating a reply on one would be circular. What they do need is a
+ * ceiling on how much traffic a stranger can make this device emit, so a
+ * spoofed-source flood of "openplc_server_where_r_y" cannot turn it into a
+ * reflection tool against a third party on the LAN.
+ *
+ * The ceiling is on the device as a whole, deliberately not per source. A
+ * per-source budget is shared by every program on one host, and the Arduino
+ * IDE's network_discovery polls every 30s from the same host an operator
+ * flashes from -- so our own two tools spent a day refusing each other. A
+ * legitimate load is ~2 replies/s, twenty-five times under this cap, so normal
+ * use never reaches it.
+ *
+ * Mirrored in the application: OpenPLC_IAP/src/udp_server.c. Change one,
+ * change both. */
+#define DISCOVERY_MAX_REPLIES_PER_SEC 50U
 
-typedef struct {
-  ip_addr_t addr;
-  uint32_t  last_reply_tick;
-  bool      used;
-} discovery_rate_slot_t;
-
-static discovery_rate_slot_t s_discovery_rate_slots[DISCOVERY_RATE_SLOTS];
-
-static bool discovery_reply_allowed(const ip_addr_t *addr)
+static bool discovery_reply_allowed(void)
 {
+  static uint32_t window_start;
+  static uint32_t replies_in_window;
+
   uint32_t now = HAL_GetTick();
-  uint32_t i;
-  uint32_t victim;
 
-  for (i = 0; i < DISCOVERY_RATE_SLOTS; i++) {
-    if (s_discovery_rate_slots[i].used && ip_addr_cmp(&s_discovery_rate_slots[i].addr, addr)) {
-      if ((now - s_discovery_rate_slots[i].last_reply_tick) < DISCOVERY_MIN_REPLY_INTERVAL_MS) {
-        return false; /* replied to this source too recently */
-      }
-      s_discovery_rate_slots[i].last_reply_tick = now;
-      return true;
-    }
+  if ((now - window_start) >= 1000U) {
+    window_start = now;
+    replies_in_window = 0U;
   }
 
-  /* Not tracked yet: claim a free slot, or evict the least-recently-used one. */
-  victim = 0;
-  for (i = 0; i < DISCOVERY_RATE_SLOTS; i++) {
-    if (!s_discovery_rate_slots[i].used) {
-      victim = i;
-      break;
+  if (replies_in_window >= DISCOVERY_MAX_REPLIES_PER_SEC) {
+    /* Only the first refusal of each window speaks. Printing per dropped packet
+     * would let a flood keep the UART busy at 115200 baud, which turns this log
+     * into a better denial of service than the flood it reports. */
+    if (replies_in_window == DISCOVERY_MAX_REPLIES_PER_SEC) {
+      replies_in_window++;
+      printf("[UDP] discovery capped at %u replies/s - something is flooding us\r\n",
+             (unsigned)DISCOVERY_MAX_REPLIES_PER_SEC);
     }
-    if (s_discovery_rate_slots[i].last_reply_tick < s_discovery_rate_slots[victim].last_reply_tick) {
-      victim = i;
-    }
+    return false;
   }
-  s_discovery_rate_slots[victim].addr = *addr;
-  s_discovery_rate_slots[victim].used = true;
-  s_discovery_rate_slots[victim].last_reply_tick = now;
+
+  replies_in_window++;
   return true;
 }
 
 static void openplc_udp_reply(struct udp_pcb *pcb, const ip_addr_t *addr, u16_t port, const char *msg)
 {
   size_t len = strlen(msg);
+  err_t err;
   struct pbuf *reply_pbuf = pbuf_alloc(PBUF_TRANSPORT, (u16_t)len, PBUF_RAM);
+
+  /* Every way this can fail used to be silent, which made a discovery reply
+   * that never went out indistinguishable from a board that was not there. */
   if (reply_pbuf == NULL) {
+    printf("[UDP] discovery reply dropped: out of pbufs (%u bytes)\r\n", (unsigned)len);
     return;
   }
   memcpy(reply_pbuf->payload, msg, len);
-  udp_sendto(pcb, reply_pbuf, addr, port);
+  err = udp_sendto(pcb, reply_pbuf, addr, port);
+  if (err != ERR_OK) {
+    printf("[UDP] discovery reply to %s:%u failed: err %d\r\n",
+           ipaddr_ntoa(addr), (unsigned)port, (int)err);
+  }
   pbuf_free(reply_pbuf);
 }
 
@@ -103,7 +107,7 @@ static void udp_server_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p,
       (strcmp(recv_buf, "openplc_server_where_r_y") == 0) ||
       (strcmp(recv_buf, "ping") == 0)) {
     char reply_msg[96] = {0};
-    if (!discovery_reply_allowed(addr)) {
+    if (!discovery_reply_allowed()) {
       return;
     }
     /* Shared with the CDC probe so the two channels cannot drift apart. */

@@ -87,6 +87,26 @@ void boot_handoff_latch_reset_cause(void)
 	__HAL_RCC_CLEAR_RESET_FLAGS();
 }
 
+uint32_t boot_handoff_reset_rsr(void)
+{
+	boot_handoff_latch_reset_cause();
+	return s_reset_rsr;
+}
+
+const char *boot_handoff_reset_cause_str(void)
+{
+	const uint32_t rsr = boot_handoff_reset_rsr();
+
+	if ((rsr & RCC_RSR_WWDG1RSTF) != 0U) return "WWDG";
+	if ((rsr & RCC_RSR_IWDG1RSTF) != 0U) return "IWDG";
+	if ((rsr & RCC_RSR_SFTRSTF) != 0U)   return "SOFT";
+	if ((rsr & RCC_RSR_PORRSTF) != 0U)   return "POR";
+	if ((rsr & RCC_RSR_PINRSTF) != 0U)   return "PIN";
+	if ((rsr & RCC_RSR_BORRSTF) != 0U)   return "BOR";
+	if ((rsr & RCC_RSR_D2RSTF) != 0U)    return "D2RST";
+	return "UNKNOWN";
+}
+
 bool boot_handoff_request(boot_req_t mode)
 {
 	volatile boot_handoff_t *h = record();

@@ -177,6 +177,8 @@ int main(void)
   printf("** Checking Starting Mod ...\r\n"
 		  "** (IF You want OpenPLC to stay in upload mode, please hold down the BOOT0 button for 3-5 seconds while clicking)\r\n");
 
+  printf("** Reset cause: %s\r\n", boot_handoff_reset_cause_str());
+
   s_boot_mode = server_decide(boot_window_relay());
 
   if (s_boot_mode == IAP_NONE) {

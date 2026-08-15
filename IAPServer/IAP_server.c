@@ -252,7 +252,8 @@ void process_command() {
 			received_bytes += len_in_RX_buffer;			//LenInFlashBuffer;
 			memset(RXBuffer, 0, len_in_RX_buffer);			//
 			printf("Done. Write Addr:%" PRIx32 " size:%" PRIu32 " (written:%" PRIu32 " of total:%" PRIu32 ") \r\n",
-                    app_base, len_in_RX_buffer, received_bytes, expected_size);
+                    app_base + received_bytes - len_in_RX_buffer,
+                    len_in_RX_buffer, received_bytes, expected_size);
 			len_in_RX_buffer = 0;
 
 			send_response("OK");

@@ -186,7 +186,25 @@ static void low_level_init(struct netif *netif)
   heth.Init.RxBuffLen = 1536;
 
   /* USER CODE BEGIN MACADDRESS */
+  /* Give every board its own MAC: the generated one above is a build-time
+   * constant, so two boards on one LAN would collide.
+   * Same derivation as openplc_make_mac_from_uid() in the Arduino core
+   * (libraries/OpenPLC_Net/src/ethernetif.c). A user application is free to
+   * pick its own instead -- devices are located by UID, not by address. */
+  {
+    uint32_t u0 = HAL_GetUIDw0();
+    uint32_t u1 = HAL_GetUIDw1();
+    uint32_t u2 = HAL_GetUIDw2();
+    uint32_t h = u0 ^ (u1 << 7) ^ (u2 >> 3) ^ 0xA5C39E17U;
 
+    /* bit1=1 local administered, bit0=0 unicast */
+    MACAddr[0] = 0x02U;
+    MACAddr[1] = (uint8_t)(h >> 24);
+    MACAddr[2] = (uint8_t)(h >> 16);
+    MACAddr[3] = (uint8_t)(h >> 8);
+    MACAddr[4] = (uint8_t)h;
+    MACAddr[5] = (uint8_t)(u0 ^ u1 ^ u2);
+  }
   /* USER CODE END MACADDRESS */
 
   hal_eth_init_status = HAL_ETH_Init(&heth);
