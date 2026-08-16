@@ -1,0 +1,887 @@
+<title>Two Keys, Two Jobs</title>
+
+<style>
+  :root {
+    --bg:#EDEFF2; --surface:#FFFFFF; --surface-2:#E2E6EB; --surface-3:#D7DCE3;
+    --ink:#14171C; --ink-2:#49515F; --ink-3:#717A8A;
+    --rule:#C6CDD6;
+    --sign:#9E5410; --sign-soft:#F2E5D6; --sign-line:#C4762A;
+    --auth:#0A6873; --auth-soft:#D5E8EB; --auth-line:#0F818E;
+    --bad:#9E2018; --bad-soft:#F4DEDC;
+
+    --serif: ui-serif, "Iowan Old Style", Charter, Georgia, "Times New Roman", serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#0F1216; --surface:#171B21; --surface-2:#1D232B; --surface-3:#262D37;
+      --ink:#E2E6EC; --ink-2:#A2AAB7; --ink-3:#79828F;
+      --rule:#2B323B;
+      --sign:#E0994E; --sign-soft:#33240F; --sign-line:#C4762A;
+      --auth:#4FC0CC; --auth-soft:#0F3037; --auth-line:#2A9AA8;
+      --bad:#EE7466; --bad-soft:#3A1815;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg:#0F1216; --surface:#171B21; --surface-2:#1D232B; --surface-3:#262D37;
+    --ink:#E2E6EC; --ink-2:#A2AAB7; --ink-3:#79828F;
+    --rule:#2B323B;
+    --sign:#E0994E; --sign-soft:#33240F; --sign-line:#C4762A;
+    --auth:#4FC0CC; --auth-soft:#0F3037; --auth-line:#2A9AA8;
+    --bad:#EE7466; --bad-soft:#3A1815;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0 20px 96px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1000px; margin: 0 auto; }
+
+  /* ---------- masthead ---------- */
+
+  .masthead {
+    padding: 72px 0 40px;
+    border-bottom: 1px solid var(--rule);
+    display: flex; flex-direction: column; gap: 20px;
+  }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--ink-3); margin: 0;
+  }
+  .masthead h1 {
+    font-family: var(--serif); font-weight: 700; font-size: clamp(38px, 7vw, 62px);
+    line-height: 1.02; letter-spacing: -.02em; text-wrap: balance; margin: 0;
+  }
+  .standfirst {
+    font-size: 18px; line-height: 1.55; color: var(--ink-2);
+    max-width: 62ch; margin: 0;
+  }
+  .standfirst strong { color: var(--ink); font-weight: 600; }
+
+  /* ---------- sections ---------- */
+
+  section { padding-top: 56px; display: flex; flex-direction: column; gap: 20px; }
+
+  h2 {
+    font-family: var(--serif); font-weight: 700; font-size: 30px;
+    letter-spacing: -.015em; line-height: 1.15; margin: 0;
+    text-wrap: balance;
+  }
+  h3 {
+    font-family: var(--mono); font-size: 12px; letter-spacing: .13em;
+    text-transform: uppercase; color: var(--ink-3);
+    font-weight: 600; margin: 0;
+  }
+  p { margin: 0; max-width: 68ch; }
+  p + p { margin-top: -4px; }
+
+  code {
+    font-family: var(--mono); font-size: .88em;
+    background: var(--surface-2); border-radius: 3px;
+    padding: .12em .34em; word-break: break-word;
+  }
+  a { color: var(--auth); }
+
+  .lede { font-size: 17px; color: var(--ink-2); max-width: 66ch; }
+
+  /* ---------- figures ---------- */
+
+  figure {
+    margin: 8px 0 0; background: var(--surface);
+    border: 1px solid var(--rule); border-radius: 4px;
+    padding: 22px 22px 16px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .scroller { overflow-x: auto; }
+  figure svg { display: block; width: 100%; min-width: 640px; height: auto; }
+  figcaption {
+    font-size: 13.5px; line-height: 1.5; color: var(--ink-2);
+    border-top: 1px solid var(--rule); padding-top: 12px; margin: 0;
+  }
+  figcaption b { color: var(--ink); font-weight: 600; }
+
+  svg text { font-family: var(--mono); fill: currentColor; }
+  .t-lg { font-size: 13px; font-weight: 600; }
+  .t-md { font-size: 11.5px; }
+  .t-sm { font-size: 10px; }
+  .t-xs { font-size: 9px; letter-spacing: .12em; }
+  .dim { fill: var(--ink-3); }
+  .dim2 { fill: var(--ink-2); }
+  .warn { fill: var(--bad); }
+
+  .m-sign path { fill: var(--sign-line); }
+  .m-auth path { fill: var(--auth-line); }
+  .m-ink path  { fill: var(--ink-2); }
+
+  .chain-sign { color: var(--sign-line); }
+  .chain-auth { color: var(--auth-line); }
+  .chain-ink  { color: var(--ink-2); }
+
+  .bx { fill: var(--surface-2); stroke: var(--rule); stroke-width: 1; }
+  .bx-sign { fill: var(--sign-soft); stroke: var(--sign-line); stroke-width: 1.4; }
+  .bx-auth { fill: var(--auth-soft); stroke: var(--auth-line); stroke-width: 1.4; }
+  .bx-bad  { fill: var(--bad-soft);  stroke: var(--bad); stroke-width: 1.4; }
+  .lbl-sign { fill: var(--sign); }
+  .lbl-auth { fill: var(--auth); }
+  .ink { fill: var(--ink); }
+  .rule { stroke: var(--rule); stroke-width: 1; }
+  .rule-dash { stroke: var(--rule); stroke-width: 1; stroke-dasharray: 5 5; }
+  .flow { stroke: currentColor; stroke-width: 1.4; fill: none; }
+  .flow-dash { stroke: currentColor; stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+
+  /* ---------- tables ---------- */
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 14px; }
+  th {
+    text-align: left; font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3);
+    font-weight: 600; padding: 12px 16px;
+    border-bottom: 1px solid var(--rule); background: var(--surface-2);
+    white-space: nowrap;
+  }
+  td { padding: 13px 16px; border-bottom: 1px solid var(--rule); vertical-align: top; line-height: 1.45; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.path { font-family: var(--mono); font-size: 12px; }
+  td.path b { font-weight: 600; }
+  .note { display: block; color: var(--ink-3); font-size: 12px; font-family: var(--sans); margin-top: 3px; }
+
+  .tag {
+    display: inline-block; font-family: var(--mono); font-size: 10px;
+    letter-spacing: .1em; text-transform: uppercase; font-weight: 600;
+    padding: 3px 7px; border-radius: 3px; white-space: nowrap;
+  }
+  .tag-sign { background: var(--sign-soft); color: var(--sign); }
+  .tag-auth { background: var(--auth-soft); color: var(--auth); }
+  .tag-bad  { background: var(--bad-soft);  color: var(--bad); }
+  .tag-mut  { background: var(--surface-3); color: var(--ink-2); }
+
+  /* ---------- gate list ---------- */
+
+  .gates { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+  .gates li { background: var(--surface); padding: 14px 18px; display: grid; grid-template-columns: 210px 1fr; gap: 4px 22px; align-items: baseline; }
+  .gates .where { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+  .gates .what { font-size: 14px; }
+  .gates .what b { font-weight: 600; }
+  @media (max-width: 640px) { .gates li { grid-template-columns: 1fr; } }
+
+  /* ---------- callout ---------- */
+
+  .callout {
+    border: 1px solid var(--bad); border-left-width: 3px;
+    background: var(--bad-soft); border-radius: 4px;
+    padding: 18px 20px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .callout h3 { color: var(--bad); }
+  .callout p { font-size: 14.5px; max-width: 70ch; }
+  .callout code { background: color-mix(in srgb, var(--bad) 12%, transparent); }
+
+  .colophon {
+    margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--rule);
+    font-family: var(--mono); font-size: 11px; letter-spacing: .06em;
+    color: var(--ink-3);
+  }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">OpenPLC · STM32H743 · bootloader ⇄ IAPTool</p>
+  <h1>Two Keys, Two Jobs</h1>
+  <p class="standfirst">
+    The IAP path runs <strong>two completely independent key systems</strong>. An ECDSA P-256
+    keypair decides <strong>what is allowed to run</strong>; a shared password plus each chip's
+    UID decides <strong>who is allowed to start an update</strong>. They never touch each other,
+    and they live in very different places.
+  </p>
+</header>
+
+<section>
+  <h2>What each one actually decides</h2>
+  <p class="lede">
+    They are not two keys for two stages of one check. They are two different questions, and
+    neither answer implies the other. An update has to pass both, at opposite ends of the transfer.
+  </p>
+
+  <figure>
+    <div class="scroller">
+      <svg viewBox="0 0 940 344" role="img" aria-label="One update pipeline with two gates: an HMAC gate before the erase asks whether the caller is allowed, an ECDSA gate after the write asks whether the code is ours. Removing either one lets a different attack through.">
+        <defs>
+          <marker id="ar-ink-0" class="m-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+        </defs>
+
+        <g class="chain-ink">
+          <!-- the questions -->
+          <text class="t-md lbl-auth" x="286" y="60" text-anchor="middle">“is the caller allowed?”</text>
+          <text class="t-md lbl-sign" x="640" y="60" text-anchor="middle">“is the code ours?”</text>
+
+          <!-- boot re-check loop -->
+          <path class="flow-dash" d="M 865 90 V 46 H 720 V 74" marker-end="url(#ar-ink-0)"/>
+          <text class="t-sm dim2" x="792" y="40" text-anchor="middle">re-checked at every boot</text>
+
+          <!-- pipeline -->
+          <rect class="bx" x="16" y="90" width="142" height="56" rx="3"/>
+          <text class="t-md ink" x="87" y="113" text-anchor="middle">update request</text>
+          <text class="t-sm dim2" x="87" y="130" text-anchor="middle">from anyone</text>
+
+          <line class="flow" x1="158" y1="118" x2="190" y2="118" marker-end="url(#ar-ink-0)"/>
+
+          <rect class="bx-auth" x="196" y="78" width="180" height="80" rx="3"/>
+          <text class="t-lg ink" x="286" y="104" text-anchor="middle">GATE 1 — HMAC</text>
+          <text class="t-sm dim2" x="286" y="122" text-anchor="middle">symmetric</text>
+          <text class="t-xs dim" x="286" y="140" text-anchor="middle" letter-spacing="0">board holds the full secret</text>
+
+          <line class="flow" x1="376" y1="118" x2="408" y2="118" marker-end="url(#ar-ink-0)"/>
+
+          <rect class="bx" x="414" y="90" width="136" height="56" rx="3"/>
+          <text class="t-md ink" x="482" y="113" text-anchor="middle">erase + write</text>
+          <text class="t-sm dim2" x="482" y="130" text-anchor="middle">app region</text>
+
+          <line class="flow" x1="550" y1="118" x2="582" y2="118" marker-end="url(#ar-ink-0)"/>
+
+          <rect class="bx-sign" x="588" y="78" width="180" height="80" rx="3"/>
+          <text class="t-lg ink" x="678" y="104" text-anchor="middle">GATE 2 — ECDSA</text>
+          <text class="t-sm dim2" x="678" y="122" text-anchor="middle">asymmetric</text>
+          <text class="t-xs dim" x="678" y="140" text-anchor="middle" letter-spacing="0">board holds only the public key</text>
+
+          <line class="flow" x1="768" y1="118" x2="800" y2="118" marker-end="url(#ar-ink-0)"/>
+
+          <rect class="bx" x="806" y="90" width="118" height="56" rx="3"/>
+          <text class="t-md ink" x="865" y="113" text-anchor="middle">execute</text>
+          <text class="t-sm dim2" x="865" y="130" text-anchor="middle">on next boot</text>
+        </g>
+
+        <!-- failure modes -->
+        <g class="chain-ink">
+          <line class="flow" x1="286" y1="158" x2="286" y2="206" marker-end="url(#ar-ink-0)"/>
+          <text class="t-sm warn" x="296" y="188">remove it:</text>
+          <line class="flow" x1="678" y1="158" x2="678" y2="206" marker-end="url(#ar-ink-0)"/>
+          <text class="t-sm warn" x="688" y="188">remove it:</text>
+        </g>
+
+        <rect class="bx-bad" x="176" y="212" width="220" height="104" rx="3"/>
+        <text class="t-md ink" x="190" y="236">Anyone reaching the board</text>
+        <text class="t-md ink" x="190" y="254">can erase the running app</text>
+        <text class="t-md ink" x="190" y="272">and cannot replace it.</text>
+        <text class="t-md warn" x="190" y="296">Denial of service.</text>
+
+        <rect class="bx-bad" x="568" y="212" width="220" height="104" rx="3"/>
+        <text class="t-md ink" x="582" y="236">One password lifted from</text>
+        <text class="t-md ink" x="582" y="254">one chip runs any code on</text>
+        <text class="t-md ink" x="582" y="272">every board in the fleet.</text>
+        <text class="t-md warn" x="582" y="296">Total compromise.</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>Neither gate can do the other's job.</b> Gate 1 knows nothing about what the bytes contain
+      — it only knows the caller could prove possession of this board's key. Gate 2 knows nothing
+      about who sent the bytes — it only knows they carry a signature made by the release private
+      key. Both failure modes below are real, and they are different failures.
+    </figcaption>
+  </figure>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th></th><th>HMAC-SHA256</th><th>ECDSA P-256</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>Answers</b></td>
+          <td>May this caller start an update on this board?</td>
+          <td>Was this image released by us, and is it still intact?</td>
+        </tr>
+        <tr>
+          <td><b>Key type</b></td>
+          <td>Symmetric — the same secret sits on both sides</td>
+          <td>Asymmetric — a private key signs, a public key verifies</td>
+        </tr>
+        <tr>
+          <td><b>On the chip</b></td>
+          <td><span class="tag tag-bad">the full secret</span></td>
+          <td><span class="tag tag-mut">only the public key</span></td>
+        </tr>
+        <tr>
+          <td><b>Protects</b></td>
+          <td>The <i>action</i> — nobody erases your app uninvited</td>
+          <td>The <i>data</i> — nothing unauthorised ever executes</td>
+        </tr>
+        <tr>
+          <td><b>When it runs</b></td>
+          <td>Once per session, <b>before</b> the erase</td>
+          <td><b>After</b> the last byte lands — and again at every boot</td>
+        </tr>
+        <tr>
+          <td><b>Lifetime</b></td>
+          <td>One nonce, one shot, discarded immediately</td>
+          <td>Stored with the image and re-checked forever</td>
+        </tr>
+        <tr>
+          <td><b>If extracted<br>from a chip</b></td>
+          <td>Attacker can open update sessions on any board — but still cannot make one boot</td>
+          <td>Nothing is lost. The public key was already public by design</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>Where the key material sits</h2>
+  <p class="lede">
+    That asymmetry is the reason the two live in such different places. The ECDSA private
+    key never enters the flash image — only its signature crosses. The fixed password does the
+    opposite: the exact same bytes are compiled into the firmware and into the PC tool.
+  </p>
+
+  <figure>
+    <div class="scroller">
+      <svg viewBox="0 0 940 470" role="img" aria-label="Two key systems compared across a device boundary: the ECDSA private key stays on the build machine and only its signature crosses into the device, while the fixed password exists identically on both sides.">
+        <defs>
+          <marker id="ar-sign-1" class="m-sign" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+          <marker id="ar-auth-1" class="m-auth" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+        </defs>
+
+        <!-- band divider + band labels -->
+        <line class="rule-dash" x1="44" y1="240" x2="920" y2="240"/>
+        <text class="t-xs dim" x="22" y="146" text-anchor="middle" transform="rotate(-90 22 146)">BUILD MACHINE</text>
+        <text class="t-xs dim" x="22" y="352" text-anchor="middle" transform="rotate(-90 22 352)">DEVICE FLASH</text>
+
+        <!-- column headings -->
+        <text class="t-md lbl-sign" x="300" y="24" text-anchor="middle" letter-spacing="1.4">FIRMWARE SIGNING — WHAT MAY RUN</text>
+        <text class="t-md lbl-auth" x="700" y="24" text-anchor="middle" letter-spacing="1.4">SESSION AUTH — WHO MAY START</text>
+
+        <!-- ============ column A : ECDSA ============ -->
+        <g class="chain-sign">
+          <rect class="bx" x="150" y="52" width="300" height="52" rx="3"/>
+          <text class="t-lg ink" x="300" y="75" text-anchor="middle">fw_signing_key.pem</text>
+          <text class="t-sm dim2" x="300" y="92" text-anchor="middle">ECDSA P-256 private key</text>
+
+          <line class="flow" x1="300" y1="104" x2="300" y2="144" marker-end="url(#ar-sign-1)"/>
+          <text class="t-sm dim2" x="312" y="128">signs SHA-256(image)</text>
+
+          <rect class="bx" x="150" y="150" width="300" height="52" rx="3"/>
+          <text class="t-lg ink" x="300" y="173" text-anchor="middle">.sig — r||s, 64 bytes</text>
+          <text class="t-sm dim2" x="300" y="190" text-anchor="middle">a file, or produced in memory at flash time</text>
+
+          <text class="t-sm warn" x="155" y="228">the private key never crosses this line</text>
+
+          <!-- signature crosses the boundary -->
+          <line class="flow" x1="390" y1="202" x2="390" y2="376" marker-end="url(#ar-sign-1)"/>
+          <text class="t-sm dim2" x="398" y="262">sent with</text>
+          <text class="t-sm dim2" x="398" y="274">the command</text>
+
+          <rect class="bx" x="150" y="282" width="185" height="52" rx="3"/>
+          <text class="t-lg ink" x="242" y="305" text-anchor="middle">fw_public_key[64]</text>
+          <text class="t-sm dim2" x="242" y="322" text-anchor="middle">in fw_pubkey.c</text>
+
+          <line class="flow" x1="242" y1="334" x2="242" y2="376" marker-end="url(#ar-sign-1)"/>
+
+          <rect class="bx-sign" x="150" y="382" width="300" height="56" rx="3"/>
+          <text class="t-md ink" x="300" y="406" text-anchor="middle">uECC_verify(pub, hash, sig)</text>
+          <text class="t-sm dim2" x="300" y="424" text-anchor="middle">IAPServer/fw_verify.c</text>
+        </g>
+
+        <!-- ============ column B : HMAC ============ -->
+        <g class="chain-auth">
+          <rect class="bx" x="550" y="52" width="300" height="52" rx="3"/>
+          <text class="t-lg ink" x="700" y="75" text-anchor="middle">FixedPassword</text>
+          <text class="t-sm dim2" x="700" y="92" text-anchor="middle">iapcrypto/fixed_password_generated.go</text>
+
+          <line class="flow" x1="700" y1="104" x2="700" y2="144" marker-end="url(#ar-auth-1)"/>
+          <text class="t-sm dim2" x="712" y="128">+ UID learned from getuid</text>
+
+          <rect class="bx" x="550" y="150" width="300" height="52" rx="3"/>
+          <text class="t-md ink" x="700" y="173" text-anchor="middle">deviceKey = HMAC-SHA256(pw, UID)</text>
+          <text class="t-sm dim2" x="700" y="190" text-anchor="middle">held only in the tool's memory</text>
+
+          <text class="t-sm warn" x="555" y="228">the same secret lives on both sides of this line</text>
+
+          <rect class="bx" x="550" y="282" width="300" height="52" rx="3"/>
+          <text class="t-lg ink" x="700" y="305" text-anchor="middle">IAP_FIXED_PASSWORD</text>
+          <text class="t-sm dim2" x="700" y="322" text-anchor="middle">iap_fixed_password_generated.h</text>
+
+          <line class="flow" x1="700" y1="334" x2="700" y2="376" marker-end="url(#ar-auth-1)"/>
+          <text class="t-sm dim2" x="712" y="360">+ HAL_GetUIDw0..2()</text>
+
+          <rect class="bx-auth" x="550" y="382" width="300" height="56" rx="3"/>
+          <text class="t-md ink" x="700" y="406" text-anchor="middle">deviceKey — recomputed on chip</text>
+          <text class="t-sm dim2" x="700" y="424" text-anchor="middle">IAPServer/iap_keyderive.c</text>
+
+          <path class="flow-dash" d="M 854 176 H 892 V 410 H 854"/>
+          <text class="t-sm dim2" x="906" y="293" text-anchor="middle" transform="rotate(-90 906 293)">must match</text>
+        </g>
+      </svg>
+    </div>
+    <figcaption>
+      <b>One secret crosses, the other is duplicated.</b> Extracting the fixed password from a chip
+      lets you start an update session on any board in the fleet — but still not sign an image,
+      because the ECDSA private key was never there. That separation is the whole point of running
+      two systems.
+    </figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>The flash exchange, command by command</h2>
+  <p class="lede">
+    CDC (USB serial) and Ethernet (TCP) run the identical command sequence — only the transport
+    differs, and the Ethernet path adds an HMAC-authenticated <code>openplc_server_reboot</code>
+    first to get the running app back into the bootloader. Every command is newline-framed.
+  </p>
+
+  <figure>
+    <div class="scroller">
+      <svg viewBox="0 0 960 900" role="img" aria-label="Sequence diagram of the flash exchange between IAPTool and the bootloader: ping, getuid, device key derivation, getpubkey and key match check, authchallenge, HMAC computation, the authenticated flash command, image transfer, and final CRC plus signature verification.">
+        <defs>
+          <marker id="ar-sign-2" class="m-sign" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+          <marker id="ar-auth-2" class="m-auth" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+          <marker id="ar-ink-2" class="m-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+        </defs>
+
+        <!-- actors -->
+        <rect class="bx" x="50" y="10" width="240" height="40" rx="3"/>
+        <text class="t-lg ink" x="170" y="35" text-anchor="middle">IAPTool  (PC)</text>
+        <rect class="bx" x="620" y="10" width="240" height="40" rx="3"/>
+        <text class="t-lg ink" x="740" y="35" text-anchor="middle">Bootloader  (H743)</text>
+
+        <line class="rule-dash" x1="170" y1="50" x2="170" y2="884"/>
+        <line class="rule-dash" x1="740" y1="50" x2="740" y2="884"/>
+
+        <!-- stage rules -->
+        <line class="rule" x1="20" y1="72" x2="940" y2="72"/>
+        <text class="t-xs dim" x="940" y="66" text-anchor="end">IDENTIFY</text>
+        <line class="rule" x1="20" y1="268" x2="940" y2="268"/>
+        <text class="t-xs dim" x="940" y="262" text-anchor="end">KEY MATCH</text>
+        <line class="rule" x1="20" y1="416" x2="940" y2="416"/>
+        <text class="t-xs dim" x="940" y="410" text-anchor="end">CHALLENGE</text>
+        <line class="rule" x1="20" y1="548" x2="940" y2="548"/>
+        <text class="t-xs dim" x="940" y="542" text-anchor="end">AUTHORIZE</text>
+        <line class="rule" x1="20" y1="672" x2="940" y2="672"/>
+        <text class="t-xs dim" x="940" y="666" text-anchor="end">TRANSFER &amp; VERIFY</text>
+
+        <!-- identify -->
+        <g class="chain-ink">
+          <text class="t-md ink" x="455" y="82" text-anchor="middle">ping</text>
+          <line class="flow" x1="170" y1="90" x2="734" y2="90" marker-end="url(#ar-ink-2)"/>
+          <text class="t-md dim2" x="455" y="110" text-anchor="middle">OK</text>
+          <line class="flow" x1="740" y1="118" x2="176" y2="118" marker-end="url(#ar-ink-2)"/>
+        </g>
+        <g class="chain-auth">
+          <text class="t-md ink" x="455" y="144" text-anchor="middle">getuid</text>
+          <line class="flow" x1="170" y1="152" x2="734" y2="152" marker-end="url(#ar-auth-2)"/>
+          <text class="t-md dim2" x="455" y="172" text-anchor="middle">96-bit STM32 UID, hex</text>
+          <line class="flow" x1="740" y1="180" x2="176" y2="180" marker-end="url(#ar-auth-2)"/>
+        </g>
+        <rect class="bx-auth" x="30" y="196" width="340" height="52" rx="3"/>
+        <text class="t-md ink" x="44" y="216">deviceKey =</text>
+        <text class="t-md ink" x="44" y="234">  HMAC-SHA256(FixedPassword, UID)</text>
+
+        <!-- key match -->
+        <g class="chain-sign">
+          <text class="t-md ink" x="455" y="278" text-anchor="middle">getpubkey</text>
+          <line class="flow" x1="170" y1="286" x2="734" y2="286" marker-end="url(#ar-sign-2)"/>
+          <text class="t-md dim2" x="455" y="306" text-anchor="middle">fw_public_key[64], hex</text>
+          <line class="flow" x1="740" y1="314" x2="176" y2="314" marker-end="url(#ar-sign-2)"/>
+        </g>
+        <rect class="bx-sign" x="30" y="330" width="340" height="70" rx="3"/>
+        <text class="t-md ink" x="44" y="350">sig = ECDSA-P256(privkey,</text>
+        <text class="t-md ink" x="44" y="368">          SHA-256(image))</text>
+        <text class="t-md warn" x="44" y="390">abort if board pubkey != local key</text>
+
+        <!-- challenge -->
+        <g class="chain-auth">
+          <text class="t-md ink" x="455" y="426" text-anchor="middle">authchallenge</text>
+          <line class="flow" x1="170" y1="434" x2="734" y2="434" marker-end="url(#ar-auth-2)"/>
+          <text class="t-md dim2" x="455" y="454" text-anchor="middle">nonce = counter || UIDw0 || tick   (16 B)</text>
+          <line class="flow" x1="740" y1="462" x2="176" y2="462" marker-end="url(#ar-auth-2)"/>
+        </g>
+        <rect class="bx-auth" x="30" y="478" width="340" height="52" rx="3"/>
+        <text class="t-md ink" x="44" y="498">hmac = HMAC-SHA256(deviceKey,</text>
+        <text class="t-md ink" x="44" y="516">          nonce || flash-command)</text>
+
+        <!-- authorize -->
+        <g class="chain-auth">
+          <text class="t-md ink" x="455" y="558" text-anchor="middle">flash &lt;size&gt; &lt;crc32&gt; &lt;sig&gt; &lt;hmac&gt; [version]</text>
+          <line class="flow" x1="170" y1="566" x2="734" y2="566" marker-end="url(#ar-auth-2)"/>
+        </g>
+        <rect class="bx-auth" x="570" y="580" width="340" height="86" rx="3"/>
+        <text class="t-md lbl-auth" x="584" y="599">GATE 1 — is the caller allowed?</text>
+        <text class="t-md ink" x="584" y="620">1. HMAC matches?  2. nonce fresh</text>
+        <text class="t-md ink" x="584" y="638">   and unused?  3. size in range?</text>
+        <text class="t-md warn" x="584" y="658">only then: Erase_FLASH(app region)</text>
+
+        <!-- transfer -->
+        <g class="chain-ink">
+          <text class="t-md dim2" x="455" y="682" text-anchor="middle">OK — app region erased</text>
+          <line class="flow" x1="740" y1="690" x2="176" y2="690" marker-end="url(#ar-ink-2)"/>
+          <text class="t-md ink" x="455" y="712" text-anchor="middle">image bytes — 8 KB chunks</text>
+          <line class="flow" x1="170" y1="720" x2="734" y2="720" marker-end="url(#ar-ink-2)"/>
+          <text class="t-md dim2" x="455" y="740" text-anchor="middle">OK — per chunk</text>
+          <line class="flow" x1="740" y1="748" x2="176" y2="748" marker-end="url(#ar-ink-2)"/>
+        </g>
+        <rect class="bx-sign" x="570" y="760" width="340" height="104" rx="3"/>
+        <text class="t-md lbl-sign" x="584" y="779">GATE 2 — is the code ours?</text>
+        <text class="t-md ink" x="584" y="800">1. ~CRC32(flash) == expected?</text>
+        <text class="t-md ink" x="584" y="818">2. SHA-256 over what was written</text>
+        <text class="t-md ink" x="584" y="836">3. uECC_verify(pubkey, hash, sig)</text>
+        <text class="t-md warn" x="584" y="856">any failure -&gt; log event, no metadata</text>
+
+        <text class="t-md dim2" x="740" y="874" text-anchor="middle">append METADATA record  →  NVIC_SystemReset()</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>Two independent gates, at opposite ends of the transfer.</b> The HMAC gate runs
+      <i>before</i> the erase, so a caller who cannot prove possession of the device key never
+      destroys the installed app. The signature gate runs <i>after</i> the last byte lands, and a
+      failure there leaves the flash written but with no metadata record — which is exactly what
+      makes the next boot refuse to run it.
+    </figcaption>
+  </figure>
+
+  <p>
+    <code>getversion</code> sits between the key match and the challenge. It is advisory only: the
+    tool compares the image's <code>.version</code> against what the board reports and prompts the
+    operator on a downgrade. <b>The bootloader itself never refuses a downgrade.</b>
+  </p>
+</section>
+
+<section>
+  <h2>What happens at every boot</h2>
+  <p class="lede">
+    The signature is not checked only at update time. Every reset re-hashes the app region and
+    re-verifies it against the signature stored in the metadata journal, before a single peripheral
+    beyond UART4 has been brought up.
+  </p>
+
+  <figure>
+    <div class="scroller">
+      <svg viewBox="0 0 900 530" role="img" aria-label="Boot decision flow: after the crypto self-test and consuming the handoff record, the bootloader hashes the app region and verifies it against the stored signature; a valid result jumps to the app, an invalid one or a held BOOT0 button stays in the bootloader.">
+        <defs>
+          <marker id="ar-sign-3" class="m-sign" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+          <marker id="ar-ink-3" class="m-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+        </defs>
+
+        <g class="chain-ink">
+          <rect class="bx" x="170" y="14" width="320" height="40" rx="3"/>
+          <text class="t-lg ink" x="330" y="39" text-anchor="middle">Reset</text>
+          <line class="flow" x1="330" y1="54" x2="330" y2="82" marker-end="url(#ar-ink-3)"/>
+
+          <rect class="bx" x="170" y="88" width="320" height="48" rx="3"/>
+          <text class="t-md ink" x="330" y="109" text-anchor="middle">bootloader_state_init()</text>
+          <text class="t-sm dim2" x="330" y="126" text-anchor="middle">SHA-256 self-test — a failure fails every check below</text>
+          <line class="flow" x1="330" y1="136" x2="330" y2="164" marker-end="url(#ar-ink-3)"/>
+
+          <rect class="bx" x="170" y="170" width="320" height="48" rx="3"/>
+          <text class="t-md ink" x="330" y="191" text-anchor="middle">boot_handoff_take()</text>
+          <text class="t-sm dim2" x="330" y="208" text-anchor="middle">consume the CDC / ETH request left in SRAM4</text>
+          <line class="flow" x1="330" y1="218" x2="330" y2="246" marker-end="url(#ar-ink-3)"/>
+
+          <rect class="bx" x="170" y="252" width="320" height="48" rx="3"/>
+          <text class="t-md ink" x="330" y="273" text-anchor="middle">latest METADATA record</text>
+          <text class="t-sm dim2" x="330" y="290" text-anchor="middle">app_size · sha256 · signature · fw_version</text>
+          <line class="flow" x1="330" y1="300" x2="330" y2="328" marker-end="url(#ar-ink-3)"/>
+
+          <rect class="bx" x="170" y="334" width="320" height="48" rx="3"/>
+          <text class="t-md ink" x="330" y="355" text-anchor="middle">SHA-256 over app_size bytes</text>
+          <text class="t-sm dim2" x="330" y="372" text-anchor="middle">read straight from flash, no RAM staging</text>
+        </g>
+
+        <g class="chain-sign">
+          <line class="flow" x1="330" y1="382" x2="330" y2="404" marker-end="url(#ar-sign-3)"/>
+          <rect class="bx-sign" x="170" y="404" width="320" height="54" rx="3"/>
+          <text class="t-sm lbl-sign" x="330" y="422" text-anchor="middle">GATE 2, AGAIN — no HMAC involved here</text>
+          <text class="t-md ink" x="330" y="446" text-anchor="middle">uECC_verify(pub, hash, meta.signature)</text>
+
+          <line class="flow" x1="330" y1="458" x2="330" y2="480" marker-end="url(#ar-sign-3)"/>
+          <text class="t-sm dim2" x="340" y="474">valid</text>
+
+          <line class="flow" x1="490" y1="433" x2="614" y2="433" marker-end="url(#ar-sign-3)"/>
+          <text class="t-sm dim2" x="552" y="425" text-anchor="middle">fails / absent</text>
+        </g>
+
+        <rect class="bx" x="170" y="480" width="320" height="44" rx="3"/>
+        <text class="t-md ink" x="330" y="500" text-anchor="middle">server_jump_to_app()</text>
+        <text class="t-sm dim2" x="330" y="516" text-anchor="middle">MPU off · UART4 de-init · VTOR · MSP · bx</text>
+
+        <rect class="bx-bad" x="620" y="409" width="260" height="48" rx="3"/>
+        <text class="t-md ink" x="750" y="430" text-anchor="middle">stay in bootloader (IAP_ALL)</text>
+        <text class="t-sm dim2" x="750" y="447" text-anchor="middle">log IAP_EVT_BOOT_VERIFY_FAIL</text>
+
+        <g class="chain-ink">
+          <rect class="bx" x="620" y="88" width="260" height="48" rx="3"/>
+          <text class="t-md ink" x="750" y="109" text-anchor="middle">BOOT0 (PG9) held</text>
+          <text class="t-sm dim2" x="750" y="126" text-anchor="middle">latched across the startup window</text>
+          <path class="flow-dash" d="M 750 136 V 403" marker-end="url(#ar-ink-3)"/>
+          <text class="t-sm dim2" x="762" y="270">wins outright</text>
+        </g>
+      </svg>
+    </div>
+    <figcaption>
+      <b>A board with no valid signature cannot be made to run its app.</b> There is no "does the
+      first word look like a stack pointer" heuristic left — the app runs only if its bytes still
+      hash to something the stored ECDSA signature covers. Note what is absent from this whole
+      path: the HMAC key. There is no caller to authenticate at boot, so gate 1 has nothing to do
+      here — which is precisely why the two gates cannot be collapsed into one.
+    </figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>Where every key actually lives</h2>
+  <p class="lede">
+    Four distinct things are stored, in four distinct places. Only two of them are secrets.
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>What</th><th>Where it lives</th><th>Scope</th><th>In git?</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="tag tag-sign">ECDSA private</span></td>
+          <td class="path">
+            <b>IAPServer/keys/fw_signing_key.TEST_ONLY.pem</b>
+            <span class="note">Reference copy. <code>IAPTool genkey</code> or <code>generate_keys.sh</code> makes a real one.</span>
+          </td>
+          <td>one per product line</td>
+          <td><span class="tag tag-bad">yes — test key</span></td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-sign">ECDSA private</span><span class="note">the copy that signs</span></td>
+          <td class="path">
+            <b>&lt;IAPTool exe dir&gt;/keys/fw_signing_key.pem</b>
+            <span class="note">Overridden by <code>--key=</code> or <code>signing_key</code> in <code>local_config.json</code>. For Arduino: <code>&lt;Arduino15&gt;/packages/OpenPLC_Alpha/tools/STM32Tools/&lt;ver&gt;/&lt;platform&gt;/keys/</code>. Found relative to the executable, so <code>platform.txt</code> passes no paths.</span>
+          </td>
+          <td>same key</td>
+          <td><span class="tag tag-mut">no</span></td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-sign">ECDSA public</span></td>
+          <td class="path">
+            <b>IAPServer/fw_pubkey.c</b> → <code>fw_public_key[64]</code>
+            <span class="note">Raw X||Y, compiled into the bootloader image. Nothing reads a <code>.pem</code> at build time. Served over the wire by <code>getpubkey</code>.</span>
+          </td>
+          <td>same key</td>
+          <td><span class="tag tag-mut">yes — public</span></td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-auth">Fixed password</span><span class="note">source of truth</span></td>
+          <td class="path">
+            <b>IAPServer/iap_fixed_password.txt</b>
+            <span class="note">Edit here, then run <code>generate_fixed_password.sh</code> / <code>.ps1</code>, which rewrites all three copies below. Never hand-edit the generated files.</span>
+          </td>
+          <td>whole fleet</td>
+          <td><span class="tag tag-bad">yes — test value</span></td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-auth">Fixed password</span><span class="note">3 generated mirrors</span></td>
+          <td class="path">
+            <b>IAPServer/iap_fixed_password_generated.h</b> — bootloader<br>
+            <b>&lt;Arduino15&gt;/…/libraries/OpenPLC_IAP/src/iap_fixed_password_generated.h</b> — app<br>
+            <b>IAPTranfer_Tool/iapcrypto/fixed_password_generated.go</b> — PC tool
+            <span class="note">All three must hold identical bytes or the HMAC never matches.</span>
+          </td>
+          <td>whole fleet</td>
+          <td><span class="tag tag-bad">yes — test value</span></td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-auth">Device key</span></td>
+          <td class="path">
+            <b>nowhere — derived on demand</b>
+            <span class="note"><code>HMAC-SHA256(fixed password, 96-bit UID)</code>, recomputed on both sides each time. Never transmitted, never written to flash.</span>
+          </td>
+          <td>per device</td>
+          <td><span class="tag tag-mut">n/a</span></td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-mut">Nonce counter</span></td>
+          <td class="path">
+            <b>RTC backup register RTC_BKP_DR1</b>
+            <span class="note">Must survive power cycles (VBAT) or nonces repeat and the replay check is defeated. Deliberately not in SRAM4, unlike the boot request, which must <i>not</i> survive.</span>
+          </td>
+          <td>per device</td>
+          <td><span class="tag tag-mut">n/a</span></td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-sign">Firmware metadata</span></td>
+          <td class="path">
+            <b>flash sector 7, bank 2</b> — <code>IAP_STATE_SECTOR_ADDR</code>
+            <span class="note">Append-only 128-byte-slot journal: <code>app_size · fw_version · sha256 · signature</code>, plus a hash-chained event log. Outside the app region, so an update can never overwrite it.</span>
+          </td>
+          <td>per device</td>
+          <td><span class="tag tag-mut">n/a</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>Every point that can refuse</h2>
+  <ul class="gates">
+    <li>
+      <span class="where">iap_auth.c</span>
+      <span class="what"><b>Crypto self-test failed at boot</b> — every HMAC and signature result is treated as failed rather than trusted to a primitive already known broken.</span>
+    </li>
+    <li>
+      <span class="where">IAP_server.c · flash</span>
+      <span class="what"><b>Size out of range, or signature hex malformed</b> — refused before the erase, so a bad upload never destroys the installed app for nothing.</span>
+    </li>
+    <li>
+      <span class="where">iap_auth.c</span>
+      <span class="what"><b>No pending nonce, nonce expired, or nonce already consumed</b> — one-shot, consumed whether the check passes or fails. Logged as <code>IAP_EVT_AUTH_FAIL</code>.</span>
+    </li>
+    <li>
+      <span class="where">iap_auth.c</span>
+      <span class="what"><b>HMAC mismatch</b> — constant-time compare against <code>HMAC(deviceKey, nonce || command)</code>.</span>
+    </li>
+    <li>
+      <span class="where">IAP_server.c · after transfer</span>
+      <span class="what"><b>CRC32 mismatch</b> — <code>IAP_EVT_CRC_FAIL</code>, no metadata written.</span>
+    </li>
+    <li>
+      <span class="where">fw_verify.c</span>
+      <span class="what"><b>ECDSA verification fails</b> — <code>IAP_EVT_SIG_FAIL</code>, no metadata written, so the next boot will not run the image either.</span>
+    </li>
+    <li>
+      <span class="where">IAPTool · auth.go</span>
+      <span class="what"><b>Board's public key differs from the local signing key</b> — refused up front, before the transfer. A board too old to answer <code>getpubkey</code> only warns.</span>
+    </li>
+    <li>
+      <span class="where">server_decide()</span>
+      <span class="what"><b>App signature invalid or absent at boot</b> — <code>IAP_EVT_BOOT_VERIFY_FAIL</code>, stay in the bootloader and serve every channel.</span>
+    </li>
+  </ul>
+</section>
+
+<section>
+  <h2>The one hop that changes everything</h2>
+  <p class="lede">
+    Today the board holds the signing key's public half directly, so rotating that key means
+    physically re-flashing every board. A delegation chain inserts one verification step — and that
+    single hop is the whole difference between the two designs.
+  </p>
+
+  <figure>
+    <div class="scroller">
+      <svg viewBox="0 0 940 470" role="img" aria-label="Comparison of the current design and a delegation chain. Today the board holds the signing public key directly, so rotating it requires re-flashing every board over ST-Link. With a delegation chain the board holds a root key and verifies a leaf public key first, so rotating the leaf touches no board.">
+        <defs>
+          <marker id="ar-sign-4" class="m-sign" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+          <marker id="ar-bad-4" class="m-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+        </defs>
+
+        <!-- ===== band A : today ===== -->
+        <text class="t-md dim" x="24" y="28" letter-spacing="1.4">TODAY — THE BOARD TRUSTS THE SIGNING KEY ITSELF</text>
+
+        <g class="chain-sign">
+          <rect class="bx-sign" x="24" y="46" width="180" height="56" rx="3"/>
+          <text class="t-md ink" x="114" y="69" text-anchor="middle">board flash</text>
+          <text class="t-sm dim2" x="114" y="87" text-anchor="middle">fw_public_key[64]</text>
+
+          <line class="flow" x1="204" y1="74" x2="234" y2="74" marker-end="url(#ar-sign-4)"/>
+          <text class="t-sm dim2" x="219" y="64" text-anchor="middle">verifies</text>
+
+          <rect class="bx" x="240" y="46" width="200" height="56" rx="3"/>
+          <text class="t-md ink" x="340" y="69" text-anchor="middle">firmware image</text>
+          <text class="t-sm dim2" x="340" y="87" text-anchor="middle">+ signature (64 B)</text>
+        </g>
+
+        <g class="chain-ink">
+          <line class="flow" x1="114" y1="102" x2="114" y2="140" marker-end="url(#ar-bad-4)"/>
+          <text class="t-sm warn" x="126" y="126">rotate the key:</text>
+        </g>
+
+        <rect class="bx-bad" x="24" y="146" width="500" height="70" rx="3"/>
+        <text class="t-md ink" x="40" y="170">Every board in the field must be re-flashed over</text>
+        <text class="t-md ink" x="40" y="188">ST-Link or DFU — IAP cannot update the bootloader.</text>
+        <text class="t-md warn" x="40" y="208">Cost scales with the number of boards shipped.</text>
+
+        <line class="rule-dash" x1="24" y1="240" x2="916" y2="240"/>
+
+        <!-- ===== band B : delegation ===== -->
+        <text class="t-md dim" x="24" y="272" letter-spacing="1.4">DELEGATION CHAIN — THE BOARD TRUSTS A ROOT IT NEVER CHANGES</text>
+
+        <g class="chain-sign">
+          <rect class="bx-sign" x="24" y="290" width="180" height="56" rx="3"/>
+          <text class="t-md ink" x="114" y="313" text-anchor="middle">board flash</text>
+          <text class="t-sm dim2" x="114" y="331" text-anchor="middle">root_public_key[64]</text>
+
+          <line class="flow" x1="204" y1="318" x2="222" y2="318" marker-end="url(#ar-sign-4)"/>
+
+          <rect class="bx-auth" x="228" y="290" width="180" height="56" rx="3"/>
+          <text class="t-md ink" x="318" y="313" text-anchor="middle">leaf public key</text>
+          <text class="t-sm dim2" x="318" y="331" text-anchor="middle">+ root's signature</text>
+
+          <line class="flow" x1="408" y1="318" x2="426" y2="318" marker-end="url(#ar-sign-4)"/>
+
+          <rect class="bx" x="432" y="290" width="180" height="56" rx="3"/>
+          <text class="t-md ink" x="522" y="313" text-anchor="middle">firmware image</text>
+          <text class="t-sm dim2" x="522" y="331" text-anchor="middle">+ leaf signature</text>
+        </g>
+
+        <text class="t-sm lbl-auth" x="318" y="364" text-anchor="middle">↑ this one hop is the entire structural change</text>
+
+        <g class="chain-ink">
+          <line class="flow" x1="114" y1="346" x2="114" y2="384" marker-end="url(#ar-bad-4)"/>
+          <text class="t-sm dim2" x="126" y="370">rotate the leaf:</text>
+        </g>
+
+        <rect class="bx-auth" x="24" y="390" width="500" height="64" rx="3"/>
+        <text class="t-md ink" x="40" y="414">No board is touched. Re-issue a leaf, ship signed</text>
+        <text class="t-md ink" x="40" y="432">firmware. The root stays offline and never rotates.</text>
+
+        <!-- what it costs -->
+        <rect class="bx" x="632" y="290" width="284" height="164" rx="3"/>
+        <text class="t-md lbl-sign" x="648" y="314">WHAT IT COSTS ON THE MCU</text>
+        <text class="t-md ink" x="648" y="340">· one extra ECDSA verify</text>
+        <text class="t-md ink" x="648" y="358">  (~tens of ms, once per boot)</text>
+        <text class="t-md ink" x="648" y="382">· +128 bytes carried with</text>
+        <text class="t-md ink" x="648" y="400">  each image</text>
+        <text class="t-md ink" x="648" y="424">· fixed-length structure —</text>
+        <text class="t-md ink" x="648" y="442">  no ASN.1 parser needed</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>The added box is the point.</b> Because the board verifies a key rather than holding it,
+      the key it verifies can change without the board changing. Note what is <i>not</i> in this
+      picture: X.509, DER, certificate parsing. Two fixed-length ECDSA verifications buy the whole
+      benefit without putting an ASN.1 parser in front of attacker-supplied bytes.
+    </figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>Status</h2>
+  <div class="callout">
+    <h3>Both secrets are still placeholders</h3>
+    <p>
+      <code>fw_signing_key.TEST_ONLY.pem</code> is committed to a public repo, so anyone can produce
+      a signature the current <code>fw_pubkey.c</code> accepts. <code>iap_fixed_password.txt</code>
+      still reads <code>IAP-FIXED-PASSWORD-TEST-ONLY-CHANGE-ME</code>. Both are fine on the bench and
+      neither is acceptable on a board that leaves the desk.
+    </p>
+    <p>
+      Note also that shipping the signing key inside the Arduino package makes it effectively public
+      by design — users compile their own PLC programs. The signature then guards against corrupted
+      images and remote injection, <b>not</b> against the person holding the board.
+    </p>
+  </div>
+</section>
+
+<p class="colophon">Read from IAPServer/ · IAPTranfer_Tool/ · libraries/OpenPLC_IAP/ — branch v0.1.3.1</p>
+
+</div>

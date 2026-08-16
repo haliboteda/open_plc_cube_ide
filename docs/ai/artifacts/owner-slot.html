@@ -1,0 +1,736 @@
+<title>板子归谁</title>
+
+<style>
+  :root {
+    --bg:#EEEDF2; --surface:#FFFFFF; --surface-2:#E5E3EC; --surface-3:#D8D5E2;
+    --ink:#17161E; --ink-2:#4B4959; --ink-3:#7B7889;
+    --rule:#C8C5D4;
+    --boot:#43368F; --boot-soft:#E5E1F3; --boot-line:#5A4BB0;
+    --app:#A8412A; --app-soft:#F6E4DF; --app-line:#BE5238;
+    --ok:#1B6349; --ok-soft:#D8EBE2;
+
+    --sans: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei",
+            "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", SFMono-Regular, Consolas,
+            "PingFang SC", "Microsoft YaHei", monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#14131A; --surface:#1C1B24; --surface-2:#24222E; --surface-3:#2E2B3A;
+      --ink:#E7E5EF; --ink-2:#A6A2B5; --ink-3:#7C788C;
+      --rule:#332F40;
+      --boot:#A79BE8; --boot-soft:#241F3C; --boot-line:#6F60C4;
+      --app:#EE9078; --app-soft:#39201A; --app-line:#BE5238;
+      --ok:#5EC69E; --ok-soft:#123025;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#14131A; --surface:#1C1B24; --surface-2:#24222E; --surface-3:#2E2B3A;
+    --ink:#E7E5EF; --ink-2:#A6A2B5; --ink-3:#7C788C;
+    --rule:#332F40;
+    --boot:#A79BE8; --boot-soft:#241F3C; --boot-line:#6F60C4;
+    --app:#EE9078; --app-soft:#39201A; --app-line:#BE5238;
+    --ok:#5EC69E; --ok-soft:#123025;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.75;
+    margin: 0; padding: 0 20px 96px; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; }
+
+  .masthead {
+    padding: 64px 0 34px; border-bottom: 1px solid var(--rule);
+    display: flex; flex-direction: column; gap: 18px;
+  }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--ink-3); margin: 0;
+  }
+  .masthead h1 {
+    font-weight: 700; font-size: clamp(34px, 6vw, 54px);
+    line-height: 1.14; letter-spacing: .01em; text-wrap: balance; margin: 0;
+  }
+  .standfirst { font-size: 17.5px; line-height: 1.8; color: var(--ink-2); max-width: 40em; margin: 0; }
+  .standfirst strong { color: var(--ink); font-weight: 600; }
+
+  section { padding-top: 52px; display: flex; flex-direction: column; gap: 20px; }
+  h2 { font-weight: 700; font-size: 27px; line-height: 1.35; margin: 0; text-wrap: balance; }
+  h3 { font-size: 17px; font-weight: 600; margin: 0; }
+  p { margin: 0; max-width: 42em; }
+  .lede { font-size: 16.5px; color: var(--ink-2); max-width: 40em; }
+  ol, ul { margin: 0; padding-left: 1.35em; max-width: 42em; }
+  li { margin: 4px 0; }
+
+  code {
+    font-family: var(--mono); font-size: .86em; background: var(--surface-2);
+    border-radius: 3px; padding: .14em .36em; word-break: break-word;
+  }
+  pre {
+    margin: 0; background: var(--surface); border: 1px solid var(--rule);
+    border-radius: 4px; padding: 16px 18px; overflow-x: auto;
+  }
+  pre code { background: none; padding: 0; font-size: 13px; line-height: 1.75; }
+
+  figure {
+    margin: 6px 0 0; background: var(--surface); border: 1px solid var(--rule);
+    border-radius: 4px; padding: 22px 22px 16px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .scroller { overflow-x: auto; }
+  figure svg { display: block; width: 100%; min-width: 720px; height: auto; }
+  figcaption {
+    font-size: 13.5px; line-height: 1.8; color: var(--ink-2);
+    border-top: 1px solid var(--rule); padding-top: 12px; margin: 0;
+  }
+  figcaption b { color: var(--ink); font-weight: 600; }
+
+  svg text { font-family: var(--sans); fill: currentColor; }
+  svg text.code { font-family: var(--mono); }
+  .t-lg { font-size: 13.5px; font-weight: 600; }
+  .t-md { font-size: 12px; }
+  .t-sm { font-size: 10.5px; }
+  .dim { fill: var(--ink-3); }
+  .dim2 { fill: var(--ink-2); }
+  .ink { fill: var(--ink); }
+  .warn { fill: var(--app); }
+  .lbl-boot { fill: var(--boot); }
+  .lbl-ok { fill: var(--ok); }
+
+  .m-boot path { fill: var(--boot-line); }
+  .m-app path  { fill: var(--app-line); }
+  .m-ink path  { fill: var(--ink-2); }
+  .ch-boot { color: var(--boot-line); }
+  .ch-app  { color: var(--app-line); }
+  .ch-ink  { color: var(--ink-2); }
+
+  .bx      { fill: var(--surface-2); stroke: var(--rule); stroke-width: 1; }
+  .bx-boot { fill: var(--boot-soft); stroke: var(--boot-line); stroke-width: 1.4; }
+  .bx-app  { fill: var(--app-soft);  stroke: var(--app-line);  stroke-width: 1.4; }
+  .bx-ok   { fill: var(--ok-soft);   stroke: var(--ok);        stroke-width: 1.4; }
+  .bx-void { fill: none; stroke: var(--rule); stroke-width: 1; stroke-dasharray: 4 4; }
+  .flow { stroke: currentColor; stroke-width: 1.4; fill: none; }
+  .flow-dash { stroke: currentColor; stroke-width: 1.4; fill: none; stroke-dasharray: 6 4; }
+  .hair { stroke: var(--rule); stroke-width: 1; }
+  .hair-dash { stroke: var(--rule); stroke-width: 1; stroke-dasharray: 5 5; }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 700px; font-size: 14px;
+          font-variant-numeric: tabular-nums; }
+  th {
+    text-align: left; font-size: 12px; letter-spacing: .04em; color: var(--ink-3);
+    font-weight: 600; padding: 12px 16px; border-bottom: 1px solid var(--rule);
+    background: var(--surface-2); white-space: nowrap;
+  }
+  td { padding: 13px 16px; border-bottom: 1px solid var(--rule); vertical-align: top; line-height: 1.7; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.mono, th.mono { font-family: var(--mono); font-size: 12.5px; }
+  td.nw { white-space: nowrap; }
+  .yes { color: var(--ok); font-weight: 600; }
+  .no  { color: var(--app); font-weight: 600; }
+  .only-boot { color: var(--boot); font-weight: 600; }
+
+  .callout {
+    border: 1px solid var(--boot); border-left-width: 3px; background: var(--boot-soft);
+    border-radius: 4px; padding: 18px 22px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .callout h3 { color: var(--boot); font-size: 15px; }
+  .callout p { font-size: 14.5px; max-width: 44em; }
+  .callout.bad { border-color: var(--app); background: var(--app-soft); }
+  .callout.bad h3 { color: var(--app); }
+  .callout.good { border-color: var(--ok); background: var(--ok-soft); }
+  .callout.good h3 { color: var(--ok); }
+
+  .colophon {
+    margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--rule);
+    font-family: var(--mono); font-size: 11px; color: var(--ink-3);
+  }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">OpenPLC · STM32H743 · owner 槽设计</p>
+  <h1>板子归谁</h1>
+  <p class="standfirst">
+    出厂默认根的私钥<strong>必然是公开的</strong>——这是产品定位推出来的，不是妥协。
+    于是真正要设计的不是"开箱怎么安全"，而是<strong>客户手上那块没有 ST-Link 的板子，靠什么把信任根换成自己的</strong>。
+    答案是一个只追加、永不擦除的 owner 记录区，寄生在 bootloader 扇区尾部——<strong>净增 0 个 flash 扇区</strong>。
+  </p>
+</header>
+
+<section>
+  <h2>为什么默认根的私钥只能是公开的</h2>
+  <ol>
+    <li>客户下载 Arduino 包，<b>写自己的 PLC 程序</b>并上传</li>
+    <li>上传要签名 → 签名要私钥 → 私钥得在客户的机器上</li>
+    <li>项目开源，不给客户发任何专属材料</li>
+    <li>⇒ 那把私钥必须在开源仓库里 ⇒ <b>公开</b></li>
+  </ol>
+  <p>
+    反过来假设：如果出厂根的私钥是厂商的秘密，客户就<b>只能跑官方签的固件，不能跑自己写的 sketch</b>——产品没了。
+  </p>
+  <div class="callout">
+    <h3>所以出厂状态必然不设防，问题只剩两个</h3>
+    <p>
+      ① 客户<b>知不知道</b>自己现在不设防？<br>
+      ② 客户想加固时，<b>有没有一条不用 ST-Link 的路</b>？
+    </p>
+    <p>
+      第二条是 owner 槽存在的全部理由。如果根只能编译进 bootloader，
+      一个没有 CubeIDE、没有 ST-Link 的客户，手上那块板子一辈子只认公开密钥。
+    </p>
+  </div>
+</section>
+
+<section>
+  <h2>它住在哪：寄生在 bootloader 扇区尾部</h2>
+  <p class="lede">
+    H743 的擦除粒度是整个 128K 扇区，没有更小的。所以<b>任何"独立生命周期"的 flash 区域最少要 128K</b>——
+    除非它寄生在一个已经被占用、但没用满的扇区里。
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>候选位置</th><th>结论</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="nw">放进现有 state 扇区</td>
+          <td class="no">✗ <code>journal_reclaim()</code> 会整扇区擦掉。搬运再写回的话，掉电窗口 = 擦除耗时，
+            丢了就<b>静默</b>退回默认根，谁都能重新认领</td>
+        </tr>
+        <tr>
+          <td class="nw">新开一个专用扇区</td>
+          <td>可行，但白付 128K，还要绕开下面那个常量陷阱</td>
+        </tr>
+        <tr>
+          <td class="nw"><b>bootloader 扇区尾部</b></td>
+          <td class="yes">✓ 净增 0 扇区。ST-Link 烧 bootloader 时整扇区被擦过，镜像之后的字节全是
+            <code>0xFF</code>——正好是一片可追加的空地</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <figure>
+    <div class="scroller">
+      <svg viewBox="0 0 900 470" role="img" aria-label="整片 flash 分区不变；把 bootloader 那个 128K 扇区放大后可见：镜像占 96,388 字节，尾部保留 8K 给 owner 记录，中间仍有 26,492 字节空闲。">
+        <text class="t-lg dim" x="100" y="52">整片 flash · 不变</text>
+        <text class="t-lg lbl-boot" x="520" y="52">bootloader 扇区放大</text>
+
+        <text class="t-sm dim code" x="92" y="84" text-anchor="end">0x08000000</text>
+        <text class="t-sm dim code" x="92" y="144" text-anchor="end">0x08020000</text>
+        <text class="t-sm dim code" x="92" y="364" text-anchor="end">0x081E0000</text>
+        <text class="t-sm dim code" x="92" y="424" text-anchor="end">0x081FFFFF</text>
+
+        <rect class="bx-boot" x="100" y="80" width="180" height="60"/>
+        <text class="t-md ink" x="190" y="106" text-anchor="middle">bootloader</text>
+        <text class="t-sm dim2" x="190" y="126" text-anchor="middle">128K</text>
+
+        <rect class="bx" x="100" y="140" width="180" height="220"/>
+        <text class="t-md ink" x="190" y="242" text-anchor="middle">app 区</text>
+        <text class="t-sm dim2 code" x="190" y="262" text-anchor="middle">1,835,008 B</text>
+        <text class="t-sm lbl-ok" x="190" y="284" text-anchor="middle">一个字节都不用让</text>
+
+        <rect class="bx" x="100" y="360" width="180" height="60"/>
+        <text class="t-md ink" x="190" y="386" text-anchor="middle">state / journal</text>
+        <text class="t-sm dim2" x="190" y="406" text-anchor="middle">128K · B2S7</text>
+
+        <line class="hair-dash" x1="280" y1="80" x2="520" y2="80"/>
+        <line class="hair-dash" x1="280" y1="140" x2="520" y2="420"/>
+
+        <text class="t-sm dim code" x="512" y="84" text-anchor="end">0x08000000</text>
+        <text class="t-sm dim code" x="512" y="374" text-anchor="end">0x0801E000</text>
+        <text class="t-sm dim code" x="512" y="424" text-anchor="end">0x0801FFFF</text>
+
+        <rect class="bx" x="520" y="80" width="220" height="230"/>
+        <text class="t-md ink" x="630" y="182" text-anchor="middle">bootloader 镜像</text>
+        <text class="t-sm dim2 code" x="630" y="202" text-anchor="middle">96,388 B · -O0</text>
+
+        <rect class="bx-void" x="520" y="310" width="220" height="60"/>
+        <text class="t-md dim2" x="630" y="336" text-anchor="middle">空闲</text>
+        <text class="t-sm dim code" x="630" y="356" text-anchor="middle">26,492 B</text>
+
+        <rect class="bx-boot" x="520" y="370" width="220" height="50"/>
+        <text class="t-md ink" x="630" y="392" text-anchor="middle">owner 记录区</text>
+        <text class="t-sm dim2" x="630" y="410" text-anchor="middle">8K · 51 条</text>
+
+        <text class="t-sm lbl-boot" x="760" y="392">← 只追加，永不擦除</text>
+        <text class="t-sm dim" x="760" y="410">链接器 FLASH LENGTH 128K → 120K</text>
+        <text class="t-sm dim" x="760" y="340">未来的证书验证代码在这里长</text>
+
+        <text class="t-md dim" x="100" y="452">owner 那一条为了看得清画粗了；按比例只有 21 像素。</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>不擦除，所以可以和 bootloader 共处一个扇区。</b>
+      NOR flash 上没写过的字可以直接编程——ST-Link 烧 bootloader 时整扇区被擦过一次，
+      镜像之后的字节全是 <code>0xFF</code>，bootloader 往那里追加记录不需要任何擦除动作。
+      代价只有一个：链接器脚本要把 <code>FLASH LENGTH</code> 从 128K 收到 120K，
+      否则编译器可能把代码放进这 8K。
+    </figcaption>
+  </figure>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>保留</th><th><code>FLASH LENGTH</code></th><th>owner 区起点</th><th>镜像余量</th><th>可存记录</th></tr></thead>
+      <tbody>
+        <tr><td class="nw">4K</td><td class="mono">124K</td><td class="mono">0x0801F000</td><td class="mono">30,588 B</td><td class="mono">25 条</td></tr>
+        <tr><td class="nw"><b>8K（建议）</b></td><td class="mono">120K</td><td class="mono">0x0801E000</td><td class="mono">26,492 B</td><td class="mono">51 条</td></tr>
+        <tr><td class="nw">16K</td><td class="mono">112K</td><td class="mono">0x0801C000</td><td class="mono">18,300 B</td><td class="mono">102 条</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <h3>顺带绕开了一个常量陷阱</h3>
+    <p>
+      <code>RESERVED_TAIL_SECTORS</code> 在代码里被当成<b>两个不同的意思</b>用：
+      <code>usbd_cdc_flash.c:237</code> 当它是"尾部预留几个扇区"，
+      <code>bootloader_state.c:317</code> 当它是"reclaim 擦几个扇区"。
+      而 <code>IAP_APP_MAX_SIZE</code> 直接由 <code>IAP_STATE_SECTOR_ADDR</code> 算，根本不看它。
+    </p>
+    <p>
+      预留 1 个扇区时三处恰好自洽；<b>改成 2 就会散架</b>，而且没有任何一处会编译报错。
+      走 bootloader 尾部这条路完全不用碰它——但这个重载本身仍然是颗地雷，
+      <b>下一个想加尾部扇区的人还会踩</b>，值得单独修掉。
+    </p>
+  </div>
+</section>
+
+<section>
+  <h2>启动时怎么决定用哪把根</h2>
+
+  <figure>
+    <div class="scroller">
+      <svg viewBox="0 0 900 420" role="img" aria-label="启动流程。bootloader 读 owner 记录区：空或最新一条是 cleared 则用编译进来的默认根 R0，此时不设防；否则沿 owner 链取最后一条有效记录作为根。两条路汇合后都是先验证书再验镜像签名。">
+        <defs>
+          <marker id="a-ink" class="m-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+          <marker id="a-boot" class="m-boot" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+        </defs>
+
+        <g class="ch-ink">
+          <rect class="bx" x="330" y="24" width="240" height="46" rx="3"/>
+          <text class="t-md ink" x="450" y="53" text-anchor="middle">上电，进 bootloader</text>
+
+          <line class="flow" x1="450" y1="70" x2="450" y2="96" marker-end="url(#a-ink)"/>
+
+          <rect class="bx-boot" x="288" y="98" width="324" height="46" rx="3"/>
+          <text class="t-md ink" x="450" y="120" text-anchor="middle">扫 owner 记录区</text>
+          <text class="t-sm dim2 code" x="450" y="137" text-anchor="middle">0x0801E000 … 0x0801FFFF</text>
+
+          <path class="flow" d="M 450 144 V 168 H 190 V 194" marker-end="url(#a-ink)"/>
+          <path class="flow" d="M 450 144 V 168 H 710 V 194" marker-end="url(#a-ink)"/>
+        </g>
+
+        <rect class="bx-app" x="60" y="196" width="260" height="62" rx="3"/>
+        <text class="t-md ink" x="190" y="220" text-anchor="middle">空 · 或最新一条是 cleared</text>
+        <text class="t-sm dim2" x="190" y="241" text-anchor="middle">用编译进来的默认根 R0</text>
+
+        <text class="t-sm warn" x="190" y="282" text-anchor="middle">R0 的私钥在开源仓库里</text>
+        <text class="t-sm warn" x="190" y="300" text-anchor="middle">谁都能签固件 · 每次启动都要告警</text>
+
+        <rect class="bx-ok" x="580" y="196" width="260" height="62" rx="3"/>
+        <text class="t-md ink" x="710" y="220" text-anchor="middle">有有效记录 · 已被认领</text>
+        <text class="t-sm dim2" x="710" y="241" text-anchor="middle">沿链取最后一条有效的</text>
+
+        <text class="t-sm lbl-ok" x="710" y="282" text-anchor="middle">根的私钥只有 owner 有</text>
+        <text class="t-sm lbl-ok" x="710" y="300" text-anchor="middle">别人签的固件一律拒绝</text>
+
+        <g class="ch-boot">
+          <path class="flow" d="M 190 258 V 330 H 450 V 356" marker-end="url(#a-boot)"/>
+          <path class="flow" d="M 710 258 V 330 H 450 V 356" marker-end="url(#a-boot)"/>
+        </g>
+
+        <rect class="bx-boot" x="250" y="358" width="400" height="46" rx="3"/>
+        <text class="t-md ink" x="450" y="380" text-anchor="middle">① 用这把根验证书　② 用证书里的叶公钥验镜像</text>
+        <text class="t-sm dim2" x="450" y="397" text-anchor="middle">两条路之后完全相同，验证代码只有一份</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>"用哪把根"是唯一的分叉，它之前和之后的代码都只有一份。</b>
+      左边那条不是"跳过验证"，而是拿一把私钥公开的根去验——出厂状态下验证照跑，只是任何人都能通过。
+      这也意味着<b>加固后的板子和出厂板子走完全相同的代码路径</b>，不存在"安全分支没人走、悄悄烂掉"。
+    </figcaption>
+  </figure>
+
+  <div class="callout">
+    <h3>这个状态机和 UEFI Secure Boot 是同构的</h3>
+    <p>
+      owner 区为空 = UEFI 的 <b>Setup Mode</b>（没有 Platform Key，谁都能写）；
+      认领 = 写入 PK 进 <b>User Mode</b>；
+      换 owner 必须被当前 owner 签名 = 改 PK 必须被 PK 签名；
+      cleared 记录 = 删除 PK 回 Setup Mode，需要物理进固件设置界面。
+    </p>
+    <p>
+      <b>建议直接借用这套术语写文档</b>——读者有现成的心智模型，不用从头解释。
+    </p>
+  </div>
+</section>
+
+<section>
+  <h2>三个操作各自改了什么</h2>
+  <p class="lede">
+    owner 区是<b>只追加</b>的，和 journal 同一个路子。
+    因为它和 bootloader 共处一个扇区，<b>三个操作里没有任何一个会擦除</b>——连恢复出厂都不擦。
+  </p>
+
+  <figure>
+    <div class="scroller">
+      <svg viewBox="0 0 900 430" role="img" aria-label="owner 区上的三个操作。认领：往空区追加第一条记录，没有前任可签名，属于 TOFU。换 owner：追加一条，必须被前一条签名。恢复出厂：追加一条 cleared 记录，不擦除。">
+        <defs>
+          <marker id="o-ink" class="m-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+        </defs>
+
+        <text class="t-sm dim" x="220" y="48">操作前</text>
+        <text class="t-sm dim" x="560" y="48">操作后</text>
+
+        <text class="t-lg ink" x="20" y="88">① 认领</text>
+        <text class="t-sm warn code" x="20" y="108">takeown</text>
+        <rect class="bx-void" x="220" y="62" width="60" height="44"/>
+        <rect class="bx-void" x="286" y="62" width="60" height="44"/>
+        <rect class="bx-void" x="352" y="62" width="60" height="44"/>
+        <rect class="bx-void" x="418" y="62" width="60" height="44"/>
+        <g class="ch-ink"><line class="flow" x1="496" y1="84" x2="542" y2="84" marker-end="url(#o-ink)"/></g>
+        <rect class="bx-app" x="560" y="62" width="60" height="44"/>
+        <text class="t-md ink" x="590" y="90" text-anchor="middle">G1</text>
+        <rect class="bx-void" x="626" y="62" width="60" height="44"/>
+        <rect class="bx-void" x="692" y="62" width="60" height="44"/>
+        <rect class="bx-void" x="758" y="62" width="60" height="44"/>
+        <text class="t-sm warn" x="220" y="132">没有前任可以签它 —— TOFU。软件挡不住抢先认领，只能靠 BOOT0 物理按键</text>
+
+        <line class="hair" x1="20" y1="152" x2="880" y2="152"/>
+
+        <text class="t-lg ink" x="20" y="196">② 换 owner</text>
+        <text class="t-sm lbl-ok code" x="20" y="216">rotate</text>
+        <rect class="bx-ok" x="220" y="170" width="60" height="44"/>
+        <text class="t-md ink" x="250" y="198" text-anchor="middle">G1</text>
+        <rect class="bx-ok" x="286" y="170" width="60" height="44"/>
+        <text class="t-md ink" x="316" y="198" text-anchor="middle">G2</text>
+        <rect class="bx-void" x="352" y="170" width="60" height="44"/>
+        <rect class="bx-void" x="418" y="170" width="60" height="44"/>
+        <g class="ch-ink"><line class="flow" x1="496" y1="192" x2="542" y2="192" marker-end="url(#o-ink)"/></g>
+        <rect class="bx-ok" x="560" y="170" width="60" height="44"/>
+        <text class="t-md ink" x="590" y="198" text-anchor="middle">G1</text>
+        <rect class="bx-ok" x="626" y="170" width="60" height="44"/>
+        <text class="t-md ink" x="656" y="198" text-anchor="middle">G2</text>
+        <rect class="bx-ok" x="692" y="170" width="60" height="44"/>
+        <text class="t-md ink" x="722" y="198" text-anchor="middle">G3</text>
+        <rect class="bx-void" x="758" y="170" width="60" height="44"/>
+        <text class="t-sm lbl-ok" x="220" y="240">G3 必须被 G2 签名，否则 bootloader 忽略它 —— 拿 flash 写权限硬塞一条进来是无效的</text>
+
+        <line class="hair" x1="20" y1="260" x2="880" y2="260"/>
+
+        <text class="t-lg ink" x="20" y="304">③ 恢复出厂</text>
+        <text class="t-sm warn code" x="20" y="324">reset</text>
+        <rect class="bx-ok" x="220" y="278" width="60" height="44"/>
+        <text class="t-md ink" x="250" y="306" text-anchor="middle">G1</text>
+        <rect class="bx-ok" x="286" y="278" width="60" height="44"/>
+        <text class="t-md ink" x="316" y="306" text-anchor="middle">G2</text>
+        <rect class="bx-ok" x="352" y="278" width="60" height="44"/>
+        <text class="t-md ink" x="382" y="306" text-anchor="middle">G3</text>
+        <rect class="bx-void" x="418" y="278" width="60" height="44"/>
+        <g class="ch-ink"><line class="flow" x1="496" y1="300" x2="542" y2="300" marker-end="url(#o-ink)"/></g>
+        <rect class="bx-ok" x="560" y="278" width="60" height="44"/>
+        <text class="t-md ink" x="590" y="306" text-anchor="middle">G1</text>
+        <rect class="bx-ok" x="626" y="278" width="60" height="44"/>
+        <text class="t-md ink" x="656" y="306" text-anchor="middle">G2</text>
+        <rect class="bx-ok" x="692" y="278" width="60" height="44"/>
+        <text class="t-md ink" x="722" y="306" text-anchor="middle">G3</text>
+        <rect class="bx-app" x="758" y="278" width="60" height="44"/>
+        <text class="t-md ink" x="788" y="306" text-anchor="middle">C</text>
+        <text class="t-sm warn" x="220" y="348">追加一条 cleared 记录，<tspan font-weight="600">不擦除</tspan>。bootloader 看到最新一条是 C → 回落 R0，回到 TOFU</text>
+
+        <text class="t-md dim" x="20" y="398">8K ÷ 160 字节 = 51 条。用完就只能靠 ST-Link 重烧 bootloader（那会把整片记录一起抹掉）。</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>只有第一条记录是不设防的，之后每一条都被前一条签名锁住。</b>
+      这就是为什么 owner 区在被认领之后是真正安全的：攻击者即使能往 flash 里写字节，
+      写出来的记录也过不了 G2 的签名校验，bootloader 认的仍然是 G2。
+      恢复出厂用<b>追加一条 cleared 记录</b>而不是擦除——因为这个扇区里还住着 bootloader 自己，擦不得。
+    </figcaption>
+  </figure>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>规则</th><th>内容</th><th>挡住什么</th><th>挡不住什么</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="nw"><b>R1</b></td>
+          <td>认领必须<b>按住 BOOT0</b></td>
+          <td>远程顺手接管一块出厂板子</td>
+          <td class="no">出厂状态下上传一个恶意 sketch 去直接写这片区域</td>
+        </tr>
+        <tr>
+          <td class="nw"><b>R2</b></td>
+          <td>换 owner 必须<b>由当前 owner 根签名</b></td>
+          <td class="yes">已认领的板子被任何人夺走，包括有 flash 写权限的代码</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td class="nw"><b>R3</b></td>
+          <td>恢复出厂（追加 cleared）必须<b>物理动作</b></td>
+          <td>远程把别人的板子降级回公开根</td>
+          <td class="no">有物理接触的人恢复出厂后接管</td>
+        </tr>
+        <tr>
+          <td class="nw"><b>R4</b></td>
+          <td>撤销只针对<b>叶子编号</b>，永远不能撤到一个有效根都不剩</td>
+          <td class="yes">把自己撤成永久变砖</td>
+          <td>—</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    R3 挡不住的那一条<b>必须接受</b>——<code>keys/README.md</code> 已经把"防不住手里拿板子的人"写成了设计前提。
+    反过来如果不给恢复出厂，客户丢了自己的根就是永久变砖，而他恰恰没有 ST-Link。
+  </p>
+  <p>
+    R4 不是假想。<b>ESP32 Secure Boot v2 的 aggressive revoke 就是一个真实的反面教材</b>——
+    Espressif 官方文档自己写着，签名校验失败触发撤销时"could also brick the device permanently
+    if all the keys are revoked"。
+  </p>
+</section>
+
+<section>
+  <h2>谁能写哪一块：boot 还是 app</h2>
+  <p class="lede">
+    这是要写进文档的那张表。先看硬件事实，再看约定。
+  </p>
+
+  <figure>
+    <div class="scroller">
+      <svg viewBox="0 0 920 400" role="img" aria-label="写入边界。bootloader 上下文按设计读写全部三个 flash 区域；app 上下文在硬件上同样能读写全部区域，因为没有启用写保护。owner 记录区嵌在 bootloader 扇区内部。">
+        <defs>
+          <marker id="w-boot" class="m-boot" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+          <marker id="w-app" class="m-app" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+        </defs>
+
+        <rect class="bx-boot" x="40" y="130" width="200" height="80" rx="3"/>
+        <text class="t-md ink" x="140" y="162" text-anchor="middle">Bootloader 上下文</text>
+        <text class="t-sm dim2" x="140" y="184" text-anchor="middle">跳转进 app 之前</text>
+
+        <rect class="bx-app" x="680" y="130" width="200" height="80" rx="3"/>
+        <text class="t-md ink" x="780" y="162" text-anchor="middle">App 上下文</text>
+        <text class="t-sm dim2" x="780" y="184" text-anchor="middle">用户的 sketch 在跑</text>
+
+        <rect class="bx" x="330" y="36" width="260" height="88"/>
+        <text class="t-md ink" x="460" y="60" text-anchor="middle">bootloader 扇区 128K</text>
+        <rect class="bx-boot" x="346" y="72" width="228" height="40"/>
+        <text class="t-sm ink" x="460" y="97" text-anchor="middle">owner 记录区 8K</text>
+
+        <rect class="bx" x="330" y="140" width="260" height="56"/>
+        <text class="t-md ink" x="460" y="172" text-anchor="middle">app 区</text>
+
+        <rect class="bx" x="330" y="212" width="260" height="56"/>
+        <text class="t-md ink" x="460" y="244" text-anchor="middle">state / journal 扇区</text>
+
+        <g class="ch-boot">
+          <path class="flow" d="M 240 170 H 290 V 92 H 322" marker-end="url(#w-boot)"/>
+          <path class="flow" d="M 290 170 H 322" marker-end="url(#w-boot)"/>
+          <path class="flow" d="M 290 170 V 240 H 322" marker-end="url(#w-boot)"/>
+        </g>
+
+        <g class="ch-app">
+          <path class="flow-dash" d="M 680 170 H 630 V 92 H 598" marker-end="url(#w-app)"/>
+          <path class="flow-dash" d="M 630 170 H 598" marker-end="url(#w-app)"/>
+          <path class="flow-dash" d="M 630 170 V 240 H 598" marker-end="url(#w-app)"/>
+        </g>
+
+        <text class="t-sm lbl-boot" x="140" y="240" text-anchor="middle">实线 = 读 + 写，设计如此</text>
+        <text class="t-sm warn" x="780" y="240" text-anchor="middle">虚线 = 硬件上同样做得到</text>
+
+        <text class="t-md warn" x="40" y="316">"app 不许碰 owner 区和 state 扇区"目前只是<tspan font-weight="600">约定</tspan>，没有任何机制强制。</text>
+        <text class="t-sm dim" x="40" y="342">唯一真正的强制手段是 flash 选项字节写保护（WRP）—— 当前工程没有使用。</text>
+        <text class="t-sm dim" x="40" y="362">Chromebook 的等价做法：固件在交权前把"物理存在"这个能力锁死，让后来跑的软件无法声明。</text>
+        <text class="t-sm dim" x="40" y="382">注：能让 sketch 跑起来，就已经过了签名校验；已认领的板子上这条路本来就是关的。</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>两边都能写——这不是 owner 区引入的新问题，现有的 state 扇区同样如此。</b>
+      但它决定了 R1 的实际强度：出厂状态下任何人都能签 sketch，因此也能绕过 BOOT0 直接写这片区域。
+      <b>一旦认领完成，能跑代码就要求持有 owner 私钥，这条路自动关闭。</b>
+    </figcaption>
+  </figure>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>东西</th><th>住在哪</th><th>谁读</th><th>谁写</th><th>app / core 要改吗</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="nw">默认根 R0 公钥</td>
+          <td class="mono nw">bootloader rodata</td>
+          <td class="only-boot">boot</td>
+          <td class="nw">编译期</td>
+          <td class="yes">不用</td>
+        </tr>
+        <tr>
+          <td class="nw"><b>owner 根记录链</b></td>
+          <td class="mono nw">0x0801E000 · boot 扇区尾部</td>
+          <td class="only-boot">boot</td>
+          <td class="only-boot">boot</td>
+          <td class="yes">不用</td>
+        </tr>
+        <tr>
+          <td class="nw">撤销状态</td>
+          <td class="mono nw">同上（也要免疫 reclaim）</td>
+          <td class="only-boot">boot</td>
+          <td class="only-boot">boot</td>
+          <td class="yes">不用</td>
+        </tr>
+        <tr>
+          <td class="nw">证书</td>
+          <td class="mono nw">0x081E0000 · M 记录里</td>
+          <td class="only-boot">boot</td>
+          <td class="only-boot">boot</td>
+          <td class="yes">不用</td>
+        </tr>
+        <tr>
+          <td class="nw">app 镜像</td>
+          <td class="mono nw">0x08020000 起</td>
+          <td class="only-boot">boot 算哈希</td>
+          <td class="only-boot">boot</td>
+          <td class="yes">不用</td>
+        </tr>
+        <tr>
+          <td class="nw">metadata（M 记录）</td>
+          <td class="mono nw">0x081E0000 state 扇区</td>
+          <td class="only-boot">boot</td>
+          <td class="only-boot">boot</td>
+          <td class="yes">不用</td>
+        </tr>
+        <tr>
+          <td class="nw">BOOT0 按键状态</td>
+          <td class="mono nw">PG9 GPIO</td>
+          <td class="only-boot">boot</td>
+          <td>—</td>
+          <td class="yes">不用</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout good">
+    <h3>整张表最后一列全是"不用"</h3>
+    <p>
+      <b>owner 槽完全活在 bootloader 里，Arduino core 一行都不用改。</b>
+      认领命令由 bootloader 处理（它本来就要求 BOOT0 物理按键，那时 app 根本没在跑），
+      所以不涉及 core 的 <code>OpenPLC_IAP</code>、不涉及跨仓镜像、不用重新分发板卡包。
+    </p>
+    <p>
+      这和会话认证形成对比——那个一旦改成证书，core 侧的 <code>iap_keyderive</code> 必须跟着改。
+      <b>两件事的成本差一个数量级</b>，这应该影响实施顺序。
+    </p>
+  </div>
+
+  <p>
+    证书为什么可以留在 journal 里：它只需要能验证<b>当前那个</b> app，而 <code>journal_reclaim()</code>
+    只发生在 <code>save_metadata()</code> 内部——擦完立刻就有一条新 M 记录带着新证书写进去。
+    <b>只有 owner 根和撤销状态需要免疫 reclaim</b>，证书不需要。
+  </p>
+</section>
+
+<section>
+  <h2>owner 记录长什么样（提案）</h2>
+  <p class="lede">
+    沿用 journal 的 32 字节 flash word 粒度，一条记录 5 个字 = 160 字节。
+  </p>
+
+  <pre><code>偏移  长度  字段              说明
+────────────────────────────────────────────────────────────────
+  0     1   type              'O' = owner 记录，0xFF = 空
+  1     1   slots             5
+  2     2   format_ver        1
+  4     4   generation        单调递增，G1=1、G2=2…… 最大的那条有效记录获胜
+  8     4   flags             bit0 = cleared（恢复出厂标记）
+ 12    64   root_pubkey       这一代 owner 的根公钥（secp256r1 X‖Y）
+                              cleared 记录里全 0
+ 76    64   prev_sig          由上一代根对本记录前 76 字节的签名
+                              G1 没有上一代 → 全 0，即 TOFU
+                              cleared 记录同样全 0，靠物理动作门控
+140    20   reserved
+────────────────────────────────────────────────────────────────
+                              160 字节 = 5 × 32 字节 flash word</code></pre>
+
+  <p>
+    用 <code>_Static_assert</code> 锁死尺寸——<b>这些尺寸就是 on-flash 格式</b>，
+    多一个 padding 字节会让已经写进去的每条记录全部错位，所以让它编译失败而不是运行时才发现。
+    <code>format_ver</code> 从第一版就要有：将来任何格式演进才不会变成一次破坏性迁移。
+  </p>
+</section>
+
+<section>
+  <h2>诚实的上限</h2>
+
+  <div class="callout bad">
+    <h3>owner 槽的安全上限 = "这块板子上能不能跑任意代码"</h3>
+    <p>
+      <b>出厂状态：能。</b>默认根私钥公开 → 谁都能签 sketch → 谁都能写 owner 区 → R1 的 BOOT0 要求
+      只保护"受支持的那条路"，不构成密码学保证。第一次认领本质上是先到先得。
+    </p>
+    <p>
+      <b>已认领之后：不能。</b>要让代码跑起来得先过签名，而签名要 owner 的私钥。
+      从这一刻起 R2 是真正的密码学保证。
+    </p>
+    <p>
+      所以文档里要写死一句话：<b>板子到手第一件事是认领。</b>在此之前它和一块没上锁的板子没有区别——
+      而这一点无论做不做 owner 槽都成立，owner 槽只是第一次给了它一条上锁的路。
+    </p>
+  </div>
+
+  <div class="callout bad">
+    <h3>ST-Link 重烧 bootloader = 所有权重置</h3>
+    <p>
+      owner 记录和 bootloader 共处一个扇区，所以重烧会把它们一起擦掉。
+      <b>语义上这是对的</b>——能 ST-Link 的人本来就能恢复出厂（R3 已经接受了这一点）。
+    </p>
+    <p>
+      但它和已有的<b>「bootloader 与 app 必须捆绑升级」</b>风险叠加：
+      换 bootloader 的人要同时重传 app <b>和</b>重新认领。发布说明里这两条要写在一起。
+    </p>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>还没定</th><th>影响什么</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="nw">保留 4K / 8K / 16K</td>
+          <td>决定能存多少条记录，以及给未来的证书验证代码留多少余量。撤销状态也要住进来</td>
+        </tr>
+        <tr>
+          <td class="nw">要不要上 WRP 写保护</td>
+          <td>唯一能真正禁止 app 写这片区域的手段。H7 的选项字节改动需要解锁并复位，代价和收益都要评估</td>
+        </tr>
+        <tr>
+          <td class="nw">认领时要不要绑 UID</td>
+          <td>把 owner 记录和这块板的 UID 绑死，防止把一块板的记录整段搬到另一块板上</td>
+        </tr>
+        <tr>
+          <td class="nw">恢复出厂的触发方式</td>
+          <td>BOOT0 长按已经被"进上传模式"占用，需要一个能区分开的动作（更长时间？上电时按住？）</td>
+        </tr>
+        <tr>
+          <td class="nw">会话认证换不换成证书</td>
+          <td>换了就消掉固定密码的三边镜像和"产线单板密钥"那条推迟项，但要动 core，成本高一个数量级</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<p class="colophon">
+  owner 槽设计 · 供讨论 · 均未实现 ·
+  地址与常量核实自 usbd_cdc_flash.h / bootloader_state.c / STM32H743IIKX_FLASH.ld，2026-08-16
+</p>
+
+</div>

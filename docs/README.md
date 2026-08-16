@@ -8,12 +8,18 @@
 
 | 文件 | 什么时候看 |
 |---|---|
+| **[ai/](ai/)** | **新会话 / 换台电脑的入口。** 需求清单、测试覆盖矩阵、待做模块的设计，以及"今天结束"时的收尾流程 |
 | [WORKING-AGREEMENTS.md](WORKING-AGREEMENTS.md) | 动手改任何东西之前 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 找不到某个仓库/文件在哪；要改跨仓共享的东西 |
 | [HARDWARE-FACTS.md](HARDWARE-FACTS.md) | 碰引脚、串口、启动模式、SRAM4 之前 |
 | [BUILD-AND-TEST.md](BUILD-AND-TEST.md) | 要编译、要测、或者在查一个时有时无的问题 |
+| [JOURNAL.md](JOURNAL.md) | 碰 bootloader 的状态扇区、metadata、事件日志之前；或者想知道"这块板凭什么认为 app 能跑" |
+| [OWNERSHIP.md](OWNERSHIP.md) | 碰签名密钥、信任根、bootloader 扇区布局之前；或者有人问"开箱的板子安不安全" |
 | [IAP-STATUS.md](IAP-STATUS.md) | 想知道某条路径验没验过、还欠什么 |
 | [DEFERRED-DESIGNS.md](DEFERRED-DESIGNS.md) | 有人问"为什么不做 X" |
+| [TODO.md](TODO.md) | 手头没活了，或者想知道某个已知问题排在哪 |
+
+发版相关的东西不在这里：[../RELEASE-NOTES.md](../RELEASE-NOTES.md)（英文，给外部看）装升级规则、已知问题和发版检查单。**升级风险只靠它兜着，改了行为记得同步。**
 
 ## 维护约定
 

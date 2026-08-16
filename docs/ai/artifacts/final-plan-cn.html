@@ -1,0 +1,516 @@
+<title>方案 B 实施计划</title>
+
+<style>
+  :root {
+    --bg:#EDEFF2; --surface:#FFFFFF; --surface-2:#E2E6EB; --surface-3:#D7DCE3;
+    --ink:#14171C; --ink-2:#49515F; --ink-3:#717A8A;
+    --rule:#C6CDD6;
+    --sign:#9E5410; --sign-soft:#F2E5D6; --sign-line:#C4762A;
+    --auth:#0A6873; --auth-soft:#D5E8EB; --auth-line:#0F818E;
+    --bad:#9E2018; --bad-soft:#F4DEDC;
+    --ok:#1F6B3A; --ok-soft:#D9EBDF;
+
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Microsoft YaHei",
+            "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", SFMono-Regular, Consolas,
+            "Microsoft YaHei", "PingFang SC", monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#0F1216; --surface:#171B21; --surface-2:#1D232B; --surface-3:#262D37;
+      --ink:#E2E6EC; --ink-2:#A2AAB7; --ink-3:#79828F;
+      --rule:#2B323B;
+      --sign:#E0994E; --sign-soft:#33240F; --sign-line:#C4762A;
+      --auth:#4FC0CC; --auth-soft:#0F3037; --auth-line:#2A9AA8;
+      --bad:#EE7466; --bad-soft:#3A1815;
+      --ok:#63C489; --ok-soft:#12301E;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#0F1216; --surface:#171B21; --surface-2:#1D232B; --surface-3:#262D37;
+    --ink:#E2E6EC; --ink-2:#A2AAB7; --ink-3:#79828F;
+    --rule:#2B323B;
+    --sign:#E0994E; --sign-soft:#33240F; --sign-line:#C4762A;
+    --auth:#4FC0CC; --auth-soft:#0F3037; --auth-line:#2A9AA8;
+    --bad:#EE7466; --bad-soft:#3A1815;
+    --ok:#63C489; --ok-soft:#12301E;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.75;
+    margin: 0; padding: 0 20px 96px; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+
+  .masthead {
+    padding: 64px 0 32px; border-bottom: 1px solid var(--rule);
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--ink-3); margin: 0;
+  }
+  .masthead h1 {
+    font-weight: 700; font-size: clamp(32px, 5.5vw, 48px);
+    line-height: 1.2; margin: 0;
+  }
+  .standfirst { font-size: 17px; line-height: 1.8; color: var(--ink-2); max-width: 42em; margin: 0; }
+  .standfirst strong { color: var(--ink); font-weight: 600; }
+
+  section { padding-top: 50px; display: flex; flex-direction: column; gap: 18px; }
+  h2 { font-weight: 700; font-size: 26px; line-height: 1.35; margin: 0; }
+  p { margin: 0; max-width: 44em; }
+  .lede { font-size: 16px; color: var(--ink-2); max-width: 42em; }
+
+  code {
+    font-family: var(--mono); font-size: .86em; background: var(--surface-2);
+    border-radius: 3px; padding: .14em .36em; word-break: break-word;
+  }
+
+  figure {
+    margin: 4px 0 0; background: var(--surface); border: 1px solid var(--rule);
+    border-radius: 4px; padding: 20px 20px 14px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .scroller { overflow-x: auto; }
+  figure svg { display: block; width: 100%; min-width: 700px; height: auto; }
+  figcaption {
+    font-size: 13px; line-height: 1.8; color: var(--ink-2);
+    border-top: 1px solid var(--rule); padding-top: 10px; margin: 0;
+  }
+  svg text { font-family: var(--sans); fill: currentColor; }
+  .t-lg { font-size: 13.5px; font-weight: 600; }
+  .t-md { font-size: 12px; }
+  .t-sm { font-size: 10.5px; }
+  .dim { fill: var(--ink-3); }
+  .dim2 { fill: var(--ink-2); }
+  .ink { fill: var(--ink); }
+  .bx { fill: var(--surface-2); stroke: var(--rule); stroke-width: 1; }
+  .bx-ok { fill: var(--ok-soft); stroke: var(--ok); stroke-width: 1.4; }
+  .bx-sign { fill: var(--sign-soft); stroke: var(--sign-line); stroke-width: 1.4; }
+  .bx-auth { fill: var(--auth-soft); stroke: var(--auth-line); stroke-width: 1.4; }
+  .flow { stroke: var(--ink-2); stroke-width: 1.4; fill: none; }
+  .m-ink path { fill: var(--ink-2); }
+
+  /* phase cards */
+  .phase {
+    background: var(--surface); border: 1px solid var(--rule);
+    border-left: 3px solid var(--rule); border-radius: 4px;
+    padding: 20px 24px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .phase.done { border-left-color: var(--ok); }
+  .phase.risk { border-left-color: var(--bad); }
+  .phase-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .phase-num {
+    font-family: var(--mono); font-size: 12px; font-weight: 700;
+    letter-spacing: .1em; color: var(--ink-3);
+  }
+  .phase-title { font-size: 19px; font-weight: 700; }
+  .phase p { font-size: 14.5px; }
+  .phase ul { margin: 0; padding-left: 20px; font-size: 14.5px; display: flex; flex-direction: column; gap: 4px; }
+  .phase ul li::marker { color: var(--ink-3); }
+
+  .badge {
+    display: inline-block; font-family: var(--mono); font-size: 10px;
+    letter-spacing: .06em; font-weight: 600; padding: 3px 8px;
+    border-radius: 3px; white-space: nowrap;
+  }
+  .b-done { background: var(--ok-soft); color: var(--ok); }
+  .b-risk { background: var(--bad-soft); color: var(--bad); }
+  .b-you  { background: var(--auth-soft); color: var(--auth); }
+  .b-free { background: var(--surface-3); color: var(--ink-2); }
+
+  .you {
+    background: var(--auth-soft); border-radius: 4px; padding: 12px 16px;
+    font-size: 14px; line-height: 1.7;
+  }
+  .you b { color: var(--auth); }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 14px; }
+  th {
+    text-align: left; font-size: 12px; letter-spacing: .04em; color: var(--ink-3);
+    font-weight: 600; padding: 11px 16px; border-bottom: 1px solid var(--rule);
+    background: var(--surface-2); white-space: nowrap;
+  }
+  td { padding: 12px 16px; border-bottom: 1px solid var(--rule); vertical-align: top; line-height: 1.7; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.nw { white-space: nowrap; }
+
+  .callout {
+    border: 1px solid var(--bad); border-left-width: 3px; background: var(--bad-soft);
+    border-radius: 4px; padding: 16px 20px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .callout h3 { color: var(--bad); font-size: 15px; margin: 0; }
+  .callout p { font-size: 14px; max-width: 44em; }
+
+  details {
+    background: var(--surface); border: 1px solid var(--rule);
+    border-radius: 4px; padding: 14px 20px;
+  }
+  summary { cursor: pointer; font-weight: 600; font-size: 15px; }
+  details[open] summary { margin-bottom: 12px; }
+  details table { min-width: 560px; }
+
+  .colophon {
+    margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--rule);
+    font-family: var(--mono); font-size: 11px; color: var(--ink-3);
+  }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">OpenPLC · STM32H743 · 实施计划</p>
+  <h1>方案 B 实施计划</h1>
+  <p class="standfirst">
+    七个阶段，<strong>前三个互相独立</strong>可以任意顺序做，后四个是链式的。
+    每个阶段都能单独验证。<strong>全程零 .ioc 改动</strong>。
+  </p>
+</header>
+
+<section>
+  <h2>阶段编排</h2>
+
+  <figure>
+    <div class="scroller">
+      <svg viewBox="0 0 940 300" role="img" aria-label="阶段编排图：阶段0、1、2互相独立可任意顺序；阶段3到6是链式的必须按顺序。">
+        <defs>
+          <marker id="p-ar" class="m-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+        </defs>
+
+        <text class="t-md dim" x="20" y="28">独立 —— 顺序随意，各自可单独验证</text>
+
+        <rect class="bx-ok" x="20" y="42" width="270" height="86" rx="3"/>
+        <text class="t-sm dim" x="36" y="64">阶段 0</text>
+        <text class="t-lg ink" x="36" y="88">现存漏洞修复</text>
+        <text class="t-sm dim2" x="36" y="110">已完成 · 待你实测</text>
+
+        <rect class="bx" x="310" y="42" width="270" height="86" rx="3"/>
+        <text class="t-sm dim" x="326" y="64">阶段 1</text>
+        <text class="t-lg ink" x="326" y="88">小口子清理</text>
+        <text class="t-sm dim2" x="326" y="110">删 run · reboot 冷却 · 拆连接</text>
+
+        <rect class="bx-sign" x="600" y="42" width="270" height="86" rx="3"/>
+        <text class="t-sm dim" x="616" y="64">阶段 2</text>
+        <text class="t-lg ink" x="616" y="88">SDRAM 暂存</text>
+        <text class="t-sm dim2" x="616" y="110">风险最高 · 主数据路径重构</text>
+
+        <text class="t-md dim" x="20" y="176">链式 —— 必须按顺序</text>
+
+        <rect class="bx-sign" x="20" y="190" width="200" height="86" rx="3"/>
+        <text class="t-sm dim" x="36" y="212">阶段 3</text>
+        <text class="t-lg ink" x="36" y="236">证书</text>
+        <text class="t-sm dim2" x="36" y="258">三侧代码 + IAPCert 基础</text>
+
+        <line class="flow" x1="220" y1="233" x2="241" y2="233" marker-end="url(#p-ar)"/>
+
+        <rect class="bx-auth" x="245" y="190" width="200" height="86" rx="3"/>
+        <text class="t-sm dim" x="261" y="212">阶段 4</text>
+        <text class="t-lg ink" x="261" y="236">撤销</text>
+        <text class="t-sm dim2" x="261" y="258">黑名单 · 底线 · reclaim</text>
+
+        <line class="flow" x1="445" y1="233" x2="466" y2="233" marker-end="url(#p-ar)"/>
+
+        <rect class="bx" x="470" y="190" width="200" height="86" rx="3"/>
+        <text class="t-sm dim" x="486" y="212">阶段 5</text>
+        <text class="t-lg ink" x="486" y="236">IAPCert 完善</text>
+        <text class="t-sm dim2" x="486" y="258">吸收脚本 · 备份回滚</text>
+
+        <line class="flow" x1="670" y1="233" x2="691" y2="233" marker-end="url(#p-ar)"/>
+
+        <rect class="bx" x="695" y="190" width="200" height="86" rx="3"/>
+        <text class="t-sm dim" x="711" y="212">阶段 6</text>
+        <text class="t-lg ink" x="711" y="236">profile 多根分支</text>
+        <text class="t-sm dim2" x="711" y="258">纯工具侧 · 可延后</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>阶段 0 / 1 / 2 完全不依赖证书</b>，随时可以做、可以停。阶段 3 之后是硬切换：
+      板子必须 ST-Link 重烧一次，之后所有钥匙更换都不用再碰板子。
+    </figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>阶段 0 — 现存漏洞修复</h2>
+
+  <div class="phase done">
+    <div class="phase-head">
+      <span class="phase-num">阶段 0</span>
+      <span class="phase-title">现存漏洞修复</span>
+      <span class="badge b-done">代码已完成</span>
+      <span class="badge b-you">需要你实测</span>
+    </div>
+    <ul>
+      <li><b>tcp_server.c 三个零凭据破坏漏洞</b>：拒绝第二个连接、`_err`/`close` 加归属判断、60 秒空闲超时</li>
+      <li><b>VBAT 探测</b>：<code>RTC_BKP_DR2</code> 写入 witness 值，启动时报告备份域是否存活</li>
+      <li><b>Phase 1 读备份寄存器的 bug</b>：<code>hrtc.Instance</code> 未初始化导致日志字段是垃圾值，改传 0</li>
+      <li>更早一轮已完成：<code>keys/</code> 归拢、<code>#include</code> 机制、删 9 个重复文件、Go 运行时读密码</li>
+    </ul>
+    <div class="you">
+      <b>你要做的：</b>① 编译烧录 ② 正常升级一次（CDC + 网口）
+      ③ <b>升级到一半从另一台机器连同端口</b>，应被拒且原升级不受影响
+      ④ 连上后不发数据等 60 秒，应被断开且能重连
+      ⑤ 看串口的 VBAT 报告，<b>完全断电再上电</b>，第二次应显示 retained
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>阶段 1 — 小口子清理</h2>
+
+  <div class="phase">
+    <div class="phase-head">
+      <span class="phase-num">阶段 1</span>
+      <span class="phase-title">小口子清理</span>
+      <span class="badge b-free">无依赖</span>
+      <span class="badge b-you">需要你实测</span>
+    </div>
+    <ul>
+      <li><b>删掉 <code>run</code> 命令</b> —— 工具从不发它，Arduino core 也不用，而它完全无认证</li>
+      <li><b><code>openplc_server_reboot</code> 加冷却</b>，两次之间至少 10 秒</li>
+      <li><b>认证失败改 RAM 循环缓冲</b>（最近 32 条），不再写 flash —— 未授权请求从此产生不了任何持久化副作用</li>
+      <li><b>降级 y/N 提示拆到独立短连接</b>（工具侧）：连接①查版本→断开→提问；连接②做升级，全程无人为停顿</li>
+    </ul>
+    <div class="you">
+      <b>你要做的：</b>实测一次正常升级 + 一次降级（确认提示还在、超时不再误伤）
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>阶段 2 — SDRAM 暂存</h2>
+
+  <div class="phase risk">
+    <div class="phase-head">
+      <span class="phase-num">阶段 2</span>
+      <span class="phase-title">SDRAM 暂存</span>
+      <span class="badge b-risk">风险最高</span>
+      <span class="badge b-free">无依赖</span>
+      <span class="badge b-you">需要你实测</span>
+    </div>
+    <p>
+      把擦除时机从「收到 flash 命令时」推迟到「验签通过后」。收到的镜像先进 SDRAM，
+      全部收完算 CRC + SHA-256 + 验签，<b>通过了才擦 flash 并写入</b>。
+    </p>
+    <ul>
+      <li><b>失败的升级不再毁掉运行中的 app</b> —— 断网、断电、传输错误、被攻击打断，app 一直在跑</li>
+      <li><b>只有 <code>OPEN_SESSION</code> 的人再也擦不掉 app</b> —— 他签不出有效固件，根本走不到擦除那一步</li>
+      <li>SDRAM 是 AS4C32M16SB，64 MB；app 最大 1.75 MB，36 倍余量</li>
+      <li>FMC 已在 Phase 2 初始化，跑 app 那条路径不碰，无污染；升级完是 SystemReset，不用 de-init</li>
+    </ul>
+    <p>
+      <b>风险来源：</b>这是 <code>IAP_data_recv</code> / <code>process_command</code> 主数据路径的重构，
+      协议不变（还是边收边回 OK），但落盘时机变了。建议单独做、单独测，不要和别的混在一起。
+    </p>
+    <div class="you">
+      <b>你要做的：</b>① 正常升级 ② 传到一半拔网线 → app 应该还在跑
+      ③ 故意用错误的签名升级 → 应该拒绝且 app 完好 ④ 传一个接近 1.75 MB 的大镜像
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>阶段 3 — 证书</h2>
+
+  <div class="phase">
+    <div class="phase-head">
+      <span class="phase-num">阶段 3</span>
+      <span class="phase-title">证书</span>
+      <span class="badge b-risk">硬切换</span>
+      <span class="badge b-you">需要你决策 + 实测</span>
+    </div>
+    <p><b>板子侧</b></p>
+    <ul>
+      <li>160 字节定长证书，无解析器；<code>device_uid</code> 在签名覆盖范围内</li>
+      <li><code>cert_verify()</code>：magic / version / serial / caps / uid 检查 + 根验签</li>
+      <li>两个根公钥槽位，<code>root_disabled</code> 位；caps 默认全给；<code>device_uid</code> 默认全零</li>
+      <li>metadata 记录加 <code>cert[160]</code>，<b>journal 槽位 128 → 512 字节</b></li>
+      <li>事件日志记 cert serial（占用 reserved 区，不改大小）</li>
+      <li>验签前先做便宜的格式检查（magic / 长度），不对直接丢，不进 ECDSA</li>
+    </ul>
+    <p><b>app 侧（Arduino core）</b></p>
+    <ul>
+      <li>同期加 <code>uECC</code> + <code>cert_verify</code> —— 每个用户 sketch <b>约 +8~10 KB</b></li>
+      <li>不做的话，老 app 认不了新叶子，网口进不去，只剩柜子里的按钮</li>
+    </ul>
+    <p><b>PC 侧</b></p>
+    <ul>
+      <li>Go 共享包 <code>iapcert</code>（证书格式唯一实现）</li>
+      <li><b>IAPCert 最小可用版</b>：<code>init</code>（生成两把根）、<code>issue</code>（签发叶子）</li>
+      <li><code>__has_include</code> + <code>#error</code> 强制先生成密钥；保留测试密钥 + <code>-DIAP_ALLOW_TEST_KEY</code> 逃生开关 + 运行时持续警告</li>
+    </ul>
+    <div class="callout">
+      <h3>槽位从 128 变 512，旧 journal 必须整扇区擦掉</h3>
+      <p>
+        新 bootloader 会把旧格式的数据当新格式解析，得到荒谬结果。
+        <b>journal 要加一个格式版本标记，识别不出就整扇区擦除重来。</b>
+        这是安全的：旧 metadata 里没有 cert，对新 bootloader 本来就没用。
+      </p>
+    </div>
+    <div class="you">
+      <b>你要决策：</b>① <code>sha256</code> 字段留不留（验签用不到，我建议<b>留</b>做取证，空间够）<br>
+      <b>你要做的：</b>ST-Link 重烧 bootloader + 重推 app（这是最后一次因为换钥匙而重烧），然后全流程实测
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>阶段 4 — 撤销</h2>
+
+  <div class="phase">
+    <div class="phase-head">
+      <span class="phase-num">阶段 4</span>
+      <span class="phase-title">撤销</span>
+      <span class="badge b-you">需要你决策 + 实测</span>
+    </div>
+    <ul>
+      <li><b>黑名单</b>：独立 journal 记录（<b>不放 metadata 里</b>，一次固件升级不该有能力影响撤销状态），一条记录存完整快照，126 个 serial</li>
+      <li><b><code>min_serial</code> 底线</b>：板子端 3 行；<code>compact</code> 是工具端命令，撞满时<b>提示但不自动执行</b></li>
+      <li><b>撤销只能根私钥直接签</b>，不经过叶子；不支持通配符；禁用根 A 必须由根 B 签</li>
+      <li><b>撤销只管刷写，不管上电验证</b> —— 否则一撤销全场停机</li>
+      <li><b>reclaim 必须保住撤销记录和根禁用位</b>，只丢纯事件日志。<b>这是罕见路径 + fail-open，必须专门写测试</b></li>
+      <li><b>app 也查撤销</b>，否则作废的叶子能反复重启板子把 PLC 打瘫。journal 读取做成<b>单份共享 .c</b></li>
+      <li><code>getstatus</code> 只返回撤销名单的<b>哈希</b>，不返回明细（不给攻击者指路）</li>
+      <li>撤销文件永远是<b>完整快照</b>不是增量，幂等；随升级带上（零停机）或独立推送（几秒停机）</li>
+    </ul>
+    <div class="you">
+      <b>你要决策：</b>① 黑名单容量（126 = 一年 2 次撤销可用 60 年，我建议就这个）<br>
+      <b>你要做的：</b>实测撤销 → 被撤销的叶子刷不进去 → 但已装固件继续运行；
+      <b>专门测 reclaim</b>（写满 journal 后撤销记录还在）
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>阶段 5 — IAPCert 完善</h2>
+
+  <div class="phase">
+    <div class="phase-head">
+      <span class="phase-num">阶段 5</span>
+      <span class="phase-title">IAPCert 完善</span>
+      <span class="badge b-you">需要你确认命令面</span>
+    </div>
+    <ul>
+      <li><b>吸收 <code>rotate_keys.sh</code> 全部职责</b>，取消 shell 脚本：路径自动探测（探测不到问一次并记住）、文件分发、<code>.bak</code> + 时间戳快照 + manifest + <code>--restore</code></li>
+      <li><code>list</code> / <code>revoke</code> / <code>unrevoke</code> / <code>compact</code> / <code>backup --to=</code></li>
+      <li>台账 <code>issued.json</code>：谁拿了哪张叶子、caps、uid、状态；<b>serial 用 Unix 时间戳</b>，不依赖台账防重号</li>
+      <li>已有密钥时 <code>--new-root</code> 硬警告（会造成机队分裂）；<b>拒绝禁用唯一的根</b>（自杀操作）</li>
+      <li><code>compile_tool.sh</code> 把已生成的密钥复制到 <code>Output/&lt;平台&gt;/</code>，没生成时跳过并提示</li>
+      <li>⚠️ <code>IAPTranfer_Tool/.gitignore</code> 里 <code>cmd/</code> 被忽略，新工具目录要避开</li>
+    </ul>
+    <div class="you"><b>你要做的：</b>确认命令面，然后跑一遍完整的生成 → 签发 → 分发 → 备份 → 回滚</div>
+  </div>
+</section>
+
+<section>
+  <h2>阶段 6 — profile 多根分支</h2>
+
+  <div class="phase">
+    <div class="phase-head">
+      <span class="phase-num">阶段 6</span>
+      <span class="phase-title">profile 多根分支</span>
+      <span class="badge b-free">纯工具侧 · 可延后</span>
+    </div>
+    <p>你有多个下游客户，每家一套独立的根，设备不交叉。</p>
+    <ul>
+      <li><code>keys/&lt;profile&gt;/</code> 各自持有根、台账、撤销文件</li>
+      <li><code>IAPCert use &lt;profile&gt;</code> 把该 profile 的 <code>root_pubkey.inc</code> 装进 CubeIDE 项目 + Arduino core</li>
+      <li><code>IAPCert status</code> 显示项目当前装的是哪个 profile</li>
+      <li><b>profile 名字编进固件，启动 banner 打印</b></li>
+    </ul>
+    <div class="callout">
+      <h3>最大风险：切错 profile，给客户 A 的板子烧上客户 B 的根</h3>
+      <p>
+        因为根公钥是编译进 bootloader 的，<b>每个 profile 必然对应一个独立的 build</b>，烧录时可能搞混。
+        三道防线：banner 打印 profile 名、<code>IAPCert status</code> 可查、以及
+        <b><code>getpubkey</code> 兜底</b> —— 刷 bin 时工具会发现根不匹配并拒绝，不会静默出错。
+      </p>
+    </div>
+    <div class="you"><b>你要决策：</b>这次做还是以后做（不影响板子侧，随时可加）</div>
+  </div>
+</section>
+
+<section>
+  <h2>需要你接入的全部事项</h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>类型</th><th>事项</th><th>阶段</th></tr></thead>
+      <tbody>
+        <tr><td class="nw"><b>硬件</b></td><td>无 —— <b>全程零 .ioc 改动</b>（FMC 已配好，RNG 已砍）</td><td class="nw">—</td></tr>
+        <tr><td class="nw"><b>实测</b></td><td>每个阶段结束都要实测。<b>我没有硬件，所有改动只验证了编译</b></td><td class="nw">全部</td></tr>
+        <tr><td class="nw"><b>实测</b></td><td>VBAT 断电前后对比（确认电池状态）</td><td class="nw">0</td></tr>
+        <tr><td class="nw"><b>实测</b></td><td>第二个连接被拒 + 原升级不受影响</td><td class="nw">0</td></tr>
+        <tr><td class="nw"><b>实测</b></td><td>传输中断 → app 仍在跑</td><td class="nw">2</td></tr>
+        <tr><td class="nw"><b>实测</b></td><td><b>reclaim 后撤销记录还在</b>（罕见路径 + fail-open）</td><td class="nw">4</td></tr>
+        <tr><td class="nw"><b>决策</b></td><td><code>sha256</code> 字段留不留（建议留）</td><td class="nw">3</td></tr>
+        <tr><td class="nw"><b>决策</b></td><td>黑名单容量（建议 126）</td><td class="nw">4</td></tr>
+        <tr><td class="nw"><b>决策</b></td><td>空闲超时 60 秒是否合适</td><td class="nw">0/1</td></tr>
+        <tr><td class="nw"><b>决策</b></td><td>profile 这次做还是以后做</td><td class="nw">6</td></tr>
+        <tr><td class="nw"><b>操作</b></td><td><b>ST-Link 重烧全部板子一次</b>（阶段 3 硬切换，此后换钥匙永不重烧）</td><td class="nw">3</td></tr>
+        <tr><td class="nw"><b>流程</b></td><td>量产时每个 profile 一个 build，烧录不能搞混</td><td class="nw">6</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>三个最高风险点</h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>风险</th><th>为什么危险</th><th>怎么控</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="nw"><b>SDRAM 暂存</b></td>
+          <td>主数据路径重构，改的是每次升级都走的代码</td>
+          <td>单独一个阶段做，单独测，不和别的混</td>
+        </tr>
+        <tr>
+          <td class="nw"><b>reclaim 保撤销</b></td>
+          <td>罕见路径（写满 256 条才触发），出错方向是 <b>fail-open</b>，可能几年不被发现</td>
+          <td>专门写测试，人为灌满 journal 验证</td>
+        </tr>
+        <tr>
+          <td class="nw"><b>app 侧 +10 KB</b></td>
+          <td>改变每个用户 sketch 的体积和行为，影响面最广</td>
+          <td>H743 有 2 MB flash，余量充足；但要在文档写明不是零成本</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>附录：已砍掉的，不要再想起来</h2>
+  <details>
+    <summary>展开 —— 12 项被砍掉的设计及原因</summary>
+    <div class="tablewrap" style="margin-top:12px">
+      <table>
+        <thead><tr><th>砍掉的</th><th>原因</th></tr></thead>
+        <tbody>
+          <tr><td class="nw">启用硬件 RNG</td><td>Bridge 板有 VL1220 可充电锂电池给 VBAT，备份寄存器跨掉电保留，现状成立</td></tr>
+          <tr><td class="nw">板子端 UDP 广播</td><td>一个广播包让全网每块板各做一次 ECDSA = DoS 放大器。改成工具侧扫描逐个单播</td></tr>
+          <tr><td class="nw">交叉签名加新根</td><td>信任根可变是大的安全语义变化。两个编译进去的根已覆盖「一个泄露」这个现实场景</td></tr>
+          <tr><td class="nw">撤销列表并进 metadata</td><td>一次固件升级不该有能力影响撤销状态。512 字节买这个隔离</td></tr>
+          <tr><td class="nw">失败计数放 RTC 备份寄存器</td><td>不引入 VBAT 依赖。最终连 flash 都不写了，改 RAM 循环缓冲</td></tr>
+          <tr><td class="nw">失败计数放 no-init 段</td><td>同上，被 RAM 循环缓冲取代 —— 和市面常规做法一致</td></tr>
+          <tr><td class="nw"><code>run</code> 加认证</td><td>要改协议。直接删掉更省事 —— 没有任何工具在用它</td></tr>
+          <tr><td class="nw">编译期只 <code>#warning</code></td><td>太容易被忽略，改成 <code>#error</code> + 显式逃生开关</td></tr>
+          <tr><td class="nw">黑名单自动 compact</td><td>会强制所有还在用的人换钥匙。改成撞满时提示，由用户决定</td></tr>
+          <tr><td class="nw">给叶子 <code>CAP_REVOKE</code></td><td>等于把高权限凭据放到联网机器上。撤销只能根签，天然强制「根不上网」</td></tr>
+          <tr><td class="nw">跨机器维护撤销同步台账</td><td>两台机器同步状态必然不一致。改成直接问板子（<code>getstatus</code>）</td></tr>
+          <tr><td class="nw">caps 默认分开签发</td><td>你的场景是每个人都能烧所有板，默认全给</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
+</section>
+
+<p class="colophon">实施计划 · 阶段 0 代码已完成待实测 · 其余未动</p>
+
+</div>

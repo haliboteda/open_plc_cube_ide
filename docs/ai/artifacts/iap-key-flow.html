@@ -1,0 +1,381 @@
+<title>IAP 设备密钥：存放位置与挑战-响应流程</title>
+<style>
+  :root {
+    --bg: #f6f3ec;
+    --surface: #ffffff;
+    --text: #22201b;
+    --text-dim: #6b665c;
+    --border: #e2ddd0;
+    --accent-tool: #a8631a;
+    --accent-device: #2f7d70;
+    --accent-danger: #b3392f;
+    --code-bg: rgba(0,0,0,0.045);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15171b;
+      --surface: #1c1f24;
+      --text: #e8e5dc;
+      --text-dim: #9a9689;
+      --border: #2c2f35;
+      --accent-tool: #e3a54a;
+      --accent-device: #5fc4b3;
+      --accent-danger: #e17469;
+      --code-bg: rgba(255,255,255,0.055);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171b; --surface: #1c1f24; --text: #e8e5dc; --text-dim: #9a9689;
+    --border: #2c2f35; --accent-tool: #e3a54a; --accent-device: #5fc4b3;
+    --accent-danger: #e17469; --code-bg: rgba(255,255,255,0.055);
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f3ec; --surface: #ffffff; --text: #22201b; --text-dim: #6b665c;
+    --border: #e2ddd0; --accent-tool: #a8631a; --accent-device: #2f7d70;
+    --accent-danger: #b3392f; --code-bg: rgba(0,0,0,0.045);
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Source Serif Pro", Georgia, serif;
+    font-size: 17px;
+    line-height: 1.65;
+  }
+  .page {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 3.2rem 1.5rem 5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2.4rem;
+  }
+  .mono {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  }
+  h1 {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    margin: 0 0 0.4rem;
+  }
+  .kicker {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent-device);
+    margin: 0 0 0.7rem;
+  }
+  .subtitle {
+    color: var(--text-dim);
+    font-size: 1.02rem;
+    max-width: 60ch;
+  }
+  h2 {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    font-size: 1.05rem;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.55rem;
+    margin: 0 0 1.1rem;
+  }
+  p { margin: 0 0 0.9rem; max-width: 66ch; }
+  p:last-child { margin-bottom: 0; }
+  code {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    background: var(--code-bg);
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+    font-size: 0.88em;
+  }
+
+  /* --- storage cards --- */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.9rem;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.95rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+  .card .loc {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.03em;
+    color: var(--text-dim);
+  }
+  .card .file {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    font-size: 0.86rem;
+    font-weight: 600;
+  }
+  .card .desc {
+    font-size: 0.84rem;
+    color: var(--text-dim);
+    line-height: 1.45;
+  }
+  .must-match {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    text-align: center;
+    letter-spacing: 0.02em;
+  }
+  .must-match b { color: var(--text); }
+
+  /* --- diagram --- */
+  figure { margin: 0; }
+  .diagram-scroll {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    padding: 0.6rem 0.2rem;
+  }
+  .diagram-scroll svg { display: block; margin: 0 auto; }
+  figcaption {
+    margin-top: 0.7rem;
+    font-size: 0.86rem;
+    color: var(--text-dim);
+    text-align: center;
+  }
+  .legend {
+    display: flex;
+    gap: 1.6rem;
+    justify-content: center;
+    margin-top: 0.9rem;
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 0.4rem; }
+  .swatch { width: 0.7rem; height: 0.7rem; border-radius: 2px; display: inline-block; }
+
+  /* --- callouts --- */
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent-device);
+    border-radius: 8px;
+    padding: 1rem 1.1rem;
+  }
+  .callout.danger { border-left-color: var(--accent-danger); }
+  .callout h3 {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    font-size: 0.88rem;
+    margin: 0 0 0.5rem;
+  }
+  .callout p { font-size: 0.95rem; }
+
+  @media (max-width: 620px) {
+    .cards { grid-template-columns: 1fr; }
+  }
+</style>
+
+<div class="page">
+
+  <header>
+    <p class="kicker">IAP · 挑战-响应鉴权</p>
+    <h1>iap_fixed_password 是怎么用的</h1>
+    <p class="subtitle">
+      一份固定密码，混合每台设备自己的 UID，派生出各不相同的设备密钥；
+      整个校验过程只比对 HMAC 摘要，密码本身从不上线传输。
+    </p>
+  </header>
+
+  <section>
+    <h2>存放位置</h2>
+    <div class="cards">
+      <div class="card">
+        <span class="loc">Bootloader</span>
+        <span class="file mono">IAPServer/iap_keyderive.c</span>
+        <span class="desc">编译进 bootloader 的 .bin，随 bootloader 一起烧录，运行时常驻 Flash。</span>
+      </div>
+      <div class="card">
+        <span class="loc">Arduino App</span>
+        <span class="file mono">OpenPLC_Net/src/iap_keyderive.c</span>
+        <span class="desc">编译进用户 App 的 .bin，随正常草图上传一起烧录。</span>
+      </div>
+      <div class="card">
+        <span class="loc">PC 工具</span>
+        <span class="file mono">iapcrypto.FixedPassword</span>
+        <span class="desc">编译进 IAPTool 可执行文件的常量，不是配置文件、不可运行时更改。</span>
+      </div>
+    </div>
+    <p class="must-match">三处必须<b>逐字节完全相同</b>，否则设备与工具算出的密钥不一致，握手必然失败。</p>
+  </section>
+
+  <section>
+    <h2>握手 &amp; 校验流程</h2>
+    <figure>
+      <div class="diagram-scroll">
+        <svg viewBox="0 0 820 810" role="img" aria-label="PC 工具与设备之间的挑战-响应鉴权时序：工具查询设备 UID 并本地派生密钥，设备发出一次性 nonce，工具用密钥对命令计算 HMAC 并发送，设备用自己独立派生的密钥重新计算 HMAC 做恒定时间比对，通过则执行命令、失败则拒绝并记录审计日志，nonce 无论成败都被消耗。">
+
+          <!-- lifeline labels -->
+          <text x="120" y="34" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" font-weight="600" fill="currentColor">PC 工具</text>
+          <text x="700" y="34" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" font-weight="600" fill="currentColor">设备（bootloader / app）</text>
+
+          <!-- lifelines -->
+          <line x1="120" y1="50" x2="120" y2="780" stroke="currentColor" stroke-opacity="0.25" stroke-width="1.5"/>
+          <line x1="700" y1="50" x2="700" y2="780" stroke="currentColor" stroke-opacity="0.25" stroke-width="1.5"/>
+
+          <defs>
+            <marker id="a-tool" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+              <polygon points="0,0 7,3 0,6" fill="var(--accent-tool)"/>
+            </marker>
+            <marker id="a-device" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+              <polygon points="0,0 7,3 0,6" fill="var(--accent-device)"/>
+            </marker>
+          </defs>
+
+          <!-- Step 1: getuid -->
+          <line x1="120" y1="78" x2="694" y2="78" stroke="var(--accent-tool)" stroke-width="1.6" marker-end="url(#a-tool)"/>
+          <text x="410" y="70" text-anchor="middle" font-family="ui-monospace,monospace" font-size="12" fill="var(--accent-tool)">getuid</text>
+          <text x="410" y="93" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10.5" fill="currentColor" fill-opacity="0.55">(仅 CDC；以太网已从 discovery/ping 拿到 UID)</text>
+
+          <!-- Step 2: uid_hex response -->
+          <line x1="700" y1="120" x2="126" y2="120" stroke="var(--accent-device)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#a-device)"/>
+          <text x="410" y="113" text-anchor="middle" font-family="ui-monospace,monospace" font-size="12" fill="var(--accent-device)">uid_hex（24 位十六进制）</text>
+
+          <!-- note: derive key at tool -->
+          <rect x="140" y="140" width="300" height="52" rx="7" fill="none" stroke="var(--accent-tool)" stroke-opacity="0.55" stroke-width="1.2"/>
+          <text x="152" y="162" font-family="ui-monospace,monospace" font-size="11.5" fill="currentColor">
+            <tspan x="152" dy="0">deviceKey =</tspan>
+            <tspan x="152" dy="16">HMAC-SHA256(FixedPassword, uid)</tspan>
+          </text>
+
+          <!-- Step 3: authchallenge -->
+          <line x1="120" y1="222" x2="694" y2="222" stroke="var(--accent-tool)" stroke-width="1.6" marker-end="url(#a-tool)"/>
+          <text x="410" y="214" text-anchor="middle" font-family="ui-monospace,monospace" font-size="12" fill="var(--accent-tool)">authchallenge</text>
+
+          <!-- note: nonce at device -->
+          <rect x="440" y="242" width="260" height="66" rx="7" fill="none" stroke="var(--accent-device)" stroke-opacity="0.55" stroke-width="1.2"/>
+          <text x="452" y="264" font-family="ui-monospace,monospace" font-size="11.5" fill="currentColor">
+            <tspan x="452" dy="0">nonce = counter‖uidW0‖tick‖0000</tspan>
+            <tspan x="452" dy="16">(16 字节，一次性)</tspan>
+            <tspan x="452" dy="16">标记 pending，30s 后过期</tspan>
+          </text>
+
+          <!-- Step 4: nonce_hex response -->
+          <line x1="700" y1="340" x2="126" y2="340" stroke="var(--accent-device)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#a-device)"/>
+          <text x="410" y="333" text-anchor="middle" font-family="ui-monospace,monospace" font-size="12" fill="var(--accent-device)">nonce_hex</text>
+
+          <!-- note: build msg + hmac at tool -->
+          <rect x="140" y="360" width="330" height="80" rx="7" fill="none" stroke="var(--accent-tool)" stroke-opacity="0.55" stroke-width="1.2"/>
+          <text x="152" y="382" font-family="ui-monospace,monospace" font-size="11.5" fill="currentColor">
+            <tspan x="152" dy="0">msg = "flash &lt;size&gt; &lt;crc32&gt; &lt;sig&gt; [ver]"</tspan>
+            <tspan x="152" dy="18">hmac =</tspan>
+            <tspan x="152" dy="16">HMAC-SHA256(deviceKey, nonce‖msg)</tspan>
+          </text>
+
+          <!-- Step 5: flash + hmac -->
+          <line x1="120" y1="472" x2="694" y2="472" stroke="var(--accent-tool)" stroke-width="1.8" marker-end="url(#a-tool)"/>
+          <text x="410" y="464" text-anchor="middle" font-family="ui-monospace,monospace" font-size="12" fill="var(--accent-tool)">flash size crc32 sig hmac_hex [ver]</text>
+
+          <!-- note: recompute + verify at device -->
+          <rect x="410" y="492" width="290" height="96" rx="7" fill="none" stroke="var(--accent-device)" stroke-opacity="0.55" stroke-width="1.2"/>
+          <text x="422" y="514" font-family="ui-monospace,monospace" font-size="11.5" fill="currentColor">
+            <tspan x="422" dy="0">device_key = HMAC(fixed_password,</tspan>
+            <tspan x="422" dy="15">              own uid) ← 现算，不存</tspan>
+            <tspan x="422" dy="18">calc = HMAC(device_key, nonce‖msg)</tspan>
+            <tspan x="422" dy="18">constant_time_eq(calc, hmac) ?</tspan>
+          </text>
+
+          <!-- fork -->
+          <line x1="555" y1="588" x2="555" y2="612" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.4"/>
+          <line x1="420" y1="612" x2="690" y2="612" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.4"/>
+          <line x1="420" y1="612" x2="420" y2="628" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.4"/>
+          <line x1="690" y1="612" x2="690" y2="628" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.4"/>
+
+          <!-- outcome: match -->
+          <rect x="330" y="628" width="180" height="70" rx="7" fill="none" stroke="var(--accent-device)" stroke-width="1.4"/>
+          <text x="420" y="650" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11.5" font-weight="600" fill="var(--accent-device)">匹配 → "OK"</text>
+          <text x="420" y="668" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10.5" fill="currentColor" fill-opacity="0.7">
+            <tspan x="420" dy="0">擦除 Flash</tspan>
+            <tspan x="420" dy="14">写入新固件</tspan>
+          </text>
+
+          <!-- outcome: mismatch -->
+          <rect x="600" y="628" width="200" height="70" rx="7" fill="none" stroke="var(--accent-danger)" stroke-width="1.4"/>
+          <text x="700" y="650" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11.5" font-weight="600" fill="var(--accent-danger)">不匹配/过期 → "ERR"</text>
+          <text x="700" y="668" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10.5" fill="currentColor" fill-opacity="0.7">拒绝，记录 AUTH_FAIL</text>
+
+          <!-- closing note -->
+          <text x="410" y="730" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11.5" fill="currentColor" fill-opacity="0.6">
+            <tspan x="410" dy="0">nonce 无论结果如何都会被消耗（一次性）——</tspan>
+            <tspan x="410" dy="17">同一个 (nonce, hmac) 组合永远不能被重放</tspan>
+          </text>
+
+        </svg>
+      </div>
+      <div class="legend">
+        <span><span class="swatch" style="background:var(--accent-tool)"></span>PC 工具 → 设备</span>
+        <span><span class="swatch" style="background:var(--accent-device)"></span>设备 → PC 工具 / 设备内部计算</span>
+        <span><span class="swatch" style="background:var(--accent-danger)"></span>拒绝路径</span>
+      </div>
+      <figcaption>完整一轮 authchallenge → flash 鉴权：两边各自独立算出 HMAC，只比对结果，密码和密钥都不上线。</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>怎么"比对"的</h2>
+    <p>
+      从头到尾，<code>iap_fixed_password</code> 本身<b>从未在网络/串口上传输</b>，也从未被"比对"过——
+      真正被比较的是两次独立算出的 HMAC 摘要：
+    </p>
+    <p>
+      PC 工具这边：先问到设备 UID，本地算出 <code>deviceKey</code>，再用这个 key 对"即将发送的命令原文"算一次 HMAC，随命令一起发过去。
+    </p>
+    <p>
+      设备这边收到命令后，<b>不会相信也不会使用</b>命令里附带的任何密钥信息——它只用自己内部的
+      <code>HAL_GetUIDw0/1/2()</code> 重新读一遍<b>自己</b>的 UID，加上自己 Flash 里那份
+      <code>iap_fixed_password</code>，独立地重新推导出同一个 <code>device_key</code>，
+      再对它<b>自己刚刚解析出来的命令参数</b>重新拼出 <code>nonce‖msg</code> 算一次 HMAC。
+    </p>
+    <p>
+      最后调用 <code>constant_time_eq()</code> 逐字节异或比较两段 32 字节摘要——用恒定时间比较而不是
+      <code>memcmp</code>，是为了不让"比较提前退出的时间差"泄露出摘要匹配到了第几个字节，
+      堵住一种旁道计时攻击。
+    </p>
+  </section>
+
+  <section>
+    <div class="callout">
+      <h3>是否随 bootloader 一起烧写？</h3>
+      <p>
+        是的。<code>iap_fixed_password</code> 是 C 里的 <code>static const</code> 数组，
+        编译期就被放进 <code>.bin</code> 的代码/常量段，和其余固件代码一起被 IAPTool 或 ST-Link 写入 Flash——
+        没有单独的"写密钥"步骤，正常烧录 bootloader / App 就已经把它带进去了。
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="callout danger">
+      <h3>这解决了什么，没解决什么</h3>
+      <p>
+        解决了"全体设备共用同一把 key"的问题：现在不同设备算出的 HMAC 不同。
+        但 <code>iap_fixed_password</code> 本身仍是三份代码里写死的同一个占位值，
+        而 UID 又是 <code>getuid</code> / discovery 回复里明文可读的——
+        谁只要拿到这个密码常量（反编译固件或 PC 工具都能拿到）+ 目标 UID，
+        就能替任意一台设备算出它的 <code>device_key</code>。
+        真正的产线级方案仍是"每台设备一个独立生成、不可从公开信息反推的密钥"。
+      </p>
+    </div>
+  </section>
+
+</div>

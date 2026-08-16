@@ -1,0 +1,671 @@
+<title>The Delegation Chain</title>
+
+<style>
+  :root {
+    --bg:#EDEFF2; --surface:#FFFFFF; --surface-2:#E2E6EB; --surface-3:#D7DCE3;
+    --ink:#14171C; --ink-2:#49515F; --ink-3:#717A8A;
+    --rule:#C6CDD6;
+    --sign:#9E5410; --sign-soft:#F2E5D6; --sign-line:#C4762A;
+    --auth:#0A6873; --auth-soft:#D5E8EB; --auth-line:#0F818E;
+    --bad:#9E2018; --bad-soft:#F4DEDC;
+
+    --serif: ui-serif, "Iowan Old Style", Charter, Georgia, "Times New Roman", serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#0F1216; --surface:#171B21; --surface-2:#1D232B; --surface-3:#262D37;
+      --ink:#E2E6EC; --ink-2:#A2AAB7; --ink-3:#79828F;
+      --rule:#2B323B;
+      --sign:#E0994E; --sign-soft:#33240F; --sign-line:#C4762A;
+      --auth:#4FC0CC; --auth-soft:#0F3037; --auth-line:#2A9AA8;
+      --bad:#EE7466; --bad-soft:#3A1815;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#0F1216; --surface:#171B21; --surface-2:#1D232B; --surface-3:#262D37;
+    --ink:#E2E6EC; --ink-2:#A2AAB7; --ink-3:#79828F;
+    --rule:#2B323B;
+    --sign:#E0994E; --sign-soft:#33240F; --sign-line:#C4762A;
+    --auth:#4FC0CC; --auth-soft:#0F3037; --auth-line:#2A9AA8;
+    --bad:#EE7466; --bad-soft:#3A1815;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.6;
+    margin: 0; padding: 0 20px 96px; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+
+  .masthead {
+    padding: 72px 0 40px; border-bottom: 1px solid var(--rule);
+    display: flex; flex-direction: column; gap: 20px;
+  }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--ink-3); margin: 0;
+  }
+  .masthead h1 {
+    font-family: var(--serif); font-weight: 700; font-size: clamp(38px, 7vw, 62px);
+    line-height: 1.02; letter-spacing: -.02em; text-wrap: balance; margin: 0;
+  }
+  .standfirst { font-size: 18px; line-height: 1.55; color: var(--ink-2); max-width: 62ch; margin: 0; }
+  .standfirst strong { color: var(--ink); font-weight: 600; }
+
+  section { padding-top: 56px; display: flex; flex-direction: column; gap: 20px; }
+  h2 {
+    font-family: var(--serif); font-weight: 700; font-size: 30px;
+    letter-spacing: -.015em; line-height: 1.15; margin: 0; text-wrap: balance;
+  }
+  h3 {
+    font-family: var(--mono); font-size: 12px; letter-spacing: .13em;
+    text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin: 0;
+  }
+  p { margin: 0; max-width: 68ch; }
+  .lede { font-size: 17px; color: var(--ink-2); max-width: 66ch; }
+
+  code {
+    font-family: var(--mono); font-size: .88em; background: var(--surface-2);
+    border-radius: 3px; padding: .12em .34em; word-break: break-word;
+  }
+
+  figure {
+    margin: 8px 0 0; background: var(--surface); border: 1px solid var(--rule);
+    border-radius: 4px; padding: 22px 22px 16px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .scroller { overflow-x: auto; }
+  figure svg { display: block; width: 100%; min-width: 640px; height: auto; }
+  figcaption {
+    font-size: 13.5px; line-height: 1.5; color: var(--ink-2);
+    border-top: 1px solid var(--rule); padding-top: 12px; margin: 0;
+  }
+  figcaption b { color: var(--ink); font-weight: 600; }
+
+  svg text { font-family: var(--mono); fill: currentColor; }
+  .t-lg { font-size: 13px; font-weight: 600; }
+  .t-md { font-size: 11.5px; }
+  .t-sm { font-size: 10px; }
+  .t-xs { font-size: 9px; letter-spacing: .12em; }
+  .dim { fill: var(--ink-3); }
+  .dim2 { fill: var(--ink-2); }
+  .warn { fill: var(--bad); }
+  .ink { fill: var(--ink); }
+  .lbl-sign { fill: var(--sign); }
+  .lbl-auth { fill: var(--auth); }
+
+  .m-sign path { fill: var(--sign-line); }
+  .m-auth path { fill: var(--auth-line); }
+  .m-ink path  { fill: var(--ink-2); }
+  .chain-sign { color: var(--sign-line); }
+  .chain-auth { color: var(--auth-line); }
+  .chain-ink  { color: var(--ink-2); }
+
+  .bx { fill: var(--surface-2); stroke: var(--rule); stroke-width: 1; }
+  .bx-sign { fill: var(--sign-soft); stroke: var(--sign-line); stroke-width: 1.4; }
+  .bx-auth { fill: var(--auth-soft); stroke: var(--auth-line); stroke-width: 1.4; }
+  .bx-bad  { fill: var(--bad-soft);  stroke: var(--bad); stroke-width: 1.4; }
+  .rule { stroke: var(--rule); stroke-width: 1; }
+  .rule-dash { stroke: var(--rule); stroke-width: 1; stroke-dasharray: 5 5; }
+  .flow { stroke: currentColor; stroke-width: 1.4; fill: none; }
+  .flow-dash { stroke: currentColor; stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 660px; font-size: 14px; }
+  th {
+    text-align: left; font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3);
+    font-weight: 600; padding: 12px 16px; border-bottom: 1px solid var(--rule);
+    background: var(--surface-2); white-space: nowrap;
+  }
+  td { padding: 13px 16px; border-bottom: 1px solid var(--rule); vertical-align: top; line-height: 1.45; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.mono { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  pre {
+    margin: 0; background: var(--surface); border: 1px solid var(--rule);
+    border-radius: 4px; padding: 18px 20px; overflow-x: auto;
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.65; color: var(--ink);
+  }
+  pre .c { color: var(--ink-3); }
+  pre .k { color: var(--sign); }
+
+  .steps { list-style: none; padding: 0; margin: 0; counter-reset: s;
+    display: flex; flex-direction: column; gap: 1px; background: var(--rule);
+    border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+  .steps li { background: var(--surface); padding: 16px 20px; display: grid;
+    grid-template-columns: 32px 1fr; gap: 4px 18px; align-items: baseline; }
+  .steps li::before {
+    counter-increment: s; content: counter(s);
+    font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--sign);
+  }
+  .steps b { font-weight: 600; }
+  .steps .sub { grid-column: 2; font-size: 13.5px; color: var(--ink-2); }
+
+  .callout {
+    border: 1px solid var(--bad); border-left-width: 3px; background: var(--bad-soft);
+    border-radius: 4px; padding: 18px 20px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .callout h3 { color: var(--bad); }
+  .callout p { font-size: 14.5px; max-width: 70ch; }
+
+  .colophon {
+    margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--rule);
+    font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--ink-3);
+  }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">OpenPLC · STM32H743 · design proposal, not built</p>
+  <h1>The Delegation Chain</h1>
+  <p class="standfirst">
+    Today the board holds the signing key's public half, so rotating that key means physically
+    re-flashing every board. Insert <strong>one verification step</strong> and the board holds a
+    root instead — a root that never has to change. Fixed-length structures only:
+    <strong>no X.509, no ASN.1 parser</strong>.
+  </p>
+</header>
+
+<section>
+  <h2>One root, two jobs</h2>
+  <p class="lede">
+    The same root that decides which firmware may run can also decide who may open an update
+    session. A capability field in each leaf keeps the two authorities separate, so an operator
+    credential can never sign firmware.
+  </p>
+
+  <figure>
+    <div class="scroller">
+      <svg viewBox="0 0 940 340" role="img" aria-label="Key hierarchy: one offline root signs two leaf certificates, a firmware leaf that signs images and an operator leaf that signs session challenges.">
+        <defs>
+          <marker id="d-sign" class="m-sign" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+          <marker id="d-auth" class="m-auth" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+        </defs>
+
+        <rect class="bx" x="24" y="130" width="186" height="80" rx="3"/>
+        <text class="t-lg ink" x="117" y="160" text-anchor="middle">ROOT keypair</text>
+        <text class="t-sm dim2" x="117" y="178" text-anchor="middle">P-256, offline</text>
+        <text class="t-sm dim2" x="117" y="194" text-anchor="middle">never rotates</text>
+
+        <g class="chain-sign">
+          <path class="flow" d="M 210 158 H 248 V 82 H 284" marker-end="url(#d-sign)"/>
+          <text class="t-sm dim2" x="256" y="74">signs</text>
+          <rect class="bx-sign" x="290" y="42" width="220" height="80" rx="3"/>
+          <text class="t-lg ink" x="400" y="70" text-anchor="middle">firmware leaf</text>
+          <text class="t-sm dim2" x="400" y="88" text-anchor="middle">caps = SIGN_FIRMWARE</text>
+          <text class="t-sm dim2" x="400" y="104" text-anchor="middle">160-byte certificate</text>
+
+          <path class="flow" d="M 510 82 H 584" marker-end="url(#d-sign)"/>
+          <text class="t-sm dim2" x="547" y="74" text-anchor="middle">signs</text>
+          <rect class="bx" x="590" y="42" width="240" height="80" rx="3"/>
+          <text class="t-md ink" x="710" y="70" text-anchor="middle">firmware image</text>
+          <text class="t-sm dim2" x="710" y="88" text-anchor="middle">SHA-256 over the image,</text>
+          <text class="t-sm dim2" x="710" y="104" text-anchor="middle">signed by the leaf</text>
+        </g>
+
+        <g class="chain-auth">
+          <path class="flow" d="M 210 182 H 248 V 258 H 284" marker-end="url(#d-auth)"/>
+          <text class="t-sm dim2" x="256" y="250">signs</text>
+          <rect class="bx-auth" x="290" y="218" width="220" height="80" rx="3"/>
+          <text class="t-lg ink" x="400" y="246" text-anchor="middle">operator leaf</text>
+          <text class="t-sm dim2" x="400" y="264" text-anchor="middle">caps = OPEN_SESSION</text>
+          <text class="t-sm dim2" x="400" y="280" text-anchor="middle">one per person or line</text>
+
+          <path class="flow" d="M 510 258 H 584" marker-end="url(#d-auth)"/>
+          <text class="t-sm dim2" x="547" y="250" text-anchor="middle">signs</text>
+          <rect class="bx" x="590" y="218" width="240" height="80" rx="3"/>
+          <text class="t-md ink" x="710" y="246" text-anchor="middle">session challenge</text>
+          <text class="t-sm dim2" x="710" y="264" text-anchor="middle">nonce || flash command,</text>
+          <text class="t-sm dim2" x="710" y="280" text-anchor="middle">signed by the leaf</text>
+        </g>
+
+        <text class="t-md lbl-sign" x="24" y="326">The board stores only the root's public half — and no secret of any kind.</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>The capability field is what keeps the two apart.</b> A stolen operator credential can
+      open update sessions but cannot produce firmware the board will execute, because the board
+      refuses a leaf whose caps do not carry <code>SIGN_FIRMWARE</code>. That is the same
+      separation the fixed password and the signing key give you today, achieved with one key
+      hierarchy instead of two unrelated schemes.
+    </figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>The certificate is a struct, not a document</h2>
+  <p class="lede">
+    160 bytes at fixed offsets. Every field is read with a load instruction, not a parser. This is
+    the single most important design decision here: attacker-supplied ASN.1 in front of a
+    bootloader with no MMU and no heap protection is exactly the kind of code that produces
+    memory-safety CVEs.
+  </p>
+
+  <figure>
+    <div class="scroller">
+      <svg viewBox="0 0 940 310" role="img" aria-label="Byte layout of the 160-byte leaf certificate: a 32-byte header, a 64-byte leaf public key, and a 64-byte root signature covering the first 96 bytes. The header expands into magic, version, serial, capabilities, a 12-byte device UID and 4 reserved bytes.">
+        <defs>
+          <marker id="d-ink" class="m-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+        </defs>
+
+        <text class="t-xs dim" x="30" y="34" letter-spacing="1.4">LEAF CERTIFICATE — 160 BYTES</text>
+
+        <rect class="bx" x="30" y="52" width="176" height="52" rx="2"/>
+        <text class="t-md ink" x="118" y="76" text-anchor="middle">header</text>
+        <text class="t-sm dim2" x="118" y="92" text-anchor="middle">32 B</text>
+
+        <rect class="bx-sign" x="206" y="52" width="352" height="52" rx="2"/>
+        <text class="t-md ink" x="382" y="76" text-anchor="middle">leaf public key (X||Y)</text>
+        <text class="t-sm dim2" x="382" y="92" text-anchor="middle">64 B</text>
+
+        <rect class="bx-auth" x="558" y="52" width="352" height="52" rx="2"/>
+        <text class="t-md ink" x="734" y="76" text-anchor="middle">root signature</text>
+        <text class="t-sm dim2" x="734" y="92" text-anchor="middle">64 B</text>
+
+        <text class="t-sm dim" x="30" y="120">0</text>
+        <text class="t-sm dim" x="206" y="120" text-anchor="middle">32</text>
+        <text class="t-sm dim" x="558" y="120" text-anchor="middle">96</text>
+        <text class="t-sm dim" x="910" y="120" text-anchor="end">160</text>
+
+        <g class="chain-auth">
+          <path class="flow" d="M 30 134 V 146 H 558 V 134"/>
+          <text class="t-md lbl-auth" x="294" y="164" text-anchor="middle">the root signs everything except its own signature</text>
+          <path class="flow-dash" d="M 734 104 V 176 H 570" marker-end="url(#d-ink)"/>
+        </g>
+
+        <line class="rule-dash" x1="30" y1="196" x2="910" y2="196"/>
+        <text class="t-xs dim" x="30" y="222" letter-spacing="1.4">HEADER, EXPANDED</text>
+
+        <path class="flow-dash chain-ink" d="M 30 104 V 234"/>
+        <path class="flow-dash chain-ink" d="M 206 104 V 178 M 206 210 V 234"/>
+
+        <rect class="bx" x="30" y="234" width="82" height="48" rx="2"/>
+        <text class="t-md ink" x="71" y="254" text-anchor="middle">magic</text>
+        <text class="t-sm dim2" x="71" y="270" text-anchor="middle">'OPLC'</text>
+
+        <rect class="bx" x="112" y="234" width="82" height="48" rx="2"/>
+        <text class="t-md ink" x="153" y="254" text-anchor="middle">version</text>
+        <text class="t-sm dim2" x="153" y="270" text-anchor="middle">= 1</text>
+
+        <rect class="bx" x="194" y="234" width="82" height="48" rx="2"/>
+        <text class="t-md ink" x="235" y="254" text-anchor="middle">serial</text>
+        <text class="t-sm dim2" x="235" y="270" text-anchor="middle">revoke</text>
+
+        <rect class="bx" x="276" y="234" width="82" height="48" rx="2"/>
+        <text class="t-md ink" x="317" y="254" text-anchor="middle">caps</text>
+        <text class="t-sm dim2" x="317" y="270" text-anchor="middle">bitmask</text>
+
+        <rect class="bx-auth" x="358" y="234" width="248" height="48" rx="2"/>
+        <text class="t-md ink" x="482" y="254" text-anchor="middle">device_uid — 12 B</text>
+        <text class="t-sm dim2" x="482" y="270" text-anchor="middle">all zero = valid on any board</text>
+
+        <rect class="bx" x="606" y="234" width="82" height="48" rx="2"/>
+        <text class="t-sm dim2" x="647" y="262" text-anchor="middle">rsvd 4</text>
+
+        <text class="t-sm dim" x="702" y="254">Fixed offsets, little-endian.</text>
+        <text class="t-sm dim" x="702" y="270">No lengths, no tags, no nesting.</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>Everything the board decides on is inside the signed region.</b> That is why
+      <code>device_uid</code> sits in the header rather than in trailing reserved space: a field
+      the root does not sign is a field an attacker can edit, and a forgeable device binding is
+      worse than none. <b>There is also no expiry field, deliberately</b> — the board has no
+      trustworthy clock, so a validity period would be a field nobody could check. The monotonic
+      serial does the revocation job instead.
+    </figcaption>
+  </figure>
+
+  <pre><span class="c">/* fw_cert.h -- fixed offsets, no parser */</span>
+<span class="k">#define</span> CERT_SIZE         160U
+<span class="k">#define</span> CERT_MAGIC        0x434C504FU   <span class="c">/* 'OPLC' */</span>
+<span class="k">#define</span> CERT_SIGNED_LEN    96U          <span class="c">/* everything but the signature */</span>
+<span class="k">#define</span> CAP_SIGN_FIRMWARE 0x00000001U
+<span class="k">#define</span> CAP_OPEN_SESSION  0x00000002U
+<span class="k">#define</span> CAP_REVOKE        0x00000004U
+
+<span class="c">/* Returns the root index that vouched for this leaf, or -1. The caller needs
+ * the index so a revoke command can be refused when it targets its own root. */</span>
+<span class="k">static int</span> cert_verify(<span class="k">const uint8_t</span> c[CERT_SIZE], <span class="k">uint32_t</span> need_caps)
+{
+    <span class="k">uint8_t</span> h[32], uid[12];
+    <span class="k">int</span> i;
+
+    <span class="k">if</span> (rd32(c + 0) != CERT_MAGIC)                     <span class="k">return</span> -1;
+    <span class="k">if</span> (rd32(c + 4) != 1U)                             <span class="k">return</span> -1;
+    <span class="k">if</span> (rd32(c + 8) &lt; bootloader_state_min_serial())   <span class="k">return</span> -1;
+    <span class="k">if</span> ((rd32(c + 12) &amp; need_caps) != need_caps)       <span class="k">return</span> -1;
+
+    <span class="c">/* All-zero device_uid means "any board". */</span>
+    iap_keyderive_get_machine_id(uid);
+    <span class="k">if</span> (!is_zero(c + 16, 12U) &amp;&amp; memcmp(c + 16, uid, 12U) != 0) <span class="k">return</span> -1;
+
+    sha256(c, CERT_SIGNED_LEN, h);
+    <span class="k">for</span> (i = 0; i &lt; ROOT_COUNT; i++) {
+        <span class="k">if</span> (bootloader_state_root_disabled(i)) <span class="k">continue</span>;
+        <span class="k">if</span> (uECC_verify(root_public_keys[i], h, 32U, c + 96, uECC_secp256r1()))
+            <span class="k">return</span> i;
+    }
+    <span class="k">return</span> -1;
+}</pre>
+  <p>
+    <b>Two roots, and either can disable the other.</b> A single root is a single point of total
+    product-line failure. The spare costs 64 bytes of flash, and the <code>root_disabled</code>
+    bitmask — one journal record, raised only by a <code>CAP_REVOKE</code> leaf that chains to a
+    <em>different</em> root — turns a leaked root from "re-flash every board" into a command you
+    can push over the network. Without that rule a stolen root could disable the honest one and
+    lock you out, so the check is not optional.
+  </p>
+</section>
+
+<section>
+  <h2>What a boot actually does</h2>
+
+  <figure>
+    <div class="scroller">
+      <svg viewBox="0 0 940 300" role="img" aria-label="Boot verification with the delegation chain: the board's root key verifies the leaf certificate stored in the metadata record, which yields the leaf public key, which then verifies the signature over the application region.">
+        <defs>
+          <marker id="d-sign2" class="m-sign" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+          <marker id="d-ink2" class="m-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+        </defs>
+
+        <g class="chain-sign">
+          <rect class="bx" x="20" y="60" width="170" height="72" rx="3"/>
+          <text class="t-md ink" x="105" y="88" text-anchor="middle">board flash</text>
+          <text class="t-sm dim2" x="105" y="106" text-anchor="middle">root_public_key</text>
+          <text class="t-sm dim2" x="105" y="121" text-anchor="middle">a and b</text>
+
+          <line class="flow" x1="190" y1="96" x2="224" y2="96" marker-end="url(#d-sign2)"/>
+
+          <rect class="bx-sign" x="230" y="56" width="220" height="80" rx="3"/>
+          <text class="t-md ink" x="340" y="80" text-anchor="middle">1 · cert_verify()</text>
+          <text class="t-sm dim2" x="340" y="99" text-anchor="middle">magic · version · serial</text>
+          <text class="t-sm dim2" x="340" y="115" text-anchor="middle">caps · root sig over 80 B</text>
+
+          <line class="flow" x1="450" y1="96" x2="484" y2="96" marker-end="url(#d-sign2)"/>
+
+          <rect class="bx" x="490" y="60" width="170" height="72" rx="3"/>
+          <text class="t-md ink" x="575" y="88" text-anchor="middle">leaf public key</text>
+          <text class="t-sm dim2" x="575" y="106" text-anchor="middle">trusted from here</text>
+          <text class="t-sm dim2" x="575" y="121" text-anchor="middle">on, this boot only</text>
+
+          <line class="flow" x1="660" y1="96" x2="694" y2="96" marker-end="url(#d-sign2)"/>
+
+          <rect class="bx-sign" x="700" y="56" width="220" height="80" rx="3"/>
+          <text class="t-md ink" x="810" y="80" text-anchor="middle">2 · uECC_verify()</text>
+          <text class="t-sm dim2" x="810" y="99" text-anchor="middle">leaf key over</text>
+          <text class="t-sm dim2" x="810" y="115" text-anchor="middle">SHA-256(app region)</text>
+        </g>
+
+        <g class="chain-ink">
+          <line class="flow" x1="340" y1="212" x2="340" y2="142" marker-end="url(#d-ink2)"/>
+          <line class="flow" x1="700" y1="212" x2="810" y2="212" />
+          <line class="flow" x1="810" y1="212" x2="810" y2="142" marker-end="url(#d-ink2)"/>
+        </g>
+
+        <rect class="bx" x="230" y="218" width="470" height="58" rx="3"/>
+        <text class="t-md ink" x="248" y="242">METADATA record in the journal</text>
+        <text class="t-sm dim2" x="248" y="262">app_size · fw_version · sha256[32] · signature[64] · cert[160]</text>
+
+        <text class="t-sm warn" x="20" y="242">either step</text>
+        <text class="t-sm warn" x="20" y="258">fails → stay in</text>
+        <text class="t-sm warn" x="20" y="274">the bootloader</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>The leaf is trusted for exactly one boot.</b> Nothing about the leaf is persisted as
+      trusted state — it is re-derived from the root on every reset, so revoking a leaf takes
+      effect the next time the board powers up rather than needing any cached-trust invalidation.
+    </figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>Who holds what</h2>
+  <p class="lede">
+    Three machines, and only one of them ever sees the root private key. The machine that builds
+    the bootloader does not need it, and neither does the machine that builds sketches — which is
+    what makes a split setup work without couriering secrets around.
+  </p>
+
+  <figure>
+    <div class="scroller">
+      <svg viewBox="0 0 940 410" role="img" aria-label="Three machines and a board. The offline root machine issues a public root key file to the CubeIDE machine and a private leaf key plus certificate to the user machine. The CubeIDE machine flashes the bootloader over ST-Link; the user machine uploads signed sketches over IAP.">
+        <defs>
+          <marker id="d-o1" class="m-sign" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+          <marker id="d-o2" class="m-auth" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+        </defs>
+
+        <rect class="bx-bad" x="20" y="86" width="210" height="190" rx="3"/>
+        <text class="t-lg ink" x="125" y="118" text-anchor="middle">OFFLINE MACHINE</text>
+        <text class="t-sm dim2" x="125" y="140" text-anchor="middle">vendor only, never networked</text>
+        <text class="t-md ink" x="36" y="172">root_key.pem</text>
+        <text class="t-md ink" x="36" y="192">root_key_backup.pem</text>
+        <text class="t-sm warn" x="36" y="220">The only place either</text>
+        <text class="t-sm warn" x="36" y="236">of these ever exists.</text>
+        <text class="t-sm dim2" x="36" y="262">Issues leaves. Nothing else.</text>
+
+        <g class="chain-sign">
+          <line class="flow" x1="230" y1="128" x2="284" y2="128" marker-end="url(#d-o1)"/>
+          <text class="t-sm dim2" x="240" y="106">root_pubkey.inc</text>
+          <text class="t-sm dim2" x="240" y="120">public — ships with source</text>
+        </g>
+        <g class="chain-auth">
+          <line class="flow" x1="230" y1="300" x2="284" y2="300" marker-end="url(#d-o2)"/>
+          <text class="t-sm dim2" x="240" y="326">leaf_key.pem + leaf.cert</text>
+          <text class="t-sm dim2" x="240" y="340">secret — one per customer</text>
+        </g>
+
+        <rect class="bx" x="290" y="60" width="230" height="110" rx="3"/>
+        <text class="t-lg ink" x="405" y="90" text-anchor="middle">CUBEIDE MACHINE</text>
+        <text class="t-sm dim2" x="405" y="112" text-anchor="middle">builds the bootloader</text>
+        <text class="t-md ink" x="405" y="134" text-anchor="middle">root_pubkey.inc</text>
+        <text class="t-sm dim2" x="405" y="154" text-anchor="middle">no private key at all</text>
+
+        <rect class="bx" x="290" y="240" width="230" height="120" rx="3"/>
+        <text class="t-lg ink" x="405" y="270" text-anchor="middle">USER MACHINE</text>
+        <text class="t-sm dim2" x="405" y="292" text-anchor="middle">Arduino IDE + IAPTool</text>
+        <text class="t-md ink" x="405" y="314" text-anchor="middle">keys/leaf_key.pem</text>
+        <text class="t-md ink" x="405" y="334" text-anchor="middle">keys/leaf.cert</text>
+        <text class="t-sm dim2" x="405" y="352" text-anchor="middle">never sees the root</text>
+
+        <g class="chain-sign">
+          <line class="flow" x1="520" y1="115" x2="694" y2="115" marker-end="url(#d-o1)"/>
+          <text class="t-sm dim2" x="607" y="98" text-anchor="middle">bootloader.bin</text>
+          <text class="t-sm dim2" x="607" y="112" text-anchor="middle">ST-Link — once per board</text>
+        </g>
+        <g class="chain-auth">
+          <line class="flow" x1="520" y1="300" x2="694" y2="300" marker-end="url(#d-o2)"/>
+          <text class="t-sm dim2" x="607" y="283" text-anchor="middle">signed sketch + cert</text>
+          <text class="t-sm dim2" x="607" y="297" text-anchor="middle">IAP — as often as you like</text>
+        </g>
+
+        <rect class="bx-sign" x="700" y="86" width="220" height="190" rx="3"/>
+        <text class="t-lg ink" x="810" y="118" text-anchor="middle">BOARD</text>
+        <text class="t-md ink" x="810" y="150" text-anchor="middle">root_public_keys[2]</text>
+        <text class="t-sm dim2" x="810" y="172" text-anchor="middle">64 bytes each, public</text>
+        <text class="t-md lbl-sign" x="810" y="212" text-anchor="middle">no secret of any kind</text>
+        <text class="t-sm dim2" x="810" y="238" text-anchor="middle">Opening the chip yields</text>
+        <text class="t-sm dim2" x="810" y="254" text-anchor="middle">nothing worth stealing.</text>
+
+        <text class="t-md dim" x="20" y="396">Nothing crosses from the offline machine except one public file and one per-customer leaf.</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>A split setup stops being a problem.</b> Today the fixed password has to exist, identically,
+      on the CubeIDE machine, the Arduino machine and inside IAPTool, and every rotation has to
+      reach all three. Under the chain the CubeIDE machine takes one public file once and is done
+      forever; the user machine holds only its own leaf. There is nothing left to keep in sync.
+    </figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>The three commands</h2>
+  <p class="lede">
+    Only the first one needs the offline machine, and it runs once per customer — not per build,
+    not per release.
+  </p>
+
+  <ol class="steps">
+    <li><b>Vendor, once: create the roots</b>
+      <span class="sub"><code>rotate_keys.sh --new-root</code> on the offline machine. Writes
+      <code>root_key.pem</code>, <code>root_key_backup.pem</code> and
+      <code>keys/root_pubkey.inc</code>. Build the bootloader with that <code>.inc</code>, flash
+      boards at manufacturing, then take the two <code>.pem</code> files offline for good.</span></li>
+    <li><b>Vendor, per customer: issue a leaf</b>
+      <span class="sub"><code>IAPTool issue --root=root_key.pem --caps=firmware,session
+      --out=customer_a</code>, optionally <code>--uid=&lt;12-byte hex&gt;</code> to bind it to one
+      board. Produces <code>customer_a.pem</code> and <code>customer_a.cert</code>. Ship both to
+      that customer's <code>&lt;IAPTool&gt;/keys/</code>.</span></li>
+    <li><b>Customer, every day: nothing changes</b>
+      <span class="sub"><code>IAPTool cdc app.bin COM5</code> — exactly the command they run today.
+      The tool finds <code>keys/leaf_key.pem</code> and <code>keys/leaf.cert</code> by the same
+      rules it already uses for the signing key, signs the image and the challenge, and sends the
+      certificate along. No new flags, no new steps.</span></li>
+  </ol>
+</section>
+
+<section>
+  <h2>When a key is lost</h2>
+  <p class="lede">
+    Losing a key and leaking a key need different answers, and the chain is what makes most of
+    these recoverable at all. Today every row below reads "re-flash every board".
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>What happened</th><th>Immediate effect</th><th>Recovery</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>Customer loses their leaf key</b></td>
+          <td>They cannot sign or flash. Boards keep running.</td>
+          <td>Issue a replacement leaf with a higher serial. <b>No board is touched.</b></td>
+        </tr>
+        <tr>
+          <td><b>Customer's leaf key leaks</b></td>
+          <td>Whoever has it can flash boards that accept that leaf.</td>
+          <td>Issue a replacement, push a <code>revoke</code> raising <code>min_serial</code>. Boards that take the update stop accepting the old leaf.</td>
+        </tr>
+        <tr>
+          <td><b>Primary root lost</b></td>
+          <td>None — existing leaves keep working.</td>
+          <td>Issue from the backup root. Every board already trusts both.</td>
+        </tr>
+        <tr>
+          <td><b>Primary root leaked</b></td>
+          <td>The holder can mint leaves for any board.</td>
+          <td>Push <code>revoke_root 0</code> signed by a backup-root leaf. Boards that take it stop trusting the leaked root.</td>
+        </tr>
+        <tr>
+          <td><b>Both roots lost</b></td>
+          <td>None immediately — existing leaves keep working indefinitely.</td>
+          <td>No new leaves can ever be issued. Recovering means re-flashing bootloaders over ST-Link.</td>
+        </tr>
+        <tr>
+          <td><b>Both roots leaked</b></td>
+          <td>Total loss of firmware trust.</td>
+          <td>New roots, new bootloader, ST-Link on every board. This is the disaster the offline rule exists to prevent.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <h3>Revocation only reaches boards that get updated</h3>
+    <p>
+      Every recovery above works by pushing a record to a board. A board that is never connected
+      again keeps trusting whatever it last accepted. That is inherent to offline revocation with
+      no clock and no server, not a gap in this design — but it means "revoked" should be read as
+      "revoked on every board you can still reach".
+    </p>
+  </div>
+</section>
+
+<section>
+  <h2>What it costs</h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Dimension</th><th>Today</th><th>With the chain</th></tr></thead>
+      <tbody>
+        <tr><td>ECDSA verifies per boot</td><td class="mono num">1</td><td class="mono num">2</td></tr>
+        <tr><td>Bytes carried with an image</td><td class="mono num">64</td><td class="mono num">224</td></tr>
+        <tr><td><code>flash</code> command length</td><td class="mono num">~214 B</td><td class="mono num">~660 B</td></tr>
+        <tr><td>Bootloader code added</td><td class="mono">—</td><td>~40 lines, no parser</td></tr>
+        <tr><td>Journal slot size</td><td class="mono num">128 B</td><td class="mono num">512 B</td></tr>
+        <tr><td>Journal capacity</td><td class="mono num">1024 records</td><td class="mono num">256 records</td></tr>
+        <tr><td>Secrets stored on the board</td><td>the fixed password</td><td><b>none</b></td></tr>
+        <tr><td>Rotating the signing key</td><td>re-flash every board</td><td>re-issue a leaf</td></tr>
+        <tr><td>Secrets to keep in sync across machines</td><td class="mono num">2</td><td class="mono num">0</td></tr>
+        <tr><td>One customer's key leaks</td><td>every board, forever</td><td>revoke that serial</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    The metadata record is the one structural change with a real cost: it currently occupies
+    exactly one 128-byte slot, and a 160-byte certificate does not fit. Raising the slot to 512
+    bytes keeps the record a single slot and drops journal capacity to 256 entries — still far more
+    than a device will see, and a reclaim already preserves the current metadata.
+  </p>
+  <p>
+    The extra verify is measurable but happens once per boot on a path that already does one. The
+    <code>authMsg[220]</code> buffer in <code>IAP_server.c</code> has to grow with the command.
+  </p>
+</section>
+
+<section>
+  <h2>Revocation, without a clock</h2>
+  <p class="lede">
+    Each leaf carries a monotonic serial. The board stores a minimum acceptable serial and refuses
+    anything below it. That is the whole mechanism.
+  </p>
+  <ol class="steps">
+    <li><b>Default is zero</b><span class="sub">Nothing is revoked on a fresh board, so provisioning needs no extra step.</span></li>
+    <li><b>Raised by an explicit authenticated command</b><span class="sub">A new journal record type holds the minimum; a <code>revoke &lt;serial&gt;</code> command signed by a leaf carrying <code>CAP_REVOKE</code> appends it. Never raised as a side effect of an ordinary update, or a rollback would silently revoke itself.</span></li>
+    <li><b>Checked before the signature</b><span class="sub">Serial rejection short-circuits <code>cert_verify</code>, so a revoked leaf costs no ECDSA work.</span></li>
+    <li><b>Compromised leaf, bounded blast radius</b><span class="sub">Issue a replacement with a higher serial, push it once, and every board that takes the update stops accepting the old one. Boards never updated stay exposed — an inherent limit of offline revocation, worth stating plainly rather than papering over.</span></li>
+  </ol>
+</section>
+
+<section>
+  <h2>Migration</h2>
+  <p class="lede">
+    A hard cutover, not a compatibility period. Supporting both formats would mean two trust paths
+    live in the bootloader at once, and the weaker one sets the security level.
+  </p>
+  <ol class="steps">
+    <li><b>Generate the root pair (and the spare)</b><span class="sub">Extend <code>rotate_keys.sh</code>: it already generates keys, distributes copies, backs up and rolls back. It gains a root mode and a leaf-issuing mode.</span></li>
+    <li><b>Build the new bootloader</b><span class="sub"><code>keys/root_pubkey.inc</code> replaces <code>fw_pubkey.inc</code> and is <code>#include</code>d the same way, so the file plumbing built in this round carries over untouched.</span></li>
+    <li><b>Flash it over ST-Link</b><span class="sub">Unavoidable and one-time. This is the last rotation that ever needs it — which is the entire point.</span></li>
+    <li><b>Ship IAPTool and the leaf together</b><span class="sub">The tool sends the certificate with every command. Old tool against new board fails cleanly at the first <code>flash</code>; they are released as a pair.</span></li>
+  </ol>
+
+  <div class="callout">
+    <h3>Decide this before writing any code</h3>
+    <p>
+      The root private key must survive the product, and it must not ship in the Arduino package —
+      otherwise the chain buys revocation and easy rotation but not trust, because anyone with the
+      package could issue their own leaf. <b>The leaf is what ships; the root stays offline.</b>
+      That one rule is what every recovery path in this document depends on.
+    </p>
+    <p>
+      It also decides how much the chain actually buys you. Ship <em>one</em> leaf with the public
+      package and you are close to where you are today — better rotation, but a credential everyone
+      shares. Issue <em>per-customer</em> leaves and a leak becomes one revocation instead of a
+      product-wide event. The mechanism supports both; the operational choice is yours and it is
+      the one that sets the security level.
+    </p>
+  </div>
+</section>
+
+<p class="colophon">Design proposal · not implemented · companion to the current-design notes</p>
+
+</div>

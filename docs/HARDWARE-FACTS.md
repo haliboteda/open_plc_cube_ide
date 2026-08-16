@@ -33,7 +33,9 @@ MAX3221EIPWR（U5），网名 `TXD_RS232_PC10`、`RXD_RS232_PC11`、`ENABLE_RS23
 
 Arduino core 的 `cores/arduino/main.cpp` 只做了 `pinMode(PB_10, OUTPUT)`，从不写电平，所以引脚停在低位、收发器**默认关闭**。sketch 必须自己 `digitalWrite(RS232_EN_Pin, HIGH)`。
 
-bootloader 侧在 `Core/Src/main.c` 里显式调 `Enable_RX_RS232()`，所以 bootloader 的 printf 是通的。
+bootloader 侧在 `Core/Src/main.c:174` 显式调 `Enable_RX_RS232()`，**在 `MX_UART4_Init()` 和所有 printf 之前**，所以 bootloader 的日志（含 `bootloader_state_init()` 在 `server_decide()` 里打的那些）是通的。
+
+⚠️ **推论：core 在 `main.cpp:168` 打的 `[BOOT] millis=` 到不了端子。** 那行在 171 行的 `pinMode` 之前，更在 sketch 拉高之前 —— 收发器还关着。**在 core 里加"启动时打印"之前先想清楚这一条**，否则加了也看不见。详见 [IAP-STATUS.md](IAP-STATUS.md)。
 
 ## UART4 被重复占用（潜在 bug，未修）
 

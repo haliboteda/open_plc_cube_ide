@@ -1,16 +1,17 @@
 # 构建与测试
 
+路径变量（`$IDE`、`$CORE_LIVE`、`$TOOL` 等）的定义见 [ARCHITECTURE.md](ARCHITECTURE.md#路径变量)。
+
 ## 命令行重编 app（不用开 Arduino IDE）
 
-IDE 装在 `D:\Soft\arduino-2`，自带的 CLI 在
-`D:\Soft\arduino-2\resources\app\lib\backend\resources\arduino-cli.exe`（**不在 PATH 上**）。
+IDE 自带的 CLI 在 `$IDE\resources\app\lib\backend\resources\arduino-cli.exe`（**不在 PATH 上**）。
 
 ```powershell
 arduino-cli.exe compile --warnings all `
-  --config-file "C:\Users\<用户>\.arduinoIDE\arduino-cli.yaml" `
+  --config-file "$HOME\.arduinoIDE\arduino-cli.yaml" `
   --fqbn "OpenPLC_Alpha:stm32:OPEN-PLC:pnum=PLC_H743,usb=CDCgen,xusb=FS,upload_method=cdcMethod,knxrole=dual_device,downgrade=refuse" `
-  --build-path "C:\Users\<用户>\AppData\Local\arduino\sketches\<hash>" `
-  "E:\WorkSpace\Schaeffer-AG\Hardware\TestCase\SerialPort"
+  --build-path "$HOME\AppData\Local\arduino\sketches\<hash>" `
+  "<$TOOL>\TestTool\onboard\rs232\SerialPort"
 ```
 
 - **`--config-file` 必须带**，否则找不到 Arduino15 packages 和用户库目录
@@ -29,13 +30,13 @@ arduino-cli.exe compile --warnings all `
 
 | 目标 | 命令 |
 |---|---|
-| IAPTool（三平台） | `IAPTranfer_Tool/compile_tool.sh` —— 别手搓 `go build`，输出布局是约定好的 |
-| TestTool | `cd IAPTranfer_Tool && go build -o Output/windows/TestTool.exe ./TestTool` |
-| network_discovery（四平台） | `<core包>/tools/discovery/build.sh`（或 `build.ps1`）—— **Arduino IDE 开着会因文件占用失败** |
+| IAPTool（三平台） | `$TOOL/compile_tool.sh` —— 别手搓 `go build`，输出布局是约定好的 |
+| TestTool | `cd $TOOL && go build -o Output/windows/TestTool.exe ./TestTool` |
+| network_discovery（四平台） | `$CORE_LIVE/tools/discovery/build.sh`（或 `build.ps1`）—— **Arduino IDE 开着会因文件占用失败** |
 | bootloader | STM32CubeIDE。（cmake 路径存在，但 cmake/ninja 通常不在 PATH 上） |
 
 单文件语法检查 bootloader 的改动，不必开 CubeIDE：用 core 包里的
-`tools/xpack-arm-none-eabi-gcc/*/bin/arm-none-eabi-gcc.exe`，加上 `-fsyntax-only`、
+`$A15/packages/OpenPLC_Alpha/tools/xpack-arm-none-eabi-gcc/*/bin/arm-none-eabi-gcc.exe`，加上 `-fsyntax-only`、
 `-mcpu=cortex-m7 -mthumb -DSTM32H743xx -DUSE_HAL_DRIVER` 和工程的 `-I` 路径。
 能在烧板之前挡住低级错误。
 
@@ -43,7 +44,7 @@ arduino-cli.exe compile --warnings all `
 
 **`IAPTool` 只管上传烧写，不加任何测试专用功能。**
 
-所有为验证设备行为而存在的东西放 `IAPTranfer_Tool/TestTool/`（同一个 Go module 的子目录），按用例编号分文件，`README.md` 维护用例表 / 前置条件 / 判据 / 未覆盖清单。
+所有为验证设备行为而存在的东西放 `$TOOL/TestTool/`（同一个 Go module 的子目录），按用例编号分文件，`README.md` 维护用例表 / 前置条件 / 判据 / 未覆盖清单。
 
 三条原则：
 

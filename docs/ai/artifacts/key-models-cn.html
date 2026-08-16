@@ -1,0 +1,782 @@
+<title>一层还是两层</title>
+
+<style>
+  :root {
+    --bg:#EDEFF2; --surface:#FFFFFF; --surface-2:#E2E6EB; --surface-3:#D7DCE3;
+    --ink:#14171C; --ink-2:#49515F; --ink-3:#717A8A;
+    --rule:#C6CDD6;
+    --sign:#9E5410; --sign-soft:#F2E5D6; --sign-line:#C4762A;
+    --auth:#0A6873; --auth-soft:#D5E8EB; --auth-line:#0F818E;
+    --bad:#9E2018; --bad-soft:#F4DEDC;
+
+    --serif: ui-serif, "Songti SC", "SimSun", Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC",
+            "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", SFMono-Regular, Consolas, "Microsoft YaHei",
+            "PingFang SC", monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#0F1216; --surface:#171B21; --surface-2:#1D232B; --surface-3:#262D37;
+      --ink:#E2E6EC; --ink-2:#A2AAB7; --ink-3:#79828F;
+      --rule:#2B323B;
+      --sign:#E0994E; --sign-soft:#33240F; --sign-line:#C4762A;
+      --auth:#4FC0CC; --auth-soft:#0F3037; --auth-line:#2A9AA8;
+      --bad:#EE7466; --bad-soft:#3A1815;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#0F1216; --surface:#171B21; --surface-2:#1D232B; --surface-3:#262D37;
+    --ink:#E2E6EC; --ink-2:#A2AAB7; --ink-3:#79828F;
+    --rule:#2B323B;
+    --sign:#E0994E; --sign-soft:#33240F; --sign-line:#C4762A;
+    --auth:#4FC0CC; --auth-soft:#0F3037; --auth-line:#2A9AA8;
+    --bad:#EE7466; --bad-soft:#3A1815;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.75;
+    margin: 0; padding: 0 20px 96px; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+
+  .masthead {
+    padding: 68px 0 36px; border-bottom: 1px solid var(--rule);
+    display: flex; flex-direction: column; gap: 18px;
+  }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--ink-3); margin: 0;
+  }
+  .masthead h1 {
+    font-family: var(--sans); font-weight: 700; font-size: clamp(34px, 6vw, 54px);
+    line-height: 1.15; letter-spacing: .01em; text-wrap: balance; margin: 0;
+  }
+  .standfirst { font-size: 17.5px; line-height: 1.8; color: var(--ink-2); max-width: 40em; margin: 0; }
+  .standfirst strong { color: var(--ink); font-weight: 600; }
+
+  section { padding-top: 54px; display: flex; flex-direction: column; gap: 20px; }
+  h2 {
+    font-family: var(--sans); font-weight: 700; font-size: 27px;
+    line-height: 1.35; margin: 0; text-wrap: balance;
+  }
+  h3 {
+    font-family: var(--sans); font-size: 17px; font-weight: 600;
+    color: var(--ink); margin: 0;
+  }
+  p { margin: 0; max-width: 42em; }
+  .lede { font-size: 16.5px; color: var(--ink-2); max-width: 40em; }
+
+  code {
+    font-family: var(--mono); font-size: .86em; background: var(--surface-2);
+    border-radius: 3px; padding: .14em .36em; word-break: break-word;
+  }
+
+  figure {
+    margin: 6px 0 0; background: var(--surface); border: 1px solid var(--rule);
+    border-radius: 4px; padding: 22px 22px 16px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .scroller { overflow-x: auto; }
+  figure svg { display: block; width: 100%; min-width: 700px; height: auto; }
+  figcaption {
+    font-size: 13.5px; line-height: 1.8; color: var(--ink-2);
+    border-top: 1px solid var(--rule); padding-top: 12px; margin: 0;
+  }
+  figcaption b { color: var(--ink); font-weight: 600; }
+
+  svg text { font-family: var(--sans); fill: currentColor; }
+  svg text.code { font-family: var(--mono); }
+  .t-lg { font-size: 13.5px; font-weight: 600; }
+  .t-md { font-size: 12px; }
+  .t-sm { font-size: 10.5px; }
+  .dim { fill: var(--ink-3); }
+  .dim2 { fill: var(--ink-2); }
+  .warn { fill: var(--bad); }
+  .ink { fill: var(--ink); }
+  .lbl-sign { fill: var(--sign); }
+  .lbl-auth { fill: var(--auth); }
+
+  .m-sign path { fill: var(--sign-line); }
+  .m-auth path { fill: var(--auth-line); }
+  .m-ink path  { fill: var(--ink-2); }
+  .chain-sign { color: var(--sign-line); }
+  .chain-auth { color: var(--auth-line); }
+  .chain-ink  { color: var(--ink-2); }
+
+  .bx { fill: var(--surface-2); stroke: var(--rule); stroke-width: 1; }
+  .bx-sign { fill: var(--sign-soft); stroke: var(--sign-line); stroke-width: 1.4; }
+  .bx-auth { fill: var(--auth-soft); stroke: var(--auth-line); stroke-width: 1.4; }
+  .bx-bad  { fill: var(--bad-soft);  stroke: var(--bad); stroke-width: 1.4; }
+  .rule-dash { stroke: var(--rule); stroke-width: 1; stroke-dasharray: 5 5; }
+  .flow { stroke: currentColor; stroke-width: 1.4; fill: none; }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 680px; font-size: 14px; }
+  th {
+    text-align: left; font-size: 12px; letter-spacing: .04em; color: var(--ink-3);
+    font-weight: 600; padding: 12px 16px; border-bottom: 1px solid var(--rule);
+    background: var(--surface-2); white-space: nowrap;
+  }
+  td { padding: 13px 16px; border-bottom: 1px solid var(--rule); vertical-align: top; line-height: 1.7; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.mono, th.mono { font-family: var(--mono); font-size: 12.5px; }
+  td.nw { white-space: nowrap; }
+  .yes { color: var(--auth); font-weight: 600; }
+  .no  { color: var(--bad); font-weight: 600; }
+
+  .tag {
+    display: inline-block; font-family: var(--mono); font-size: 10px;
+    letter-spacing: .06em; font-weight: 600; padding: 3px 7px;
+    border-radius: 3px; white-space: nowrap;
+  }
+  .tag-pub { background: var(--surface-3); color: var(--ink-2); }
+  .tag-sec { background: var(--bad-soft); color: var(--bad); }
+
+  .callout {
+    border: 1px solid var(--auth); border-left-width: 3px; background: var(--auth-soft);
+    border-radius: 4px; padding: 18px 22px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .callout.warn-box { border-color: var(--bad); background: var(--bad-soft); }
+  .callout h3 { color: var(--auth); font-size: 15px; }
+  .callout.warn-box h3 { color: var(--bad); }
+  .callout p { font-size: 14.5px; max-width: 44em; }
+
+  .colophon {
+    margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--rule);
+    font-family: var(--mono); font-size: 11px; color: var(--ink-3);
+  }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">OpenPLC · STM32H743 · 方案对照</p>
+  <h1>一层还是两层</h1>
+  <p class="standfirst">
+    两个方案的全部差别，就是<strong>板子里存的那把公钥，是"签固件的那把"还是"发钥匙的那把"</strong>。
+    其余所有区别——能不能撤销、换钥匙要不要重烧板子、要管几个文件——都是从这一点推出来的。
+  </p>
+</header>
+
+<section>
+  <h2>核心区别：板子认的是谁</h2>
+
+  <figure>
+    <div class="scroller">
+      <svg viewBox="0 0 940 400" role="img" aria-label="两个方案在板子上的验证流程对比。A+ 方案板子存签固件的公钥，一次验签；授权链方案板子存根公钥，先验证书再验固件签名，两次验签。">
+        <defs>
+          <marker id="k-sign" class="m-sign" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+          <marker id="k-auth" class="m-auth" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+        </defs>
+
+        <text class="t-lg lbl-sign" x="24" y="34">方案 A+ ：板子直接认「签固件的那把钥匙」</text>
+
+        <g class="chain-sign">
+          <rect class="bx" x="24" y="58" width="200" height="66" rx="3"/>
+          <text class="t-md ink" x="124" y="86" text-anchor="middle">板子里烧的公钥</text>
+          <text class="t-sm dim2" x="124" y="107" text-anchor="middle">64 字节</text>
+
+          <line class="flow" x1="224" y1="91" x2="284" y2="91" marker-end="url(#k-sign)"/>
+
+          <rect class="bx-sign" x="290" y="58" width="290" height="66" rx="3"/>
+          <text class="t-md ink" x="435" y="86" text-anchor="middle">验签名</text>
+          <text class="t-sm dim2 code" x="435" y="107" text-anchor="middle">uECC_verify(公钥, 镜像哈希, 签名)</text>
+
+          <line class="flow" x1="580" y1="91" x2="640" y2="91" marker-end="url(#k-sign)"/>
+
+          <rect class="bx" x="646" y="58" width="170" height="66" rx="3"/>
+          <text class="t-md ink" x="731" y="97" text-anchor="middle">允许运行</text>
+        </g>
+
+        <text class="t-md warn" x="24" y="156">验一次。换这把钥匙 = 必须重烧每一块板子。</text>
+
+        <line class="rule-dash" x1="24" y1="188" x2="916" y2="188"/>
+
+        <text class="t-lg lbl-auth" x="24" y="226">方案 B ：板子认的是「谁有资格发钥匙」</text>
+
+        <g class="chain-auth">
+          <rect class="bx" x="24" y="250" width="180" height="66" rx="3"/>
+          <text class="t-md ink" x="114" y="278" text-anchor="middle">板子里烧的根公钥</text>
+          <text class="t-sm dim2" x="114" y="299" text-anchor="middle">永不更换</text>
+
+          <line class="flow" x1="204" y1="283" x2="238" y2="283" marker-end="url(#k-auth)"/>
+
+          <rect class="bx-auth" x="244" y="250" width="230" height="66" rx="3"/>
+          <text class="t-md ink" x="359" y="278" text-anchor="middle">① 验证书</text>
+          <text class="t-sm dim2" x="359" y="299" text-anchor="middle">这把叶钥匙是我发的吗</text>
+
+          <line class="flow" x1="474" y1="283" x2="508" y2="283" marker-end="url(#k-auth)"/>
+        </g>
+
+        <g class="chain-sign">
+          <rect class="bx-sign" x="514" y="250" width="230" height="66" rx="3"/>
+          <text class="t-md ink" x="629" y="278" text-anchor="middle">② 验签名</text>
+          <text class="t-sm dim2" x="629" y="299" text-anchor="middle">镜像是这把叶钥匙签的吗</text>
+
+          <line class="flow" x1="744" y1="283" x2="778" y2="283" marker-end="url(#k-sign)"/>
+
+          <rect class="bx" x="784" y="250" width="132" height="66" rx="3"/>
+          <text class="t-md ink" x="850" y="289" text-anchor="middle">允许运行</text>
+        </g>
+
+        <text class="t-md lbl-auth" x="24" y="348">验两次。换叶钥匙 = 重新签发一张，板子一块都不用动。</text>
+        <text class="t-sm dim" x="24" y="376">多出来的就是①这一步。其余全部区别都是它带来的。</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>因为板子是「验证」一把钥匙而不是「持有」它，那把钥匙才能变而板子不用变。</b>
+      这句话是理解两个方案的唯一钥匙。A+ 的公钥必须等于签固件那把，所以换签名钥匙就必须换板子里的公钥；
+      B 的根公钥只用来验证叶钥匙，叶钥匙换了根不用换。
+    </figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>方案 A+ ：从零到能上传</h2>
+  <p class="lede">一把密钥对，两个用途：签固件，也签会话。板子里没有任何秘密。</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>步骤</th><th>在哪台机器</th><th>命令 / 动作</th><th>产出</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="nw"><b>① 生成</b><br><span class="dim">一次</span></td>
+          <td class="nw">任意一台</td>
+          <td class="mono">./rotate_keys.sh</td>
+          <td>
+            <code>fw_signing_key.pem</code> <span class="tag tag-sec">私钥</span><br>
+            <code>fw_pubkey.inc</code> <span class="tag tag-pub">公钥</span>
+          </td>
+        </tr>
+        <tr>
+          <td class="nw"><b>② 分发</b></td>
+          <td class="nw">脚本自动</td>
+          <td>公钥复制两处，私钥复制一处</td>
+          <td>
+            CubeIDE 项目 <code>keys/</code> ← 公钥<br>
+            Arduino core <code>keys/</code> ← 公钥<br>
+            IAPTool <code>keys/</code> ← 私钥
+          </td>
+        </tr>
+        <tr>
+          <td class="nw"><b>③ 编译烧录</b><br><span class="dim">一次</span></td>
+          <td class="nw">CubeIDE 那台</td>
+          <td>编译 bootloader，ST-Link 烧录</td>
+          <td>板子里有了公钥</td>
+        </tr>
+        <tr>
+          <td class="nw"><b>④ 日常</b><br><span class="dim">每次上传</span></td>
+          <td class="nw">Arduino 那台</td>
+          <td class="mono">IAPTool cdc app.bin COM5</td>
+          <td>用私钥签镜像 + 签会话，板子用公钥验两者</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <figure>
+    <div class="scroller">
+      <svg viewBox="0 0 940 300" role="img" aria-label="A+ 方案的文件流向：一条命令产出私钥和公钥，公钥去两个编译位置，私钥去一个签名位置。">
+        <defs>
+          <marker id="f-ink" class="m-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+        </defs>
+
+        <g class="chain-ink">
+          <rect class="bx" x="24" y="118" width="186" height="64" rx="3"/>
+          <text class="t-md ink code" x="117" y="146" text-anchor="middle">rotate_keys.sh</text>
+          <text class="t-sm dim2" x="117" y="167" text-anchor="middle">跑一次</text>
+
+          <path class="flow" d="M 210 140 H 234 V 74 H 258" marker-end="url(#f-ink)"/>
+          <path class="flow" d="M 210 160 H 234 V 226 H 258" marker-end="url(#f-ink)"/>
+        </g>
+
+        <rect class="bx" x="264" y="44" width="212" height="60" rx="3"/>
+        <text class="t-md ink code" x="370" y="70" text-anchor="middle">fw_pubkey.inc</text>
+        <text class="t-sm dim2" x="370" y="90" text-anchor="middle">公钥 · 可公开 · 可进 git</text>
+
+        <rect class="bx-bad" x="264" y="196" width="212" height="60" rx="3"/>
+        <text class="t-md ink code" x="370" y="222" text-anchor="middle">fw_signing_key.pem</text>
+        <text class="t-sm warn" x="370" y="242" text-anchor="middle">私钥 · 唯一要备份的东西</text>
+
+        <g class="chain-ink">
+          <path class="flow" d="M 476 60 H 500 V 40 H 524" marker-end="url(#f-ink)"/>
+          <path class="flow" d="M 476 88 H 500 V 112 H 524" marker-end="url(#f-ink)"/>
+          <line class="flow" x1="476" y1="226" x2="524" y2="226" marker-end="url(#f-ink)"/>
+        </g>
+
+        <rect class="bx-sign" x="530" y="16" width="250" height="48" rx="3"/>
+        <text class="t-md ink" x="655" y="46" text-anchor="middle">CubeIDE 项目 → bootloader</text>
+
+        <rect class="bx-sign" x="530" y="88" width="250" height="48" rx="3"/>
+        <text class="t-md ink" x="655" y="118" text-anchor="middle">Arduino core → sketch</text>
+
+        <rect class="bx-auth" x="530" y="196" width="250" height="60" rx="3"/>
+        <text class="t-md ink" x="655" y="222" text-anchor="middle">IAPTool 旁边</text>
+        <text class="t-sm dim2" x="655" y="242" text-anchor="middle">签固件 + 签会话</text>
+
+        <text class="t-md dim" x="24" y="288">板子里最终只有公钥。私钥只存在于一台机器上，且只有一份。</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>要管的秘密只有一个文件。</b>两个公钥副本不是秘密——可以提交进 git、可以随便复制、丢了从私钥重新算一遍就有。
+      备份策略因此只剩一句话：把那个 <code>.pem</code> 存好。
+    </figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>先说清楚：一张证书到底是什么</h2>
+  <p class="lede">
+    证书不是什么神秘东西，它就是<b>一张写着「这把公钥可信」的纸，纸上盖了一个章</b>。
+    盖章用的是私钥，核对这个章用的是对应的公钥。
+  </p>
+
+  <div class="callout">
+    <h3>三个词的对应关系</h3>
+    <p>
+      <b>私钥</b> = 你的签字笔，只有你有，别人配不出来。<br>
+      <b>公钥</b> = 你的笔迹样本，谁都能拿到，只能用来核对签字，不能用来伪造签字。<br>
+      <b>证书</b> = 一张纸，上面写着某把公钥，并由另一把私钥在下面签了字。
+    </p>
+  </div>
+
+  <figure>
+    <div class="scroller">
+      <svg viewBox="0 0 940 380" role="img" aria-label="两种证书的内容对比。简单模式的自签证书里写的公钥就是签名人 K 自己的公钥；授权链的叶证书里写的是 L 的公钥，签名人仍是 K。板子的检查方式两者完全相同。">
+        <text class="t-lg lbl-sign" x="40" y="34">简单模式：K 给自己作证</text>
+        <text class="t-lg lbl-auth" x="510" y="34">授权链：K 给 L 作证</text>
+
+        <rect class="bx-sign" x="40" y="52" width="390" height="40" rx="3"/>
+        <text class="t-md ink" x="235" y="78" text-anchor="middle">自签证书 · 160 字节</text>
+        <rect class="bx" x="40" y="92" width="390" height="196" rx="3"/>
+
+        <text class="t-md dim2" x="58" y="126">这把公钥可信 →</text>
+        <text class="t-md lbl-sign" x="250" y="126">K 的公钥</text>
+        <text class="t-md dim2" x="58" y="156">能干什么 →</text>
+        <text class="t-md ink" x="250" y="156">签固件 · 开会话</text>
+        <text class="t-md dim2" x="58" y="186">编号 →</text>
+        <text class="t-md ink" x="250" y="186">1</text>
+        <text class="t-md dim2" x="58" y="216">限哪块板 →</text>
+        <text class="t-md ink" x="250" y="216">不限</text>
+
+        <line class="rule-dash" x1="58" y1="236" x2="412" y2="236"/>
+        <text class="t-md dim2" x="58" y="266">下面盖章的是 →</text>
+        <text class="t-md lbl-sign" x="250" y="266">K</text>
+
+        <text class="t-md dim" x="235" y="318" text-anchor="middle">纸上写的公钥 = 盖章的人自己</text>
+
+        <rect class="bx-auth" x="510" y="52" width="390" height="40" rx="3"/>
+        <text class="t-md ink" x="705" y="78" text-anchor="middle">叶证书 · 160 字节</text>
+        <rect class="bx" x="510" y="92" width="390" height="196" rx="3"/>
+
+        <text class="t-md dim2" x="528" y="126">这把公钥可信 →</text>
+        <text class="t-md lbl-auth" x="720" y="126">L 的公钥</text>
+        <text class="t-md dim2" x="528" y="156">能干什么 →</text>
+        <text class="t-md ink" x="720" y="156">签固件 · 开会话</text>
+        <text class="t-md dim2" x="528" y="186">编号 →</text>
+        <text class="t-md ink" x="720" y="186">7</text>
+        <text class="t-md dim2" x="528" y="216">限哪块板 →</text>
+        <text class="t-md ink" x="720" y="216">UID 003100…</text>
+
+        <line class="rule-dash" x1="528" y1="236" x2="882" y2="236"/>
+        <text class="t-md dim2" x="528" y="266">下面盖章的是 →</text>
+        <text class="t-md lbl-sign" x="720" y="266">K</text>
+
+        <text class="t-md dim" x="705" y="318" text-anchor="middle">纸上写的公钥 = 另一个人 L</text>
+
+        <text class="t-md ink" x="40" y="356">板子的检查两边一模一样：这张纸下面的章，是 K 盖的吗？</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>板子的代码在两种模式下完全相同</b>，它只问一句「这张纸是 K 盖的章吗」。
+      唯一的区别是纸上写的那把公钥，到底是不是盖章人自己的。
+      简单模式是自己给自己作证，授权链是 K 给 L 作证——对板子来说没有分别。
+    </figcaption>
+  </figure>
+
+  <figure>
+    <div class="scroller">
+      <svg viewBox="0 0 940 320" role="img" aria-label="信任传递链：板子出厂时烧进 K 的公钥所以信任 K；证书上盖的是 K 的章所以信任 L 的公钥；固件是 L 签的所以信任这份固件。">
+        <defs>
+          <marker id="t-sign" class="m-sign" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+        </defs>
+
+        <text class="t-lg dim" x="20" y="34">信任是怎么一环一环传下来的</text>
+
+        <g class="chain-sign">
+          <rect class="bx-sign" x="20" y="70" width="140" height="80" rx="3"/>
+          <text class="t-md ink" x="90" y="102" text-anchor="middle">板子</text>
+          <text class="t-sm dim2" x="90" y="126" text-anchor="middle">唯一的起点</text>
+
+          <line class="flow" x1="160" y1="110" x2="264" y2="110" marker-end="url(#t-sign)"/>
+          <text class="t-sm dim2" x="176" y="140">出厂烧 boot 时</text>
+          <text class="t-sm dim2" x="176" y="158">把它烧进去了</text>
+
+          <rect class="bx" x="270" y="70" width="150" height="80" rx="3"/>
+          <text class="t-md ink" x="345" y="102" text-anchor="middle">K 的公钥</text>
+          <text class="t-sm dim2" x="345" y="126" text-anchor="middle">根 · 永不更换</text>
+
+          <line class="flow" x1="420" y1="110" x2="524" y2="110" marker-end="url(#t-sign)"/>
+          <text class="t-sm dim2" x="436" y="140">证书下面的章</text>
+          <text class="t-sm dim2" x="436" y="158">核对下来是 K 的</text>
+
+          <rect class="bx-auth" x="530" y="70" width="150" height="80" rx="3"/>
+          <text class="t-md ink" x="605" y="102" text-anchor="middle">L 的公钥</text>
+          <text class="t-sm dim2" x="605" y="126" text-anchor="middle">叶 · 随时可换</text>
+
+          <line class="flow" x1="680" y1="110" x2="784" y2="110" marker-end="url(#t-sign)"/>
+          <text class="t-sm dim2" x="696" y="140">固件上的签名</text>
+          <text class="t-sm dim2" x="696" y="158">核对下来是 L 的</text>
+
+          <rect class="bx" x="790" y="70" width="130" height="80" rx="3"/>
+          <text class="t-md ink" x="855" y="102" text-anchor="middle">这份固件</text>
+          <text class="t-sm dim2" x="855" y="126" text-anchor="middle">可以执行</text>
+        </g>
+
+        <text class="t-md ink" x="20" y="220">链条上任何一环对不上，固件就不许执行。</text>
+        <text class="t-md lbl-auth" x="20" y="252">中间这一环（L）随时能换掉重发，而左边那一环（K）永远不用动。</text>
+        <text class="t-md dim" x="20" y="282">这就是为什么要多加一层——不是为了更安全，是为了让钥匙能换而板子不用拆。</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>只有第一环是靠物理手段建立的</b>——把 K 的公钥烧进板子。后面每一环都是靠签名推出来的。
+      A+ 相当于把中间那一环去掉，让板子直接信任签固件的那把钥匙，链条短了一节，但也就没有了可以更换的中间环节。
+    </figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>方案 B ：从零到能上传</h2>
+  <p class="lede">
+    多了一个「签发」步骤。根只在签发时用，日常完全用不到，所以它可以一直待在离线的地方。
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>步骤</th><th>在哪台机器</th><th>命令 / 动作</th><th>产出</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="nw"><b>① 生成根</b><br><span class="dim">一辈子一次</span></td>
+          <td class="nw">离线那台</td>
+          <td class="mono">./rotate_keys.sh --new-root</td>
+          <td>
+            <code>root.pem</code> + <code>root_backup.pem</code> <span class="tag tag-sec">私钥</span><br>
+            <code>root_pubkey.inc</code> <span class="tag tag-pub">公钥</span>
+          </td>
+        </tr>
+        <tr>
+          <td class="nw"><b>② 签发叶子</b><br><span class="dim">每台机器一次</span></td>
+          <td class="nw">离线那台</td>
+          <td class="mono">IAPTool issue --root=root.pem<br>&nbsp;&nbsp;--caps=firmware,session --out=laptop</td>
+          <td>
+            <code>laptop.pem</code> <span class="tag tag-sec">私钥</span><br>
+            <code>laptop.cert</code> 160 字节 <span class="tag tag-pub">可公开</span>
+          </td>
+        </tr>
+        <tr>
+          <td class="nw"><b>③ 分发</b></td>
+          <td class="nw">手工 / 脚本</td>
+          <td>公钥两处，叶子给对应机器</td>
+          <td>
+            CubeIDE + Arduino core ← 根公钥<br>
+            那台机器的 IAPTool ← 叶私钥 + 证书<br>
+            <b>根私钥留在离线机器，哪也不去</b>
+          </td>
+        </tr>
+        <tr>
+          <td class="nw"><b>④ 编译烧录</b><br><span class="dim">一次</span></td>
+          <td class="nw">CubeIDE 那台</td>
+          <td>编译 bootloader，ST-Link 烧录</td>
+          <td>板子里有了根公钥</td>
+        </tr>
+        <tr>
+          <td class="nw"><b>⑤ 日常</b><br><span class="dim">每次上传</span></td>
+          <td class="nw">Arduino 那台</td>
+          <td class="mono">IAPTool cdc app.bin COM5</td>
+          <td>用叶私钥签，把证书一起发过去</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <figure>
+    <div class="scroller">
+      <svg viewBox="0 0 940 320" role="img" aria-label="方案 B 的文件流向：生成根产出根公钥和根私钥，根公钥去两个编译位置，根私钥留在离线机器用于签发叶子，叶子发给各台机器。">
+        <defs>
+          <marker id="g-ink" class="m-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+          <marker id="g-auth" class="m-auth" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+        </defs>
+
+        <g class="chain-ink">
+          <rect class="bx" x="24" y="60" width="170" height="64" rx="3"/>
+          <text class="t-md ink" x="109" y="88" text-anchor="middle">① 生成根</text>
+          <text class="t-sm dim2" x="109" y="109" text-anchor="middle">一辈子一次</text>
+
+          <path class="flow" d="M 194 82 H 214 V 48 H 230" marker-end="url(#g-ink)"/>
+          <path class="flow" d="M 194 102 H 214 V 124 H 230" marker-end="url(#g-ink)"/>
+        </g>
+
+        <rect class="bx" x="234" y="20" width="196" height="56" rx="3"/>
+        <text class="t-md ink code" x="332" y="45" text-anchor="middle">root_pubkey.inc</text>
+        <text class="t-sm dim2" x="332" y="64" text-anchor="middle">公钥 · 可公开</text>
+
+        <g class="chain-ink"><line class="flow" x1="430" y1="48" x2="466" y2="48" marker-end="url(#g-ink)"/></g>
+
+        <rect class="bx-sign" x="472" y="20" width="290" height="56" rx="3"/>
+        <text class="t-md ink" x="617" y="45" text-anchor="middle">CubeIDE 项目 keys/</text>
+        <text class="t-md ink" x="617" y="65" text-anchor="middle">Arduino core keys/</text>
+
+        <rect class="bx-bad" x="234" y="96" width="196" height="56" rx="3"/>
+        <text class="t-md ink code" x="332" y="121" text-anchor="middle">root.pem + 备份</text>
+        <text class="t-sm warn" x="332" y="140" text-anchor="middle">离线保管 · 日常不用</text>
+
+        <g class="chain-ink"><line class="flow" x1="332" y1="152" x2="332" y2="200" marker-end="url(#g-ink)"/></g>
+
+        <rect class="bx-auth" x="234" y="206" width="196" height="68" rx="3"/>
+        <text class="t-md ink" x="332" y="234" text-anchor="middle">② 签发叶子</text>
+        <text class="t-sm dim2" x="332" y="255" text-anchor="middle">每台机器一次</text>
+
+        <g class="chain-auth"><line class="flow" x1="430" y1="240" x2="466" y2="240" marker-end="url(#g-auth)"/></g>
+
+        <rect class="bx" x="472" y="206" width="180" height="68" rx="3"/>
+        <text class="t-md ink code" x="562" y="234" text-anchor="middle">laptop.pem</text>
+        <text class="t-md ink code" x="562" y="255" text-anchor="middle">laptop.cert</text>
+
+        <g class="chain-auth"><line class="flow" x1="652" y1="240" x2="688" y2="240" marker-end="url(#g-auth)"/></g>
+
+        <rect class="bx-auth" x="694" y="206" width="222" height="68" rx="3"/>
+        <text class="t-md ink" x="805" y="234" text-anchor="middle">那台机器的</text>
+        <text class="t-md ink code" x="805" y="255" text-anchor="middle">IAPTool keys/</text>
+
+        <text class="t-md dim" x="24" y="306">每多一台机器 / 多一个人，就回到②签发一次。板子和根都不用动。</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>②是 A+ 里不存在的那一步，也是 B 的全部价值来源。</b>
+      正因为多了这一步，一台机器的钥匙泄露时可以只作废那一张叶子，而不用把根换掉、也不用碰任何板子。
+      代价是你要管的钥匙从 1 把变成 1 把根 + N 张叶子。
+    </figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>文件清单对比</h2>
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>位置</th><th>方案 A+</th><th>方案 B</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="nw"><b>离线机器</b></td>
+          <td><span class="dim">不需要</span></td>
+          <td><code>root.pem</code> + 备份 <span class="tag tag-sec">私钥</span></td>
+        </tr>
+        <tr>
+          <td class="nw"><b>CubeIDE 项目</b></td>
+          <td><code>keys/fw_pubkey.inc</code> <span class="tag tag-pub">公开</span></td>
+          <td><code>keys/root_pubkey.inc</code> <span class="tag tag-pub">公开</span></td>
+        </tr>
+        <tr>
+          <td class="nw"><b>Arduino core</b></td>
+          <td><code>keys/fw_pubkey.inc</code> <span class="tag tag-pub">公开</span></td>
+          <td><code>keys/root_pubkey.inc</code> <span class="tag tag-pub">公开</span></td>
+        </tr>
+        <tr>
+          <td class="nw"><b>IAPTool 旁边</b></td>
+          <td><code>keys/fw_signing_key.pem</code> <span class="tag tag-sec">私钥</span></td>
+          <td><code>keys/leaf.pem</code> <span class="tag tag-sec">私钥</span><br><code>keys/leaf.cert</code> <span class="tag tag-pub">公开</span></td>
+        </tr>
+        <tr>
+          <td class="nw"><b>板子里</b></td>
+          <td>公钥 64 字节 · 无秘密</td>
+          <td>根公钥 64 字节 ×2 · 无秘密</td>
+        </tr>
+        <tr>
+          <td class="nw"><b>要备份的</b></td>
+          <td><b>1 个文件</b></td>
+          <td><b>1 个根（+备份根），外加每张叶子</b></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>出事的时候差在哪</h2>
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>情况</th><th>方案 A+</th><th>方案 B</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="nw"><b>私钥 / 叶钥匙丢了</b></td>
+          <td class="no">重新生成 + 重烧每一块板子</td>
+          <td class="yes">重新签发一张，板子不动</td>
+        </tr>
+        <tr>
+          <td class="nw"><b>私钥 / 叶钥匙泄露</b></td>
+          <td class="no">同上，且旧钥匙永远有效</td>
+          <td class="yes">推一条撤销记录，旧叶子作废</td>
+        </tr>
+        <tr>
+          <td class="nw"><b>一名同事离职</b></td>
+          <td class="no">换钥匙 = 重烧全部板子</td>
+          <td class="yes">作废他那张叶子</td>
+        </tr>
+        <tr>
+          <td class="nw"><b>想让某台机器只能刷某块板</b></td>
+          <td class="no">做不到</td>
+          <td class="yes">叶子里绑 <code>device_uid</code></td>
+        </tr>
+        <tr>
+          <td class="nw"><b>根丢了</b></td>
+          <td>—</td>
+          <td class="yes">用备份根签发，板子不动</td>
+        </tr>
+        <tr>
+          <td class="nw"><b>CubeIDE 那台机器坏了</b></td>
+          <td class="yes">不影响，公钥从私钥重算</td>
+          <td class="yes">不影响，同左</td>
+        </tr>
+        <tr>
+          <td class="nw"><b>板子装进柜子拿不到了</b></td>
+          <td class="no">钥匙就永远换不了了</td>
+          <td class="yes">照样能换叶子、能撤销</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    这张表就是 B 的全部卖点。如果你的每一行都答"我随时能 ST-Link"，那 B 对你没有价值；
+    如果有几行让你皱眉，那 B 值这个复杂度。
+  </p>
+</section>
+
+<section>
+  <h2>第三条路：板子支持链，工具默认自签</h2>
+  <p class="lede">
+    A+ 其实是 B 的退化情况——把叶钥匙和根钥匙设成同一把、证书自己签自己，验证代码一行都不用改。
+    这意味着你可以让板子从第一天就懂证书，而把复杂度全部藏在工具里。
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th></th><th>用户跑的命令</th><th>板子里发生的</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="nw"><b>简单模式</b><br><span class="dim">默认</span></td>
+          <td class="mono">./rotate_keys.sh</td>
+          <td>一把钥匙 K，自签证书。体验完全等于 A+</td>
+        </tr>
+        <tr>
+          <td class="nw"><b>升级</b><br><span class="dim">需要时</span></td>
+          <td class="mono">IAPTool issue --root=K.pem --out=laptop</td>
+          <td><b>板子一个字节都不用改</b>。K 升格为根，改用叶子签</td>
+        </tr>
+        <tr>
+          <td class="nw"><b>从零建根</b><br><span class="dim">很少用</span></td>
+          <td class="mono">./rotate_keys.sh --new-root</td>
+          <td>全新的根，这时才需要重烧板子</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <figure>
+    <div class="scroller">
+      <svg viewBox="0 0 940 300" role="img" aria-label="升级路径：简单模式下板子烧的是 K 的公钥，工具发自签证书；升级后板子里的公钥不变，K 升格为根用来签发叶子 L，工具改发由 K 签名的 L 证书。">
+        <defs>
+          <marker id="u-auth" class="m-auth" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker>
+        </defs>
+
+        <text class="t-lg dim" x="24" y="30">升级前 · 简单模式</text>
+        <rect class="bx-sign" x="24" y="46" width="200" height="60" rx="3"/>
+        <text class="t-md ink" x="124" y="72" text-anchor="middle">板子里烧的</text>
+        <text class="t-md ink code" x="124" y="93" text-anchor="middle">K 的公钥</text>
+
+        <rect class="bx" x="270" y="46" width="330" height="60" rx="3"/>
+        <text class="t-sm dim2" x="286" y="70">工具发送：</text>
+        <text class="t-sm ink code" x="286" y="92">自签证书{K的公钥, 由K签} + 镜像签名{由K签}</text>
+
+        <line class="rule-dash" x1="24" y1="140" x2="916" y2="140"/>
+        <g class="chain-auth">
+          <line class="flow" x1="480" y1="112" x2="480" y2="170" marker-end="url(#u-auth)"/>
+        </g>
+        <text class="t-md lbl-auth" x="496" y="136" >IAPTool issue --root=K.pem --out=laptop</text>
+
+        <text class="t-lg dim" x="24" y="204">升级后 · 授权链</text>
+        <rect class="bx-sign" x="24" y="220" width="200" height="60" rx="3"/>
+        <text class="t-md ink" x="124" y="246" text-anchor="middle">板子里烧的</text>
+        <text class="t-md ink code" x="124" y="267" text-anchor="middle">K 的公钥</text>
+
+        <rect class="bx" x="270" y="220" width="330" height="60" rx="3"/>
+        <text class="t-sm dim2" x="286" y="244">工具发送：</text>
+        <text class="t-sm ink code" x="286" y="266">证书{L的公钥, 由K签} + 镜像签名{由L签}</text>
+
+        <rect class="bx-auth" x="640" y="196" width="276" height="108" rx="3"/>
+        <text class="t-md lbl-auth" x="778" y="226" text-anchor="middle">板子完全没变</text>
+        <text class="t-sm dim2" x="656" y="252">根公钥从头到尾就是 K。</text>
+        <text class="t-sm dim2" x="656" y="273">用户只是停止用 K 直接签固件，</text>
+        <text class="t-sm dim2" x="656" y="292">改成用 K 签发叶子。</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>升级不需要新的根，用户手上那把钥匙就是根。</b>
+      这是这条路真正成立的原因——如果升级要换根，板子还是得重烧，那前面的论证就不成立了。
+    </figcaption>
+  </figure>
+
+  <div class="callout">
+    <h3>这条路唯一的、但可能是决定性的好处</h3>
+    <p>
+      用户可以<b>先用简单模式，等真的需要多机器或远程撤销时再切过去，而不用重烧任何板子</b>。
+      如果 bootloader 只懂 A+，将来想升级到授权链，就必须把已经装进柜子的板子全部重烧一遍——
+      而那恰恰是当初选授权链要解决的问题。
+    </p>
+    <p>
+      代价不对称：只做 A+ 而将来需要 B，代价是<b>重烧所有已部署的板子</b>，随部署量增长；
+      做了证书而永远没人用 B，代价是 40 行代码、每条记录 160 字节、每次启动几毫秒——固定且极小。
+    </p>
+    <p>
+      附带一个在嵌入式里很值钱的性质：<b>两种模式走完全相同的代码路径</b>。
+      简单模式不是绕过证书验证，而是验一张自签证书，所以不存在"高级分支没人走、悄悄烂掉"的问题。
+    </p>
+  </div>
+
+  <div class="callout warn-box">
+    <h3>诚实的代价</h3>
+    <p>
+      简单模式下那张自签证书<b>在安全上不增加任何东西</b>——纯粹是 160 字节和一次验签的开销，
+      它唯一的作用是保住升级通道。如果你判断用户永远不会需要多机器和远程撤销，
+      那就做纯 A+，省掉这份开销。这是判断题，不是对错题。
+    </p>
+  </div>
+
+  <div class="callout warn-box">
+    <h3>要提前想清楚的一件事</h3>
+    <p>
+      你说得对——<b>让每个用户当自己的权威完全可行</b>，你只出工具和框架。
+      但这也意味着：<b>没有任何全局的信任根</b>。用户 A 的板子只认用户 A 的根，
+      你没法给任何人签发能通用的东西，也没法帮用户恢复丢失的钥匙。
+    </p>
+    <p>
+      这正是开源项目该有的样子，但要在文档里写死，否则会有人以为"官方"能补救。
+      对应地，工具必须把「备份你的私钥」这件事做得极其显眼——因为除了用户自己，没有人有副本。
+    </p>
+  </div>
+</section>
+
+<p class="colophon">方案对照 · 供决策用 · 均未实现</p>
+
+</div>
