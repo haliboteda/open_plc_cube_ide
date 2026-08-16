@@ -64,7 +64,11 @@ typedef enum {
 	IAP_EVT_AUTH_FAIL          = 4,
 	IAP_EVT_OVERFLOW_ABORT     = 5,
 	IAP_EVT_BOOT_VERIFY_FAIL   = 6,
-	IAP_EVT_JOURNAL_RECLAIMED  = 7
+	IAP_EVT_JOURNAL_RECLAIMED  = 7,
+	/* Image verified, but copying it out of the staging buffer into the app
+	 * region failed. Distinct from SIG_FAIL on purpose: the image was good, the
+	 * flash write was not, and the two need completely different diagnosis. */
+	IAP_EVT_FLASH_WRITE_FAIL   = 8
 } bootloader_event_type_t;
 
 void bootloader_state_init(void);

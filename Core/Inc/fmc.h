@@ -28,7 +28,7 @@
 #include "main.h"
 
 /* USER CODE BEGIN Includes */
-
+#include <stdbool.h>
 /* USER CODE END Includes */
 
 extern SDRAM_HandleTypeDef hsdram1;
@@ -42,7 +42,9 @@ void HAL_SDRAM_MspInit(SDRAM_HandleTypeDef* hsdram);
 void HAL_SDRAM_MspDeInit(SDRAM_HandleTypeDef* hsdram);
 
 /* USER CODE BEGIN Prototypes */
-
+/* False unless the read-back check in MX_FMC_Init() passed. Diagnostic only:
+ * nothing keys off it, a failure changes no behaviour. */
+bool iap_sdram_selftest_passed(void);
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus

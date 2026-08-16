@@ -23,6 +23,13 @@
 
 /* USER CODE BEGIN 0 */
 
+#include "IAP_config.h"
+#include <stdbool.h>
+#include <stdio.h>
+#include <inttypes.h>
+
+static bool s_sdram_ok; /* stays false unless FMC_SDRAM_SelfTest() passes */
+
 /*
  * SDRAM device power-up sequence.
  *
@@ -68,6 +75,66 @@ static void FMC_SDRAM_PowerUpSequence(void)
   /* COUNT = (64 ms self-refresh / 8192 rows) * 100 MHz SDCLK - 20 ~= 762.
      SDCLK is D1HCLK/2, which is what SDClockPeriod = 2 selects above. */
   HAL_SDRAM_ProgramRefreshRate(&hsdram1, 762);
+}
+
+/*
+ * Read-back check over a handful of words spread across the staging area.
+ *
+ * Deliberately not a full scan. What it catches is a controller that was never
+ * configured and a power-up sequence that went missing -- both fail on the very
+ * first access -- plus stuck address lines, which show up as two offsets
+ * aliasing onto one cell. Marginal cells and a wrong refresh rate need a soak
+ * test, not a boot check.
+ *
+ * Every write happens before any read for exactly that aliasing reason: if two
+ * offsets land on the same cell, the second write destroys the first value and
+ * the read-back disagrees.
+ *
+ * Failure changes no behaviour. An image staged in a broken SDRAM fails its
+ * checksum and the application region is never touched, so the board stays safe
+ * either way. What this buys is a boot line naming the cause instead of leaving
+ * "Checksum Failed" unexplained.
+ */
+static void FMC_SDRAM_SelfTest(void)
+{
+  static const uint32_t offsets[] = {
+    0x000000U, 0x000004U, 0x001000U, 0x040000U, 0x100000U, IAP_STAGE_SIZE - 4U
+  };
+  volatile uint32_t *ram = (volatile uint32_t *)IAP_STAGE_BASE;
+  const uint32_t count = (uint32_t)(sizeof(offsets) / sizeof(offsets[0]));
+  uint32_t i;
+
+  for (i = 0U; i < count; i++)
+  {
+    ram[offsets[i] / 4U] = 0xA5A5A5A5U ^ offsets[i];
+  }
+
+  s_sdram_ok = true;
+  for (i = 0U; i < count; i++)
+  {
+    if (ram[offsets[i] / 4U] != (0xA5A5A5A5U ^ offsets[i]))
+    {
+      s_sdram_ok = false;
+      break;
+    }
+  }
+
+  if (s_sdram_ok)
+  {
+    printf("SDRAM staging buffer OK (%" PRIu32 " MiB at %08" PRIX32 ")\r\n",
+           (uint32_t)(IAP_STAGE_SIZE / (1024U * 1024U)), (uint32_t)IAP_STAGE_BASE);
+  }
+  else
+  {
+    printf("** SDRAM SELF-TEST FAILED at offset %08" PRIX32 " **\r\n"
+           "** Staging buffer unusable: uploads will fail at the checksum step. **\r\n",
+           offsets[i]);
+  }
+}
+
+bool iap_sdram_selftest_passed(void)
+{
+  return s_sdram_ok;
 }
 
 /* USER CODE END 0 */
@@ -121,6 +188,10 @@ void MX_FMC_Init(void)
    * 0xC0000000 silently misbehaves. Must stay inside this USER CODE block so
    * regenerating from the .ioc cannot drop it. */
   FMC_SDRAM_PowerUpSequence();
+
+  /* Diagnostic only -- see the function comment. Placed here so it runs after
+   * the chip is actually usable, and inside USER CODE for the same reason. */
+  FMC_SDRAM_SelfTest();
 
   /* USER CODE END FMC_Init 2 */
 }

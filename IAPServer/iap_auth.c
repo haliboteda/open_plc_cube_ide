@@ -30,9 +30,21 @@
 
 /* Second register holds a fixed witness value. It can only read back correctly
  * if the backup domain survived, which is what tells us the VBAT cell is doing
- * its job -- nonce uniqueness across power cycles depends on it. */
+ * its job -- nonce uniqueness across power cycles depends on it.
+ *
+ * DR3, not DR2: the application image uses DR2 for its own nonce counter
+ * (core libraries/OpenPLC_IAP/src/iap_auth.c). "The two never run at the same
+ * time" is not the same as "they cannot collide" -- a backup register exists
+ * precisely to carry state across that handover, so taking turns on one is a
+ * collision. It broke both directions: the application's counter overwrote this
+ * witness, making every boot report the backup domain as lost, and this
+ * witness reset the application's counter to a fixed value, so the application
+ * reissued the same nonce numbers after every visit to the bootloader.
+ *
+ * Backup register allocation is shared state across three repositories with no
+ * shared build -- see the table in docs/ARCHITECTURE.md before claiming one. */
 #ifndef IAP_VBAT_WITNESS_BKP_REG
-#define IAP_VBAT_WITNESS_BKP_REG RTC_BKP_DR2
+#define IAP_VBAT_WITNESS_BKP_REG RTC_BKP_DR3
 #endif
 #define IAP_VBAT_WITNESS_VALUE 0x56424154U /* 'VBAT' */
 

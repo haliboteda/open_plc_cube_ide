@@ -58,6 +58,49 @@ extern uint16_t Flash_If_Write(uint8_t *DataAddress, uint8_t *FlashAddress,
 //
 uint32_t app_base, app_msp, app_reset;
 
+/* The staging buffer has to hold the largest image the app region accepts, plus
+ * the padding that rounds the last flash word up to 32 bytes. */
+_Static_assert(IAP_STAGE_SIZE >= (uint32_t)IAP_APP_MAX_SIZE + 32U,
+		"staging buffer is smaller than the application region it must hold");
+
+/*
+ * Erase the application region and copy the verified image out of SDRAM.
+ *
+ * Only reached once the staged image has passed both CRC and signature, which is
+ * the entire point of staging: this is the first moment the currently-installed
+ * application is at risk, and the exposure lasts the erase plus the write rather
+ * than the whole transfer.
+ *
+ * On failure the app region is left half-written with stale metadata still
+ * describing the old image, so the next boot reports an invalid application and
+ * asks for another upload -- the same recoverable state an interrupted transfer
+ * used to leave behind.
+ */
+static bool stage_commit_to_flash(void) {
+	/* HAL_FLASH_Program always consumes a full 32-byte flash word, so the copy
+	 * length is rounded up. Pad with the erased value so anything reading past
+	 * the image sees erased flash instead of leftover SDRAM contents. */
+	const uint32_t padded = (expected_size + 31U) & ~31U;
+	const uint32_t pad = padded - expected_size;
+
+	if (pad > 0U) {
+		memset((uint8_t *)(IAP_STAGE_BASE + expected_size), 0xFF, pad);
+	}
+
+	printf("Erasing application region (%" PRIu32 " bytes)...\r\n", expected_size);
+	if (Erase_FLASH((uint8_t *)app_base, expected_size) != HAL_OK) {
+		printf("Erase FAILED\r\n");
+		return false;
+	}
+
+	printf("Writing %" PRIu32 " bytes from SDRAM to flash...\r\n", padded);
+	if (Flash_If_Write((uint8_t *)IAP_STAGE_BASE, (uint8_t *)app_base, padded) != HAL_OK) {
+		printf("Flash write FAILED\r\n");
+		return false;
+	}
+	return true;
+}
+
 void reset_buf(void) {
 	data_is_ready = 0;
 	len_in_RX_buffer = 0;
@@ -220,18 +263,15 @@ void process_command() {
 					bootloader_state_note_auth_fail((uint32_t)current_method,
 							tcp_server_get_client_ip(), HAL_GetTick());
 				} else {
-					printf("File size %" PRIu32 ", checksum %" PRIx32 ". Wait for erasing flash! \r\n",
+					/* Nothing is erased here any more: the image goes to SDRAM
+					 * first and the app region is only touched once it has
+					 * passed CRC and signature. So a rejected, corrupt or
+					 * interrupted upload leaves the running app alone. */
+					printf("File size %" PRIu32 ", checksum %" PRIx32 ". Staging in SDRAM.\r\n",
 	                        expected_size, expected_checksum);
-					//
-					HAL_StatusTypeDef status = Erase_FLASH((uint8_t*) app_base, expected_size);
-					if (status != HAL_OK) {
-						printf("Errors when erasing flash. Status:%d\r\n", status);
-						send_response("ERR");
-					} else {
-						printf("Done! Begin to transfer bin file.\r\n");
-						current_status = FLASH_RECEIVE;
-						send_response("OK");
-					}
+					received_bytes = 0;
+					current_status = FLASH_RECEIVE;
+					send_response("OK");
 				}
 			} else {
 				printf("Invalid flash command");
@@ -241,18 +281,23 @@ void process_command() {
 		}
 		len_in_RX_buffer = 0;
 	} else if (current_status == FLASH_RECEIVE) {
-		HAL_StatusTypeDef status = Flash_If_Write(RXBuffer, (uint8_t *)(app_base + received_bytes), len_in_RX_buffer);
-		if (status != HAL_OK) {
-			printf("There is error when writing flash. Addr:%" PRIx32 " Status:%d\r\n", app_base + received_bytes, status);
-			// clean
-			reset_buf();
+		/* A peer that sends more than the size it announced would run off the end
+		 * of the staging buffer, so bound the copy by the buffer rather than by
+		 * the announced size. */
+		if (received_bytes + len_in_RX_buffer > IAP_STAGE_SIZE) {
+			printf("Staging overflow: %" PRIu32 " + %" PRIu32 " exceeds %" PRIu32 " bytes. Aborting.\r\n",
+					received_bytes, len_in_RX_buffer, (uint32_t)IAP_STAGE_SIZE);
+			bootloader_state_log_event(IAP_EVT_OVERFLOW_ABORT, (uint32_t)current_method,
+					tcp_server_get_client_ip(), HAL_GetTick(), iap_auth_get_counter());
+			/* Answer before resetting: reset_buf() clears current_method, and
+			 * send_response() routes on it -- afterwards the reply goes nowhere. */
 			send_response("Failed");
+			reset_buf();
 		} else {
-
-			received_bytes += len_in_RX_buffer;			//LenInFlashBuffer;
-			memset(RXBuffer, 0, len_in_RX_buffer);			//
-			printf("Done. Write Addr:%" PRIx32 " size:%" PRIu32 " (written:%" PRIu32 " of total:%" PRIu32 ") \r\n",
-                    app_base + received_bytes - len_in_RX_buffer,
+			memcpy((uint8_t *)(IAP_STAGE_BASE + received_bytes), RXBuffer, len_in_RX_buffer);
+			received_bytes += len_in_RX_buffer;
+			memset(RXBuffer, 0, len_in_RX_buffer);
+			printf("Staged %" PRIu32 " bytes (%" PRIu32 " of total %" PRIu32 ")\r\n",
                     len_in_RX_buffer, received_bytes, expected_size);
 			len_in_RX_buffer = 0;
 
@@ -261,9 +306,11 @@ void process_command() {
 
 		// 检查是否传输完成
 		if (received_bytes >= expected_size) {
-			printf("Flash complete, verifying checksum...\r\n");
+			printf("Transfer complete, verifying the staged image...\r\n");
 
-			uint32_t caledCRC = HAL_CRC_Calculate(&hcrc, (uint32_t *)app_base, expected_size);
+			/* CRC, hash and signature are all computed over the staging buffer.
+			 * Flash is not touched until every one of them has passed. */
+			uint32_t caledCRC = HAL_CRC_Calculate(&hcrc, (uint32_t *)IAP_STAGE_BASE, expected_size);
 			uint32_t peer_ip = tcp_server_get_client_ip();
 			uint32_t nowTick = HAL_GetTick();
 			uint32_t authCtr = iap_auth_get_counter();
@@ -287,11 +334,19 @@ void process_command() {
 				bootloader_state_log_event(IAP_EVT_SIG_FAIL, (uint32_t)current_method, peer_ip, nowTick, authCtr);
 			} else {
 				uint8_t hash[32];
-				bootloader_state_hash_app(app_base, expected_size, hash);
+				/* Hashes the staging buffer, not the app region -- the app region
+				 * still holds the previous image at this point. */
+				bootloader_state_hash_app(IAP_STAGE_BASE, expected_size, hash);
 				if (!fw_verify_signature(hash, expected_signature)) {
-					printf("Signature verification FAILED - firmware not trusted.\r\n");
+					printf("Signature verification FAILED - firmware not trusted. "
+							"Application region untouched.\r\n");
 					send_response("Signature Failed");
 					bootloader_state_log_event(IAP_EVT_SIG_FAIL, (uint32_t)current_method, peer_ip, nowTick, authCtr);
+				} else if (!stage_commit_to_flash()) {
+					printf("The image was good but the flash write was not - "
+							"retry the upload.\r\n");
+					send_response("Flash Failed");
+					bootloader_state_log_event(IAP_EVT_FLASH_WRITE_FAIL, (uint32_t)current_method, peer_ip, nowTick, authCtr);
 				} else {
 					printf("Checksum and signature OK. Rebooting...\r\n");
 					bootloader_state_save_metadata(expected_size, expected_version, hash, expected_signature);
@@ -477,9 +532,15 @@ void server_jump_to_app(void) {
 	/* UART4 is the only peripheral Phase 1 brought up (for the boot log). Its
 	 * MspDeInit also releases the PC10/PC11 pins; the MAX3221 enable is a plain
 	 * GPIO and has to be handed back separately, so the application starts with
-	 * the transceiver in the same shutdown state a cold board has. */
-	HAL_UART_DeInit(&huart4);
+	 * the transceiver in the same shutdown state a cold board has.
+	 *
+	 * Order matters: shut the transceiver down BEFORE releasing the pins.
+	 * MspDeInit leaves PC10 -- the MAX3221's data input -- floating, and a
+	 * floating input on a still-powered transceiver drives whatever it picks up
+	 * onto the line. Doing it the other way round put a garbage byte in front of
+	 * the application's first log line (docs/TODO.md A2). */
 	Disable_RX_RS232();
+	HAL_UART_DeInit(&huart4);
 
 	__disable_irq();
 
