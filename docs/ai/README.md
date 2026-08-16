@@ -59,6 +59,10 @@ Copy-Item config\machine.example.ps1 config\machine.ps1   # 然后编辑
 | 用例跑出来的结果 | [TEST-PLAN.md](TEST-PLAN.md) 的「最近结果」列，带日期 |
 | 协作方式上的教训 | [../WORKING-AGREEMENTS.md](../WORKING-AGREEMENTS.md) |
 
+⚠️ **还要人工过一遍 [../../RELEASE-NOTES.md](../../RELEASE-NOTES.md) 的 known-issues 和 not-verified 两节**，逐条问"今天这条还成立吗"。
+
+2026-08-17 收尾时四条 known-issue 全部已经不对了 —— 修好的问题没人回来删条目。这份是对外的，**一条过期的 known-issue 会让读的人去查一个不存在的问题，比没有这一条更糟**。`selfcheck` 只能抓版本号那一种形态，其余靠人。
+
 然后**提交并推送三个仓库**。判断标准只有一条：
 
 > 换一台电脑、从零开一个新会话，照着这个目录能不能接着干？不能就是没归纳完。

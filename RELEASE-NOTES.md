@@ -11,6 +11,34 @@ already has firmware on it.
 
 ## Unreleased — 0.1.3
 
+### What changed
+
+- **A rejected upload no longer disturbs the application already on the board.**
+  Images are now staged in external SDRAM and fully verified — CRC, hash and
+  signature — before the application region is erased. Previously the region was
+  erased first, so any image that failed verification left the board reporting
+  `BOOTLD-INVALID` until it was reflashed. Verified on hardware: a deliberately
+  mis-signed image is refused with `Application region untouched.` and the
+  existing application still starts after a reset.
+- **Every board now derives its own MAC address from the chip UID.** The
+  bootloader previously used a compile-time constant, identical on every unit,
+  so two boards on one LAN collided immediately. Devices are still located by
+  UID over discovery, not by address, so an application remains free to set its
+  own MAC.
+- **Discovery rate limiting is device-wide, and the application side has it at
+  all.** It used to be per-source-IP on the bootloader only, which meant the
+  IDE's discovery helper and `IAPTool` on the same machine drew from one quota
+  and knocked each other out roughly once every fifteen requests — reported as
+  an intermittent `No response, exiting`.
+- **Replay protection across a bootloader handover is fixed.** The bootloader's
+  VBAT witness register collided with the application's nonce counter, so every
+  pass through the bootloader reset that counter and the application then
+  reissued the same nonce sequence. The witness has moved to a free register.
+- **The bootloader reports its own version correctly** (`0.1.3`; it said `0.1.2`
+  before) and reports the reset cause as `PIN`, `SOFT` or `POR`.
+- **New journal event** for "image verified but the flash write failed",
+  distinct from a signature failure — the two need different diagnosis.
+
 ### Upgrade rules
 
 > **The bootloader and the application must be upgraded together. This is not a
@@ -45,29 +73,23 @@ Use ST-Link or DFU.
 
 ### Known issues
 
-- **The bootloader reports version `0.1.2`.** `OPENPLC_FW_VERSION` in
-  `Core/Inc/IAP_config.h` was not bumped, so the identity string and the `info`
-  command both understate it. Cosmetic, but it makes tool logs show two
-  different version numbers for one board and will send anyone debugging in the
-  wrong direction.
-- **The application's `[BOOT] millis=` banner never reaches the RS232
-  terminals.** The core prints it before anything drives the transceiver enable
-  high, and the MAX3221's charge pump is stopped until a sketch does that in
-  `setup()` — the line is emitted into a transmitter that physically cannot
-  produce RS-232 levels. Diagnostics only; nothing else depends on it.
-- **A stray byte appears on the serial console around the bootloader-to-
-  application handover.** Three candidate sources, none confirmed on hardware:
-  the transceiver input floating after `HAL_UART_DeInit()` while the chip is
-  still enabled, the charge pump collapsing when the bootloader disables it, and
-  the charge pump ramping when the sketch enables it again. Display only.
+- **The application's `[BOOT] millis=` banner reaches the RS232 terminals only
+  by accident of timing.** The core prints it before anything drives the
+  transceiver enable high, so the MAX3221 is nominally shut down — but its
+  charge pump still holds enough residual voltage to produce valid RS-232 levels
+  for a few milliseconds, and the banner slips out on that. Measured at
+  `millis=12`. **Nothing guarantees that window.** An application that starts
+  more slowly will lose the line entirely, so do not build anything on it and do
+  not add further start-up printing at that point in the core.
+- **A stray byte appears on the serial console immediately before `[BOOT]`.**
+  Cause identified: when the bootloader disables the transceiver on its way out,
+  the charge pump collapses and the line slides from mark toward 0 V, which the
+  receiver reads as a start bit. That is the inherent cost of handing the
+  application a board whose transceiver is in a known-off state, which is
+  deliberate. Display only, with no functional effect.
 - **Discovery rate limiting is a fixed window, not a token bucket.** Nominally
   50 replies/sec; a burst straddling a window boundary has been measured at 60.
   Treat 50 as approximate, not as a guarantee.
-- **`iap_auth_report_backup_domain()` can report a false loss** of the backup
-  domain. The witness register reads back a wrong value; the replay counter
-  itself has been observed surviving a real power cycle. The report was made
-  non-alarming in 2026-08-15; the root cause is still open.
-
 ### Not verified
 
 - **MAC addresses are unique across boards.** Derivation from the chip UID
@@ -75,6 +97,10 @@ Use ST-Link or DFU.
   derive and use its own address consistently in both the bootloader and the
   application. Only one board was available, so uniqueness *between* boards has
   never been observed. Put it on the production checklist.
+- **Behaviour when power is lost mid-upgrade.** Staging changed what the risky
+  window is: losing power during the transfer should now be harmless, and only
+  the few seconds spent erasing and writing can leave the application region
+  half-written. Neither half has been reproduced on hardware.
 - Long-term stability under a real OpenPLC runtime.
 
 ### Before shipping
@@ -90,15 +116,20 @@ image the board accepts. Run `IAPServer/keys/rotate_keys.sh`, then keep
 
 Everything here has burned someone at least once.
 
+The first three are now checked by `TestTool/tools/selfcheck.ps1`, which also
+runs the host-side tests. Run it before working through the rest by hand.
+
 - [ ] `OPENPLC_FW_VERSION` in `Core/Inc/IAP_config.h` matches
       `OPEN-PLC.build.fw_version` in the core package's `boards.txt`. Nothing
       enforces this — the two live in different repositories with no shared
-      build.
+      build. → `tools/check-version-sync.ps1`
 - [ ] Every mirrored file is in sync across the three repositories (see
       `docs/ARCHITECTURE.md`, "跨仓镜像的代码"). A divergence does not fail the
       build; it shows up at runtime as something unrelated.
+      → `tools/check-mirror-sync.ps1`
 - [ ] Everything verified in the live Arduino15 package has been copied back
       into the core package's git repository and committed.
+      → `tools/check-core-sync.ps1`
 - [ ] Secrets rotated, and the private signing key stored off-machine.
 - [ ] Bootloader flashed over ST-Link/DFU and the application uploaded over
       IAP, in that order, on a board that previously ran the older release.
