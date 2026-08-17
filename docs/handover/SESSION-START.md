@@ -1,4 +1,4 @@
-# docs/ai — 换台电脑也能接着干的那一套
+# 开工与收尾 —— 换台电脑也能接着干的那一套
 
 这个目录装的是**框架和上下文**：产品要做到什么（需求）、怎么证明做到了（测试）、还欠什么（Todo）、以及一个新会话/新机器要怎么快速进入状态。
 
@@ -6,18 +6,31 @@
 
 ## 这个目录不重复别处的内容
 
-`docs/` 下已有的 8 份笔记是**事实的唯一出处**，这里只**引用**，不抄。抄一遍就是第二份会漂移的文档 —— 这套文档 2026-08-16 从 17 份分散笔记合并而来，合并当场就抓到一处互相矛盾，见 [../README.md](../README.md)。
+`docs/` 下已有的 8 份笔记是**事实的唯一出处**，这里只**引用**，不抄。抄一遍就是第二份会漂移的文档 —— 这套文档 2026-08-16 从 17 份分散笔记合并而来，合并当场就抓到一处互相矛盾，见 [../INDEX.md](../INDEX.md)。
 
 | 想找 | 去哪 | 不在哪 |
 |---|---|---|
 | 产品要做到什么、做到没有 | **[REQUIREMENTS.md](REQUIREMENTS.md)** | — |
 | 怎么证明、跑什么、谁跑 | **[TEST-PLAN.md](TEST-PLAN.md)** | — |
-| 还没做的模块 + 设计思路 | **[Todo/](Todo/)** | — |
+| 还没做的模块 + 设计思路 | **[Todo/BACKLOG.md](Todo/BACKLOG.md)** | — |
 | 某条结论的实测证据 | [../IAP-STATUS.md](../IAP-STATUS.md) | 不要抄进 REQUIREMENTS |
-| 用例的判据、怎么跑 | `$TOOL/TestTool/README.md` | 判据贴着代码走，跨仓不搬 |
+| 用例的判据、怎么跑 | `$TOOL/TestTool/TEST-CASES.md` | 判据贴着代码走，跨仓不搬 |
 | 零散 bug 和代码债 | [../TODO.md](../TODO.md) | Todo/ 只放要立项的模块 |
 | 改动前的规矩 | [../WORKING-AGREEMENTS.md](../WORKING-AGREEMENTS.md) | — |
-| 密钥/信任模型的配图版 | [artifacts/](artifacts/) | ⚠️ **渲染快照，不是事实来源**，打架以 `docs/` 为准 |
+| 密钥/信任模型的配图版 | [artifacts/RENDERED-SNAPSHOTS.md](artifacts/RENDERED-SNAPSHOTS.md) | ⚠️ **渲染快照，不是事实来源**，打架以 `docs/` 为准 |
+
+## 文件名的规矩
+
+**名字要说出内容或用途，不要 `README.md`。** 2026-08-17 之前这个目录和 `docs/` 下一共 5 个 `README.md`，光看名字分不清哪个是索引、哪个是入口、哪个是待办。**只有仓库根目录的 `README.md` 例外** —— 那是仓库门面。
+
+这四份的分工是正交的，名字直接对应：
+
+| 问题 | 文件 |
+|---|---|
+| 要做到什么，到哪一步了 | `REQUIREMENTS.md` |
+| 怎么证明做到了 | `TEST-PLAN.md` |
+| 还欠什么，怎么做 | `Todo/BACKLOG.md` |
+| 怎么开工、怎么收尾 | `SESSION-START.md`（本文件） |
 
 ## 新会话的开机顺序
 
@@ -26,7 +39,7 @@
 1. **[../WORKING-AGREEMENTS.md](../WORKING-AGREEMENTS.md)** —— 规矩。改任何东西之前
 2. **[../ARCHITECTURE.md](../ARCHITECTURE.md)** —— 三个仓库在哪、哪些代码是跨仓镜像的
 3. **[REQUIREMENTS.md](REQUIREMENTS.md)** —— 现在做到哪一步
-4. **[Todo/README.md](Todo/README.md)** —— 手头该干什么
+4. **[Todo/BACKLOG.md](Todo/BACKLOG.md)** —— 手头该干什么
 
 碰硬件之前再加一份 [../HARDWARE-FACTS.md](../HARDWARE-FACTS.md)；碰 bootloader 的状态扇区之前加 [../JOURNAL.md](../JOURNAL.md)；碰签名密钥之前加 [../OWNERSHIP.md](../OWNERSHIP.md)。
 
@@ -50,11 +63,11 @@ Copy-Item config\machine.example.ps1 config\machine.ps1   # 然后编辑
 
 | 今天产生了 | 归到哪 |
 |---|---|
-| 测试脚本、自动化工具 | `$TOOL/TestTool/tools/` 或 `host/<主题>/` |
+| 测试脚本、自动化工具 | `$TOOL/TestTool/tools/` 或 `host/<主题>/`，判据写进 `$TOOL/TestTool/TEST-CASES.md` |
 | 一次性探查脚本，但值得留 | 同上，并补一份 README 说清"验证什么 / 前置 / 判据" |
 | 新的实测结论 | [../IAP-STATUS.md](../IAP-STATUS.md)，带日期 |
 | 新的设计决策与否决理由 | [../DEFERRED-DESIGNS.md](../DEFERRED-DESIGNS.md) 或对应模块的 Todo 文件 |
-| 新发现的问题 | [../TODO.md](../TODO.md)（零散）或 [Todo/](Todo/)（要立项） |
+| 新发现的问题 | [../TODO.md](../TODO.md)（零散）或 [Todo/BACKLOG.md](Todo/BACKLOG.md)（要立项） |
 | 需求状态变化 | [REQUIREMENTS.md](REQUIREMENTS.md) 的状态列 |
 | 用例跑出来的结果 | [TEST-PLAN.md](TEST-PLAN.md) 的「最近结果」列，带日期 |
 | 协作方式上的教训 | [../WORKING-AGREEMENTS.md](../WORKING-AGREEMENTS.md) |

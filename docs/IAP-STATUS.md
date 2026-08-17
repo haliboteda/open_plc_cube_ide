@@ -15,10 +15,14 @@
 | **复位原因** | `PIN`（复位键）、`SOFT`（app 请求进上传模式）、`POR`（掉电重上电）三种全部正确 |
 | **TCP 会话规则（T1–T4）** | 空闲 60s 踢人（实测 1m01s）、50s 不踢、拒绝第二连接、传输中不打断、关闭后可重连 |
 | **签名校验（S1）** | 上传时先过 CRC、算哈希、再回 `Signature Failed`；下次启动 `metadata present` + `App signature invalid` —— 与"metadata 没写成"区分开 |
+| **密钥不匹配（S2）** | 2026-08-17 实测：用一把板子不认的密钥**真实签名**（格式完全合法）的镜像 → `Signature Failed`；复位后旧 app 照常启动。**和 S1 分开测**：一个是"没有任何密钥能产生的签名"，一个是"签方不对" |
+| **启动期签名校验（S3）** | 2026-08-17 实测：ST-Link 把已装好的 app 第 41858/83716 字节 `0x12`→`0xED` → 复位后 `metadata present` + `App signature invalid or absent`，**不启动 app**；重烧一次即恢复。⚠️ 注意 `App signature invalid or absent` 和 `no valid application` **是同一个分支打的**（`IAP_server.c:482-494`），必然同时出现 |
+| **nonce 跨掉电不重复（AU1）** | 2026-08-17 实测：真断电（`Reset cause: POR`）前 counter 62→69，上电后 71→78，**16 个 nonce 全不同、计数器没归零**。中间 69→71 那两个是 `enter-bootloader` 自己的认证 reboot 消耗的 |
 | ~~传输中断可恢复~~ | ~~进程被杀 → app 区半写 → `BOOTLD-INVALID` → 重烧恢复~~ **⚠️ 已被 SDRAM staging 作废，见下** |
 | ~~掉电中断（S4）~~ | ~~写到 49152 字节时拔电 → `Reset cause: POR` + `metadata present` + `App signature invalid`~~ **⚠️ 同上** |
 | **SDRAM staging 正向路径** | 2026-08-17 实测（以太网，83,716 B 镜像）：`SDRAM staging buffer OK (2 MiB at C0000000)` → `Staging in SDRAM.` → 逐块 `Staged …` → `Transfer complete, verifying the staged image...` → **`Erasing application region` 出现在校验之后** → `Writing 83744 bytes from SDRAM to flash`（83,716 补齐到 32 的倍数）→ `Checksum and signature OK` → app 正常启动 |
 | **SDRAM 自检** | 同上一次启动打印 OK。⚠️ 它在 `MX_FMC_Init()` 里，属于 **Phase 2** —— **只有停在 bootloader 时才会跑**，正常跳 app 的启动看不到这行，那不是失败 |
+| **★ `IAPTool` 退出 ≠ 升级完成** | 2026-08-17 实测踩到：IAPTool 送完最后一个字节就打 `File transfer complete.` 并退出，**板子此时才开始校验 → 擦除 → 从 SDRAM 往 flash 写**，要好几秒。那几秒里复位（当时是 ST-Link 复位）会毁掉 app，现象是 `metadata present` + `App signature invalid or absent`，重烧可恢复。**任何自动化都要等板子自己说 `Checksum and signature OK. Rebooting...`，不能以 IAPTool 退出为准** |
 | **★ 失败的上传不再破坏 app（G1）** | 2026-08-17 实测：S1 送一个签名故意写错的镜像 → `Signature verification FAILED - firmware not trusted. Application region untouched.` → **复位后 `** APP Mod ...`，旧 app 正常启动**。改前这里是 `BOOTLD-INVALID`、必须重刷。**这是 staging 存在的全部理由** |
 | **回归：T1 / T1b / T2 / T3 / T4** | 2026-08-17 全过。T1 实测 1m1s 踢人，T1b 50s 不踢，T2 第二连接不被服务且第一个不受影响，T3 传输中闯入被 RST 拒，T4 关闭后可重连 |
 | **回归：N1 / N2 / N3 / N5** | 2026-08-17 全过。N5：3 秒内 1200 次查询 → **150 次回复（正好 50/s）**，且随后正常发现仍然可用 |
@@ -150,7 +154,7 @@ UART echo ready         ← 前面是干净的
 | 擦写阶段拔电 | 报 app 无效、可重传 | 要人工断电，且窗口只剩**几秒**，不好命中 |
 | `IAP_EVT_FLASH_WRITE_FAIL`（事件 8） | 镜像验过但拷 flash 失败时记这条 | 难以人为制造 flash 写失败 |
 
-⚠️ 前两条就是 S4 拆开的两半 —— **原来那个 S4（写到 49152 字节拔电）已经失去意义**，那个时刻 flash 压根没被碰过。清单在 `$TOOL/TestTool/README.md` 的「未覆盖」。
+⚠️ 前两条就是 S4 拆开的两半 —— **原来那个 S4（写到 49152 字节拔电）已经失去意义**，那个时刻 flash 压根没被碰过。清单在 `$TOOL/TestTool/TEST-CASES.md` 的「未覆盖」。
 
 ### 其他
 

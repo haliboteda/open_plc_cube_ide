@@ -8,13 +8,13 @@
 
 **这里只放动作，不放事实**（事实在 IAP-STATUS / HARDWARE-FACTS / JOURNAL / OWNERSHIP）。**做完就删掉，不要打勾留着。**
 
-**这里也只放零散的动作。** 需要立项的模块（有设计空间、要分步做）在 [ai/Todo/](ai/Todo/)，那边一个模块一份，含设计思路、分步计划和验收用例。下面几条已经搬过去了，正文保留是因为它们记着排查细节：
+**这里也只放零散的动作。** 需要立项的模块（有设计空间、要分步做）在 [handover/Todo/BACKLOG.md](handover/Todo/BACKLOG.md)，那边一个模块一份，含设计思路、分步计划和验收用例。下面几条已经搬过去了，正文保留是因为它们记着排查细节：
 
 | 这里 | 立项版 |
 |---|---|
-| C2 `Serial_Test` 抢 UART4 | [ai/Todo/M5-serial-conflict.md](ai/Todo/M5-serial-conflict.md) |
-| C3 FMC 的 39 个脚 | [ai/Todo/M4-fmc-pin-guard.md](ai/Todo/M4-fmc-pin-guard.md) |
-| D3 app 侧 SDRAM | [ai/Todo/M3-app-sdram.md](ai/Todo/M3-app-sdram.md) |
+| C2 `Serial_Test` 抢 UART4 | [handover/Todo/M5-serial-conflict.md](handover/Todo/M5-serial-conflict.md) |
+| C3 FMC 的 39 个脚 | [handover/Todo/M4-fmc-pin-guard.md](handover/Todo/M4-fmc-pin-guard.md) |
+| D3 app 侧 SDRAM | [handover/Todo/M3-app-sdram.md](handover/Todo/M3-app-sdram.md) |
 
 ---
 
@@ -145,7 +145,15 @@ UART echo ready         ← 前面是干净的
 
 ---
 
-## B3 · `OpenPLC_Bootloader.md` 已经严重过期（等用户点头）
+## ~~B3 · `OpenPLC_Bootloader.md` 已经严重过期~~ ✅ 2026-08-17 已同步
+
+**没删，改成"只讲工程结构、不讲行为"**，并挂进了 [INDEX.md](INDEX.md)。四处错误已订正（`.bin` 96,944 而非 140,100；验签不止 CRC32；停留依据是 SRAM4 不是 RTC；1200 touch 已实测通过）；`md5.c` 那条经核实**仍然成立**。
+
+**行为那整节删了** —— 那些内容在 `docs/` 下有唯一出处，写两遍必漂，这份文档自己就是证据。
+
+<details><summary>原始记录</summary>
+
+### ~~`OpenPLC_Bootloader.md` 已经严重过期~~
 
 | | |
 |---|---|
@@ -173,6 +181,10 @@ UART echo ready         ← 前面是干净的
 | 留着不管 | 0 | ⚠️ 下一个人会照着它的错误结论排查 |
 
 按约定，删之前要问。
+
+</details>
+
+**实际选的是第二条（就地更正 + 挂进索引），2026-08-17。** 表里说它的风险是"又多一份要跟着漂的文档" —— 这个风险靠**缩小它的职责**来压：现在它只写工程结构（构建方式、文件清单、产物大小、lwIP 配置），**行为、安全模型、验证状态全部改成指向 `docs/`**。漂移的前提是重复，不重复就没什么可漂的。
 
 ---
 
@@ -220,7 +232,15 @@ UART echo ready         ← 前面是干净的
 
 ---
 
-## C2 · `Serial_Test` 和 `Serial4` 抢同一个 UART4
+## ~~C2 · `Serial_Test` 和 `Serial4` 抢同一个 UART4~~ ✅ 2026-08-17 已修（M5）
+
+挪到 USART3（`PC_11_ALT1, PC_10_ALT1`，同引脚不同 AF），实测 5/5 回显通过。
+
+⚠️ **下面写的"影响"低估了**：实测不是"能发不能收"，而是 **app 挂死、板子失联、只能 ST-Link 恢复**。详见 [handover/Todo/M5-serial-conflict.md](handover/Todo/M5-serial-conflict.md)。
+
+<details><summary>原始记录</summary>
+
+### ~~`Serial_Test` 和 `Serial4` 抢同一个 UART4~~
 
 | | |
 |---|---|
@@ -236,9 +256,17 @@ UART echo ready         ← 前面是干净的
 | 把 `Serial_Test` 挪到没人用的 USART3：`Serial_Test(PC_11_ALT1, PC_10_ALT1)` | 需硬件验证 + **提交到共享 core**（分发给其他工程师的基础设施） | **推荐**，治本 |
 | 不动，文档写"别用 Serial4" | 0 | 靠自觉，而且 USB 菜单那条路径用户不会想到 |
 
+</details>
+
 ---
 
-## C3 · 变体把 FMC 的 39 个脚也暴露成 Arduino 引脚
+## ~~C3 · 变体把 FMC 的 39 个脚也暴露成 Arduino 引脚~~ ✅ 2026-08-17 已做（M4）
+
+变体头里已加 `FMC_RESERVED_*`（39 个），事实表进了 [HARDWARE-FACTS.md](HARDWARE-FACTS.md)，验收是编译期断言。**采用可发现性方案，不是拦截** —— `digitalWrite(PE7, ...)` 仍然编得过，刻意的。详见 [handover/Todo/M4-fmc-pin-guard.md](handover/Todo/M4-fmc-pin-guard.md)。
+
+<details><summary>原始记录</summary>
+
+### ~~变体把 FMC 的 39 个脚也暴露成 Arduino 引脚~~
 
 | | |
 |---|---|
@@ -262,6 +290,8 @@ PC0 · PD0,1,8,9,10,14,15 · PE0,1,7-15 · PF0-5,11-15 · PG0,1,2,4,5,8,15 · PH
 | 文档里列出这 39 个脚，写"不要碰" | 0 | 没人看 |
 | **变体头里给它们起名 `FMC_RESERVED_*` 并注释** | 小 | **推荐** —— 用户在头文件里就能看见，可发现性最好。顺带写进 [HARDWARE-FACTS.md](HARDWARE-FACTS.md) |
 | `pinMode`/`digitalWrite` 里加运行时拦截 | 每次 IO 调用加开销 | 不像 Arduino 风格，否决 |
+
+</details>
 
 ---
 
@@ -364,7 +394,13 @@ counter 从上次的 35 涨到 **39**。所以**不是"首次运行"** —— �
 
 ---
 
-## D3 · app 侧要不要能用 SDRAM
+## ~~D3 · app 侧要不要能用 SDRAM~~ ✅ 2026-08-17 需求已确认
+
+**要做，而且要封装好，用户直接调封装好的能力。** 这半句否掉了原来"用户自己在 linker script 段里声明大数组"的方案 —— **`memset` 的义务必须由库承担，不能落到用户头上**。设计和还没定的四个 API 问题在 [handover/Todo/M3-app-sdram.md](handover/Todo/M3-app-sdram.md)。
+
+<details><summary>原始记录</summary>
+
+### ~~app 侧要不要能用 SDRAM~~
 
 | | |
 |---|---|
@@ -391,6 +427,10 @@ app 侧三个关键点。可抄 `core:variants/STM32H7xx/H743/DAISY_SEED.ld:74`�
 | 3 | ⚠️ **只能是 BSS 风格，不能有初值** | `.data` 风格的段会被 startup 的拷贝循环在 FMC 之前写 |
 
 ⚠️ **代价：这些变量不是零初始化的。** 用户必须在 FMC 初始化后自己 `memset` —— **这条必须写进用户文档**，否则是一类极难查的间歇性 bug。
+
+</details>
+
+⚠️ **上面最后那条代价，正是 2026-08-17「要封装好」否掉这个方案的原因** —— 清零该由库做，不该写进用户文档让用户记着。三条链接脚本要求仍然是底层实现的硬约束，只是不再暴露给用户。
 
 ---
 

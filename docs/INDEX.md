@@ -4,11 +4,24 @@
 
 代码结构、改动历史、修过什么 bug —— 这些 git 和源码自己会说，不要往这里抄。
 
+## 命名约定
+
+**文件名要说出内容或用途。** 2026-08-17 之前这里有 5 个 `README.md`，光看名字分不出哪个是索引、哪个是入口、哪个是待办 —— 已全部改名。**只有仓库根目录的 `README.md` 保留**，那是仓库门面，约定俗成。
+
+四份核心文档回答四个互不重叠的问题：
+
+| 问题 | 文件 |
+|---|---|
+| **要做到什么**，到哪一步了 | [handover/REQUIREMENTS.md](handover/REQUIREMENTS.md) |
+| **怎么证明**做到了 | [handover/TEST-PLAN.md](handover/TEST-PLAN.md) |
+| **还欠什么**，怎么做 | [handover/Todo/BACKLOG.md](handover/Todo/BACKLOG.md) |
+| **怎么开工、怎么收尾** | [handover/SESSION-START.md](handover/SESSION-START.md) |
+
 ## 索引
 
 | 文件 | 什么时候看 |
 |---|---|
-| **[ai/](ai/)** | **新会话 / 换台电脑的入口。** 需求清单、测试覆盖矩阵、待做模块的设计，以及"今天结束"时的收尾流程 |
+| **[handover/SESSION-START.md](handover/SESSION-START.md)** | **新会话 / 换台电脑的入口。** 从这里进 [handover/](handover/)：需求清单、测试覆盖矩阵、待做模块的设计，以及"今天结束"时的收尾流程 |
 | [WORKING-AGREEMENTS.md](WORKING-AGREEMENTS.md) | 动手改任何东西之前 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 找不到某个仓库/文件在哪；要改跨仓共享的东西 |
 | [HARDWARE-FACTS.md](HARDWARE-FACTS.md) | 碰引脚、串口、启动模式、SRAM4 之前 |
@@ -19,7 +32,12 @@
 | [DEFERRED-DESIGNS.md](DEFERRED-DESIGNS.md) | 有人问"为什么不做 X" |
 | [TODO.md](TODO.md) | 手头没活了，或者想知道某个已知问题排在哪 |
 
-发版相关的东西不在这里：[../RELEASE-NOTES.md](../RELEASE-NOTES.md)（英文，给外部看）装升级规则、已知问题和发版检查单。**升级风险只靠它兜着，改了行为记得同步。**
+两份不在 `docs/` 但要知道的：
+
+| 文件 | 装什么 |
+|---|---|
+| [../RELEASE-NOTES.md](../RELEASE-NOTES.md) | 英文，**给外部看**。升级规则、已知问题、发版检查单。**升级风险只靠它兜着，改了行为记得同步** |
+| [../OpenPLC_Bootloader.md](../OpenPLC_Bootloader.md) | bootloader **工程结构**：怎么构建、有哪些文件、编出来多大、lwIP 怎么配。⚠️ **只讲工程长什么样，不讲行为** —— 2026-08-17 同步时把行为那部分删了，因为它四个月错了四处 |
 
 ## 维护约定
 

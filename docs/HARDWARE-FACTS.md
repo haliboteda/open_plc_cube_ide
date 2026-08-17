@@ -35,15 +35,56 @@ Arduino core 的 `cores/arduino/main.cpp` 只做了 `pinMode(PB_10, OUTPUT)`，�
 
 bootloader 侧在 `Core/Src/main.c:174` 显式调 `Enable_RX_RS232()`，**在 `MX_UART4_Init()` 和所有 printf 之前**，所以 bootloader 的日志（含 `bootloader_state_init()` 在 `server_decide()` 里打的那些）是通的。
 
-⚠️ **推论：core 在 `main.cpp:168` 打的 `[BOOT] millis=` 到不了端子。** 那行在 171 行的 `pinMode` 之前，更在 sketch 拉高之前 —— 收发器还关着。**在 core 里加"启动时打印"之前先想清楚这一条**，否则加了也看不见。详见 [IAP-STATUS.md](IAP-STATUS.md)。
+### 电荷泵余电 —— 为什么关了收发器还能出来几个字节
 
-## UART4 被重复占用（潜在 bug，未修）
+⚠️ **上面那条推论（"`[BOOT] millis=` 到不了端子"）被实测否定了**，2026-08-17 在 COM5（就是端子 C05/C06）看到了它。代码事实没错，错的是"所以发不出去"这一步。补上的是**电容**：
+
+MAX3221 的 ±5.5V 线电平不是从 3V3 直接来的，是**电荷泵**（charge pump）用几只外部电容"倒腾"出来的 —— 开关电容反复充放电，把 3V3 抬成 ±5.5V。
+
+**PB10 拉低时，泵停止开关，但那几只电容上的电荷不会瞬间消失。** ±5.5V 轨是**指数衰减**下去的，衰减期间驱动器仍然能产生合规的 RS-232 电平。所以：
+
+| 现象 | 解释 |
+|---|---|
+| bootloader 交权前关了收发器，app 的 `[BOOT] millis=12` **仍然出得来** | 交权后 12ms，余电还够 |
+| `[BOOT]` 前面那个乱码字节 | 电平从 mark（负）**滑向 0V** 的过程中，接收端把这个跳变判成起始位 |
+| `UART echo ready` 前面**没有**乱码 | 那是 sketch 拉高 PB10 之后打的，泵已经正常在转 |
+
+⚠️ **这是"能出来"，不是"保证能出来"。** 成立条件是「app 从交权到打印那行的耗时」< 「电容放电到不足以产生有效电平的时间」。现在 12ms 够用，但**没有任何东西保证它** —— 电容容差、温度、app 启动变慢，任何一个都能让这行悄悄消失。
+
+**所以在 core 里加启动打印之前要想清楚这一条**：加得越多，越可能超出余电窗口而**静默丢失**。要可靠输出的唯一办法是打印前主动拉高 PB10，但那会抢走用户 app 对收发器初始状态的控制权 —— 取舍见 [TODO.md](TODO.md) 的 B1。
+
+## ~~UART4 被重复占用~~ ✅ 2026-08-17 已修（M5），后果比原先以为的严重得多
+
+`Serial_Test` 已从 UART4 挪到 **USART3**（`core:cores/arduino/main.cpp` 的 `HardwareSerial Serial_Test(PC_11_ALT1, PC_10_ALT1)`）。**`ALT1` 是关键**：同样两个引脚，AF8 = UART4，AF7 = USART3。**线一根没变**，端子 C05/C06 和 bootloader 自己的 UART4 日志都不受影响。
+
+### 实测的后果：不是"诊断口变哑"，是**整个 app 挂死**
+
+2026-08-17 实测（修之前）：一个 sketch 只要调 `Serial4.begin(115200)`，
+
+```
+** APP Mod ...
+[?[B          ← [BOOT] 打到一半断掉，然后什么都没有了
+```
+
+**app 卡死，UDP 发现不应答，以太网够不着，IAPTool 报 `No response ... exiting`。** 板子只能靠 ST-Link 擦掉 app 区才救得回来。
+
+⚠️ **原来记的"发送看起来一切正常、只是收不到"是错的** —— 那是推断，不是实测。真实情况严重得多：**发送也死，而且板子失联**。E7 的严重性因此从"排查体验问题"升级为"用户一行普通代码就能让板子变砖（需 ST-Link 才能恢复）"。
+
+⚠️ **`Serial` 不是 `Serial4`。** 当前 FQBN 用 `usb=CDCgen`，`WSerial.h` 里的 `#if !defined(Serial)` 守卫让 `Serial` 保持为 USB CDC，**碰不到 UART4**。所以拿 `Serial` 写的测试在坏 core 上照样通过 —— 这个坑当天踩过一次。**要复现必须显式用 `Serial4`。**
+
+判据和跑法见 `$TOOL/TestTool/TEST-CASES.md` 的 **M5** 一节（`tools/run-m5.ps1`）。
+
+<details><summary>原始记录（推断部分已被实测否定，保留以免重走）</summary>
+
+### ~~UART4 被重复占用（潜在 bug，未修）~~
 
 `HardwareSerial Serial_Test(PC_11, PC_10)`（core `main.cpp`）解析到 **UART4**（AF8），而 `Serial4` / `Serial` 在 PH13/PH14 上**也是 UART4**。
 
 `uart_handlers[]` 每个外设只有一个槽位，**最后一次 `begin()` 赢**。所以将来任何 `Serial4.begin()`（或把 USB 菜单切到 "CDC (no generic 'Serial')"）都会**静默掐掉 `Serial_Test` 的接收**，而发送看起来一切正常。
 
 修法：`HardwareSerial Serial_Test(PC_11_ALT1, PC_10_ALT1)` 挪到没人用的 USART3（AF7）。**尚未实施** —— 需要硬件验证，并且要提交到共享的 core 包。
+
+</details>
 
 ## USB 菜单影响 `Serial` 的含义
 
@@ -64,6 +105,24 @@ bootloader 侧在 `Core/Src/main.c:174` 显式调 `Enable_RX_RS232()`，**在 `M
 3. PG9 **不需要**配成输出。当前的推挽输出驱动低有隐患：**按下 SW2 = 3V3 经引脚对地短路**。用户已知情并选择保持现状
 
 > 早先"改成 input 后 RESET 失效"的真正原因，是同一次改动里删掉了 `SystemClock_Config()`（VOS3 + 64MHz + 0 等待周期超规格读 flash），已修复。**不是 PG9 的问题。**
+
+## SDRAM 占掉的 39 个脚（用户 sketch 碰得到）
+
+权威清单在 `Core/Src/fmc.c` 的 `HAL_FMC_MspInit()` 里那段 `FMC GPIO Configuration` 注释（2026-08-17 时在 `:224-264`，**行号会漂，按函数名找**）。
+
+这 39 个脚**只连**板载那颗 AS4C32M16SB（64MB，映射在 `0xC0000000`），别的什么都不接。
+
+| 组 | 数量 | 脚 |
+|---|---|---|
+| 数据 `D0–D15` | 16 | PD14 PD15 PD0 PD1 · PE7–PE15 · PD8 PD9 PD10 |
+| 地址 `A0–A12` | 13 | PF0–PF5 · PF12–PF15 · PG0 PG1 PG2 |
+| 控制 | 10 | PG4 PG5（BA0/1）· PE0 PE1（NBL0/1）· PG8（SDCLK）· PH2（SDCKE0）· PH3（SDNE0）· PF11（SDNRAS）· PG15（SDNCAS）· PC0（SDNWE） |
+
+⚠️ **变体把 MCU 全部引脚都注册成 Arduino 数字引脚**（`NUM_DIGITAL_PINS 140`），所以用户写 `digitalWrite(PE7, HIGH)`（PE7 = `FMC_D4`）**能编译、能运行、把 SDRAM 数据线拽死**。现象是"SDRAM 偶发读到垃圾"，而且和肇事那行代码之间没有任何提示。
+
+**2026-08-17 起这 39 个脚在变体头里有名字了** —— `core:variants/STM32H7xx/H743/variant_PLC_H743.h` 的 `FMC_RESERVED_*`。**起名不阻止任何事**（`digitalWrite(PE7, ...)` 照样编得过，这是刻意的），只是让人在头文件里就能看见。改 `fmc.c` 的引脚时**两边都要改**，`FMC_RESERVED_PIN_COUNT` 那个 39 是给编译期断言用的锚。
+
+**这不是排布错误** —— 这 39 个脚和本板所有对外 IO（DOUT×8 / DIN×8 / AIN×2 / AOUT×2 / RS232 / RS485 / CAN / KNX）一个都不撞，连 BOOT0 的 PG9 都恰好夹在 PG8 和 PG15 中间空着。**是缺一道防护。**
 
 ## SRAM4 的 no-init 机制
 
