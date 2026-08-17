@@ -114,6 +114,13 @@ void MX_GPIO_Init(void)
  * the .ioc cannot quietly undo it -- the same reason fmc.c keeps its power-up
  * sequence in a USER CODE section.
  *
+ * ⚠️ TEMPORARY. The right place for this is the .ioc, so that MX_GPIO_Init()
+ * generates the input configuration directly. It lives here because it was
+ * made as a controlled experiment and regenerating the whole project would
+ * have added a second variable to it. Once the .ioc is updated, this function
+ * and its call in main.c become a redundant re-configuration and should both
+ * be deleted -- see docs/TODO.md.
+ *
  * ⚠️ There is a report that changing this pin to an input once stopped the
  * RESET button from working. docs/HARDWARE-FACTS.md records the cause as a
  * different change made at the same time (SystemClock_Config() had been

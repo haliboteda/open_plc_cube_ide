@@ -96,18 +96,94 @@ PUTCHAR_PROTOTYPE {
 static IAP_Method s_boot_mode = IAP_NONE;
 
 /* Startup window: the relay clicks are the operator's cue to press BOOT0.
- * 3 relays x 500 ms = 1.5 s, then one read. */
+ * 3 relays x 500 ms = 1.5 s, then one read.
+ *
+ * ⚠️ The judgement is "was the button down at the 1.5 s mark", NOT "was it
+ * held for 1.5 s". BOOT0 is not looked at while the relays click. Holding the
+ * button throughout is just the practical way to be sure of covering that one
+ * instant, which is what the banner is really telling the operator to do. */
 #define BOOT0_WINDOW_MS        500U
 #define BOOT0_WINDOW_RELAYS    3U
 
-static uint8_t boot_window_relay(void)
+/* Keep holding past the decision point and it becomes a second gesture:
+ * factory reset (requirement C10, module M1). Ten seconds is far enough from
+ * the 1.5 s mark that nobody reaches it by holding "a bit longer to be sure". */
+#define BOOT0_FACTORY_HOLD_MS  10000U
+
+/* A button that never reads as released is a stuck button or a shorted net.
+ * Waiting for it forever would leave the board sitting in this loop with no
+ * output and no way on, which looks exactly like a dead bootloader. */
+#define BOOT0_HOLD_LIMIT_MS    30000U
+
+#define BOOT0_POLL_MS          10U
+
+typedef enum {
+	BOOT0_GESTURE_NONE = 0,       /* not down at the decision point            */
+	BOOT0_GESTURE_UPLOAD,         /* down at 1.5 s, released before 10 s       */
+	BOOT0_GESTURE_FACTORY_RESET   /* held past 10 s, then released             */
+} boot0_gesture_t;
+
+/*
+ * Three fast clicks: "the factory-reset gesture is armed, let go now".
+ *
+ * Audible rather than visual on purpose. This board has no general-purpose
+ * LED, and it is usually inside a cabinet where nobody can see one anyway --
+ * the relay clicks are already how the startup window announces itself.
+ */
+static void boot0_armed_signal(void)
 {
+	for (uint32_t i = 0U; i < 3U; i++) {
+		Relay_On((RELAY_Name) 0);
+		HAL_Delay(60U);
+		Relay_Off((RELAY_Name) 0);
+		HAL_Delay(60U);
+	}
+}
+
+static boot0_gesture_t boot_window_relay(void)
+{
+	uint32_t held_ms;
+	bool armed = false;
+
 	for (uint32_t i = 0U; i < BOOT0_WINDOW_RELAYS; i++) {
 		Relay_On((RELAY_Name) i);
 		HAL_Delay(BOOT0_WINDOW_MS);
 		Relay_Off((RELAY_Name) i);
 	}
-	return boot0_is_pressed();
+
+	if (boot0_is_pressed() == 0U) {
+		return BOOT0_GESTURE_NONE;
+	}
+
+	/* Down at the decision point, so the board stays in the bootloader whatever
+	 * happens next. Keep watching only to tell the two gestures apart. Nothing
+	 * below can change that decision -- it can only add the factory reset. */
+	printf("** BOOT0 held - keep holding for %u s to arm a factory reset, "
+			"or let go now for upload mode **\r\n",
+			(unsigned)(BOOT0_FACTORY_HOLD_MS / 1000U));
+
+	held_ms = BOOT0_WINDOW_RELAYS * BOOT0_WINDOW_MS;
+	while (boot0_is_pressed() != 0U) {
+		if (!armed && (held_ms >= BOOT0_FACTORY_HOLD_MS)) {
+			armed = true;
+			boot0_armed_signal();
+			printf("** Factory reset ARMED - release BOOT0 to run it, "
+					"or reset the board to cancel **\r\n");
+			/* The clicks take time of their own; count it. */
+			held_ms += 6U * 60U;
+			continue;
+		}
+		if (held_ms >= BOOT0_HOLD_LIMIT_MS) {
+			printf("** BOOT0 still down after %u s - treating it as stuck, "
+					"continuing in upload mode **\r\n",
+					(unsigned)(BOOT0_HOLD_LIMIT_MS / 1000U));
+			return BOOT0_GESTURE_UPLOAD;
+		}
+		HAL_Delay(BOOT0_POLL_MS);
+		held_ms += BOOT0_POLL_MS;
+	}
+
+	return armed ? BOOT0_GESTURE_FACTORY_RESET : BOOT0_GESTURE_UPLOAD;
 }
 
 /* USER CODE END 0 */
@@ -180,7 +256,29 @@ int main(void)
 
   printf("** Reset cause: %s\r\n", boot_handoff_reset_cause_str());
 
-  s_boot_mode = server_decide(boot_window_relay());
+  {
+    boot0_gesture_t gesture = boot_window_relay();
+
+    if (gesture == BOOT0_GESTURE_FACTORY_RESET) {
+      /* M1 step 6 will append the cleared owner record here.
+       *
+       * ⚠️ It has to happen BEFORE server_decide(), because that is where the
+       * owner slot is scanned and reported. Clearing afterwards would make this
+       * boot's log describe ownership that had just been thrown away -- the log
+       * would contradict the board on the one boot where somebody is definitely
+       * reading it.
+       *
+       * Until step 6 lands the gesture is recognised and reported but does
+       * nothing, and it says so. An operator who performed the gesture must not
+       * be left believing the board was reset when it was not; that is worse
+       * than the feature simply being absent. */
+      printf("** FACTORY RESET REQUESTED - not implemented yet, ownership unchanged **\r\n");
+    }
+
+    /* server_decide() only needs to know whether to stay in the bootloader.
+     * Both gestures mean yes; they differ only in what happened above. */
+    s_boot_mode = server_decide((gesture == BOOT0_GESTURE_NONE) ? 0U : 1U);
+  }
 
   if (s_boot_mode == IAP_NONE) {
     server_jump_to_app();   /* hands the hardware back; never returns */

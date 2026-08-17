@@ -22,6 +22,18 @@
 
 攒够了一起烧，别为单条跑一趟 ST-Link。
 
+## A3 · PG9 改输入应该挪到 `.ioc` 里（用户已认领）
+
+| | |
+|---|---|
+| **是什么** | `BOOT0_ConfigureAsInput()`，`Core/Src/gpio.c` 的 USER CODE 块，由 `main.c` 在 `MX_GPIO_Init()` 之后调用 |
+| **做什么用的** | 把 CubeMX 生成的 PG9 推挽输出改回输入。理由和实测见 [HARDWARE-FACTS.md](HARDWARE-FACTS.md) |
+| **为什么现在长这样** | 2026-08-18 那次是**受控实验**，只想动一个变量；重新生成整个工程会引入第二个变量 |
+| **要做什么** | 在 `.ioc` 里把 PG9 设成 GPIO_Input，重新生成，然后**删掉 `BOOT0_ConfigureAsInput()` 和 main.c 里的调用** |
+| **不做会怎样** | 🟢 功能上没影响 —— 它只是把已经配好的引脚再配一遍。但会变成"没人敢动的重复代码"，而且下一个人看到生成段仍写着 `OUTPUT_PP` 会困惑 |
+
+⚠️ **`.ioc` 改完必须重新验一次 RESET 按钮和 BOOT0 长按** —— 重新生成会动整个 `MX_GPIO_Init()`，不只是这一个脚。
+
 ## ~~A1 · bootloader 自报版本号还是 `0.1.2`~~ ✅ 2026-08-17 已做
 
 改成 `"0.1.3"`，实测两侧一致：`BOOTLD_0.1.3` / `CUSAPP_0.1.3`。检查单条目保留在 [../RELEASE-NOTES.md](../RELEASE-NOTES.md)。**下次发版仍要人工核对这两处。**
