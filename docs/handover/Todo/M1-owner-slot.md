@@ -35,7 +35,7 @@ flash 里一片只追加、永不擦除的记录区，记着"这块板现在认�
 | 步 | 做什么 | 验什么 |
 |---|---|---|
 | ~~1~~ | ✅ **2026-08-17 已做**：`FLASH LENGTH` 128K → 120K，注释写清预留区和理由 | 见下 |
-| 2 | 定义记录结构 + `_Static_assert` 锁死 160 字节；写扫描函数（只读，不写） | 空区（全 `0xFF`）时报"用默认根"；启动日志多一行 |
+| ~~2~~ | ✅ **2026-08-17 已做**：`IAPServer/owner_slot.{h,c}`，`_Static_assert` 锁死 160 字节，只读扫描 | 见下 |
 | 3 | 加"当前根 == 公开根"的 SHA-256 比对与启动告警 | 出厂板每次启动都告警；手工换掉 `fw_pubkey.inc` 重编则不告警 |
 | 4 | 实现认领 `takeown`（追加 G1，要求 BOOT0 按住） | 认领后重启不再告警；断电后仍认新根 |
 | 5 | 实现换 owner（追加 G3，校验现任签名） | 无效签名的记录被忽略，板子仍认旧根 |
@@ -57,6 +57,42 @@ flash 里一片只追加、永不擦除的记录区，记着"这块板现在认�
 | 板子行为 | app 正常启动、SDRAM 验收 19/19 仍全过；进 bootloader 侧 SDRAM 自检 OK、以太网起来、尺寸检查正常拒绝 |
 
 **为什么 `.bin` 大小一个字节都没变**：预留是把 `MEMORY` 区的上界往下压，不是插入数据。链接器本来就没往那一片放东西，所以产物完全相同 —— 变的是**以后也不可能往那里放**，这正是要的保证。
+
+### 第 2 步的实测结果（2026-08-17）
+
+`IAPServer/owner_slot.{h,c}`，**只读**，一个字节都不写 flash。挂在 `server_decide()` 里 `bootloader_state_init()` 之后，所以**每次启动都打**，不只是停在 bootloader 的那些。
+
+| 场景 | 日志 |
+|---|---|
+| 空区 | `Owner slot: empty, using the built-in root key` |
+| 一条合法记录（generation 7） | `Owner slot: 1 record(s), latest generation 7` |
+| `format_ver` 不认识 | `Owner slot: 1 record(s) ignored - wrong format or corrupt` |
+| **只要有记录，额外一行** | `** Owner records present but NOT in effect: signature checking is not implemented yet. **` |
+
+镜像 97,580 B（涨 636 B），占 122,880 的 79.4%。
+
+⚠️ **`owner_slot_root()` 现在永远返回编译进去的默认根，即使有记录。** 这是刻意的：验 `prev_sig` 是第 5 步，还不存在。**采信一条没验签的记录，等于任何能写这 8K 的代码都能给自己发信任根 —— 比没有这个功能更糟。** 所以开关等到让它安全的那个检查落地再打开，在那之前大声报出来。
+
+### ⚠️ 不能用编程器直接往 owner 区写
+
+**踩过了，板子当场没输出。**
+
+```powershell
+STM32_Programmer_CLI -c port=SWD -w record.bin 0x0801E000   # ← 会擦掉 bootloader
+```
+
+owner 区在 **bootloader 自己那个扇区**的尾部，而编程器写之前会擦整个扇区。结果是 `0x08000000` 全变 `FF`，板子什么都不打，只能重烧。
+
+正确做法：**把 bootloader 和记录拼成一个镜像一次写进 `0x08000000`** —— 一次擦除，两者都活下来。已做成 `$TOOL/TestTool/tools/inject-owner-record.ps1`：
+
+```powershell
+.\inject-owner-record.ps1 -Generation 7   # 一条合法记录
+.\inject-owner-record.ps1 -Corrupt        # 格式版本不认识，必须被忽略
+.\inject-owner-record.ps1 -Cleared        # 恢复出厂记录
+.\inject-owner-record.ps1 -Restore        # 放回干净的 bootloader
+```
+
+第 4 步之后 bootloader 自己会追加记录，但这个脚本仍然有用 —— **它能造出固件按设计造不出来的记录**（未来格式版本、签名验不过的记录），那正是负向用例需要的。
 
 ⚠️ **`flash-bootloader.ps1` 原来把余量按 131,072 报**，现在会多报 8K 并且掩盖真正的失败点。已改成从链接脚本里读 `LENGTH`，两边不会再各说各话。
 

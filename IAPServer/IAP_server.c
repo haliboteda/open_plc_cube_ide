@@ -13,6 +13,7 @@
 #include "sha256.h"
 #include "fw_verify.h"
 #include "fw_pubkey.h"
+#include "owner_slot.h"
 #include "bootloader_state.h"
 #include "iap_auth.h"
 #include "iap_keyderive.h"
@@ -415,6 +416,11 @@ IAP_Method server_decide(uint8_t boot0Pressed) {
 	bool app_signature_valid = false;
 
 	bootloader_state_init();
+
+	/* Every boot, not only the ones that stay in the bootloader: which key this
+	 * board trusts is the kind of thing that must never be visible only when
+	 * somebody happens to be looking. Read-only -- see owner_slot.h. */
+	owner_slot_report();
 
 	app_base  = (uint32_t)IAP_APP_ADDRESS;
 	app_msp   = *(__IO uint32_t *)IAP_APP_ADDRESS;
