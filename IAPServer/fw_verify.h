@@ -22,7 +22,20 @@ extern "C" {
 /* Verifies an ECDSA signature over a SHA-256 hash using the embedded
  * release public key (see fw_pubkey.c). Returns true only if the
  * signature is valid for that exact hash. */
+/*
+ * Verify against the root this board currently trusts -- the owner's key once
+ * the board has been claimed, the built-in key before that. Use this for
+ * anything that decides whether firmware may run.
+ */
 bool fw_verify_signature(const uint8_t hash[32], const uint8_t signature[FW_SIGNATURE_SIZE]);
+
+/*
+ * Verify against a specific key. For checking a chain link against the root
+ * that came before it, where "the root this board trusts" is the question
+ * being answered rather than the input.
+ */
+bool fw_verify_signature_with_key(const uint8_t pubkey[64],
+		const uint8_t hash[32], const uint8_t signature[FW_SIGNATURE_SIZE]);
 
 #ifdef __cplusplus
 }

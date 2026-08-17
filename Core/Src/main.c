@@ -34,6 +34,7 @@
 #include "IAP_server.h"
 #include "IAP_boot_handoff.h"
 #include "iap_auth.h"
+#include "owner_slot.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -260,19 +261,15 @@ int main(void)
     boot0_gesture_t gesture = boot_window_relay();
 
     if (gesture == BOOT0_GESTURE_FACTORY_RESET) {
-      /* M1 step 6 will append the cleared owner record here.
-       *
-       * ⚠️ It has to happen BEFORE server_decide(), because that is where the
-       * owner slot is scanned and reported. Clearing afterwards would make this
-       * boot's log describe ownership that had just been thrown away -- the log
-       * would contradict the board on the one boot where somebody is definitely
+      /* ⚠️ BEFORE server_decide(), because that is where the owner slot is
+       * scanned and reported. Clearing afterwards would make this boot's log
+       * describe ownership that had just been thrown away -- the log would
+       * contradict the board on the one boot where somebody is certainly
        * reading it.
        *
-       * Until step 6 lands the gesture is recognised and reported but does
-       * nothing, and it says so. An operator who performed the gesture must not
-       * be left believing the board was reset when it was not; that is worse
-       * than the feature simply being absent. */
-      printf("** FACTORY RESET REQUESTED - not implemented yet, ownership unchanged **\r\n");
+       * The gesture is the physical gate: ten seconds on a button nobody
+       * reaches by accident, on a board somebody is standing at. */
+      (void)owner_slot_factory_reset(true);
     }
 
     /* server_decide() only needs to know whether to stay in the bootloader.

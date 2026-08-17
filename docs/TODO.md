@@ -22,6 +22,21 @@
 
 攒够了一起烧，别为单条跑一趟 ST-Link。
 
+## A4 · 所有权命令还没进出货工具 IAPTool
+
+| | |
+|---|---|
+| **是什么** | bootloader 的 `takeown` / `setowner` / `getowner` 三个命令 |
+| **做什么用的** | 客户把板子绑到自己的签名密钥上（需求 C10） |
+| **在哪找** | 板子侧 `IAPServer/IAP_server.c` + `IAPServer/owner_slot.c`，**已完成并实测**<br>主机侧只有 `$TOOL:TestTool/tools/run-takeown.ps1` / `run-setowner.ps1`，**那是内部测试脚本** |
+| **可能的影响** | ⚠️ **客户拿不到这个功能。** 板子侧齐了，但出货工具 `IAPTool` 一个入口都没有 —— 客户没有受支持的办法认领自己的板子。[RELEASE-NOTES.md](../RELEASE-NOTES.md) 已写明这一点，别让文档跑到实现前面 |
+
+**要做什么**：`IAPTool takeown <ip>`、`IAPTool setowner <ip> --current-key=... --new-key=...`。签名那半已经有了（`IAPTool signraw`，2026-08-18 加的），剩下的是命令面和把私钥管理讲清楚。
+
+⚠️ **`takeown` 要求操作员按住 BOOT0**，所以工具必须能把这件事讲明白并等人操作 —— 这是个 UX 问题，不只是加个子命令。
+
+---
+
 ## A3 · PG9 改输入应该挪到 `.ioc` 里（用户已认领）
 
 | | |

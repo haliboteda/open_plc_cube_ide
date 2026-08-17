@@ -18,6 +18,10 @@
 | **密钥不匹配（S2）** | 2026-08-17 实测：用一把板子不认的密钥**真实签名**（格式完全合法）的镜像 → `Signature Failed`；复位后旧 app 照常启动。**和 S1 分开测**：一个是"没有任何密钥能产生的签名"，一个是"签方不对" |
 | **启动期签名校验（S3）** | 2026-08-17 实测：ST-Link 把已装好的 app 第 41858/83716 字节 `0x12`→`0xED` → 复位后 `metadata present` + `App signature invalid or absent`，**不启动 app**；重烧一次即恢复。⚠️ 注意 `App signature invalid or absent` 和 `no valid application` **是同一个分支打的**（`IAP_server.c:482-494`），必然同时出现 |
 | **nonce 跨掉电不重复（AU1）** | 2026-08-17 实测：真断电（`Reset cause: POR`）前 counter 62→69，上电后 71→78，**16 个 nonce 全不同、计数器没归零**。中间 69→71 那两个是 `enter-bootloader` 自己的认证 reboot 消耗的 |
+| **★ 所有权全链路（OW1/OW2/OW3）** | 2026-08-18 实测完整生命周期：认领 G1 → 换 owner G2（现任签名）→ 恢复出厂 cleared → 重新认领 G3。**认领后用旧公开密钥签的 app 被拒**（`UPLOAD Mod ... (no valid application)`）；坏签名的换 owner 被拒且什么都没动；**无签名的高 generation 记录夺不走已认领的板子**（链停在 G1，`getpubkey` 仍返回原主人） |
+| **恢复出厂手势** | 2026-08-18 实测：复位后按住 BOOT0 超过 10 秒 → 三下快咔哒（ARMED）→ 松手 → `FACTORY RESET DONE at generation 2`。**旧的 1.5 秒判据一个字没改** —— 判据仍是"t=1.5s 那一瞬手按着"，轮询只在那之后才开始 |
+| **PG9 改成输入后 RESET 正常** | 2026-08-18 受控实验（只改这一个变量）：**6 次物理复位全部 `Reset cause: PIN`**，4 次正常进 app、2 次按住 BOOT0 进上传模式。**否定了"改 input 会让 RESET 失效"那条挂了很久的怀疑** —— 真因是当年同一次改动删掉了 `SystemClock_Config()` |
+| **★ `IAPTool` 退出 ≠ 升级完成** | 2026-08-17 实测踩到：IAPTool 送完最后一个字节就退，**板子此时才开始校验 → 擦除 → 从 SDRAM 写回**，要好几秒。那几秒里复位会毁掉 app（现象：`metadata present` + `App signature invalid`，重烧可恢复）。**任何自动化都要等板子自己说 `Checksum and signature OK`** |
 | ~~传输中断可恢复~~ | ~~进程被杀 → app 区半写 → `BOOTLD-INVALID` → 重烧恢复~~ **⚠️ 已被 SDRAM staging 作废，见下** |
 | ~~掉电中断（S4）~~ | ~~写到 49152 字节时拔电 → `Reset cause: POR` + `metadata present` + `App signature invalid`~~ **⚠️ 同上** |
 | **SDRAM staging 正向路径** | 2026-08-17 实测（以太网，83,716 B 镜像）：`SDRAM staging buffer OK (2 MiB at C0000000)` → `Staging in SDRAM.` → 逐块 `Staged …` → `Transfer complete, verifying the staged image...` → **`Erasing application region` 出现在校验之后** → `Writing 83744 bytes from SDRAM to flash`（83,716 补齐到 32 的倍数）→ `Checksum and signature OK` → app 正常启动 |

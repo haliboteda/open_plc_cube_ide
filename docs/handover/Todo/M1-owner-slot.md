@@ -1,4 +1,6 @@
-# M1 · owner 槽与信任根
+# M1 · owner 槽与信任根 ✅ 六步全部完成（2026-08-18）
+
+**完整生命周期已实测**：认领（G1）→ 换 owner（G2，现任签名）→ 恢复出厂（cleared）→ 重新认领。每一步都有反向用例，包括**夺取攻击**（无签名的高 generation 记录夺不走已认领的板子）。
 
 **覆盖需求：[C10](../REQUIREMENTS.md)** —— 板子有办法脱离"出厂公开根"，且不需要 ST-Link。
 
@@ -36,10 +38,10 @@ flash 里一片只追加、永不擦除的记录区，记着"这块板现在认�
 |---|---|---|
 | ~~1~~ | ✅ **2026-08-17 已做**：`FLASH LENGTH` 128K → 120K，注释写清预留区和理由 | 见下 |
 | ~~2~~ | ✅ **2026-08-17 已做**：`IAPServer/owner_slot.{h,c}`，`_Static_assert` 锁死 160 字节，只读扫描 | 见下 |
-| 3 | 加"当前根 == 公开根"的 SHA-256 比对与启动告警 | 出厂板每次启动都告警；手工换掉 `fw_pubkey.inc` 重编则不告警 |
-| 4 | 实现认领 `takeown`（追加 G1，要求 BOOT0 按住） | 认领后重启不再告警；断电后仍认新根 |
-| 5 | 实现换 owner（追加 G3，校验现任签名） | 无效签名的记录被忽略，板子仍认旧根 |
-| 6 | 实现恢复出厂（追加 cleared 记录） | 回落默认根，告警恢复 |
+| ~~3~~ | ✅ **2026-08-18 已做**：`owner_slot_root_is_public()` + 启动告警 | 见下 |
+| ~~4~~ | ✅ **2026-08-18 已做**：`owner_slot_claim()` + `takeown` 命令，BOOT0 门控 | 见下 |
+| ~~5~~ | ✅ **2026-08-18 已做**：`owner_slot_set_owner()` + `setowner` 命令，链上逐环验签 | 见下 |
+| ~~6~~ | ✅ **2026-08-18 已做**：`owner_slot_factory_reset()`，接在 10 秒手势上 | 见下 |
 
 ### 三个操作各自靠什么门控（2026-08-18 定）
 
@@ -64,7 +66,7 @@ flash 里一片只追加、永不擦除的记录区，记着"这块板现在认�
 
 只新增**一个**手势，而且是现有手势的自然延长，用户不用记第二种操作。
 
-### 手势识别已实现（2026-08-18），恢复出厂本体仍未实现
+### 手势识别（2026-08-18）
 
 `boot_window_relay()` 现在返回 `boot0_gesture_t`（`NONE` / `UPLOAD` / `FACTORY_RESET`）。
 
@@ -123,6 +125,125 @@ flash 里一片只追加、永不擦除的记录区，记着"这块板现在认�
 
 ⚠️ **`owner_slot_root()` 现在永远返回编译进去的默认根，即使有记录。** 这是刻意的：验 `prev_sig` 是第 5 步，还不存在。**采信一条没验签的记录，等于任何能写这 8K 的代码都能给自己发信任根 —— 比没有这个功能更糟。** 所以开关等到让它安全的那个检查落地再打开，在那之前大声报出来。
 
+### 第 3 步的实测结果（2026-08-18）
+
+告警：
+
+```
+** This board trusts the PUBLISHED root key: anyone can sign firmware it will run. **
+** Claim it (see docs/OWNERSHIP.md) to bind it to a key of your own. **
+```
+
+判据是**当前生效的根的 SHA-256 == 公开根的 SHA-256**，常量在 `IAPServer/owner_slot.c` 的 `k_published_root_sha256`。
+
+**两条验收都做了，反向那条才是重点：**
+
+| 场景 | 结果 |
+|---|---|
+| 出厂板（公开根） | **每次启动都告警** ✅ |
+| 临时换一把根密钥重编 | 槽仍然是空的，但**没有告警** ✅ |
+
+第二条证明了告警**不是**挂在"槽空"上。用槽空当判据的话，自己编译换了根的客户会被永远误报 —— [../../OWNERSHIP.md](../../OWNERSHIP.md) 花了一整段讲这件事：**一个所有人都学会忽略的告警，等于没有告警。**
+
+⚠️ **指纹是常量，不是构建时从 `fw_public_key` 算出来的。** 那样算的话比较永远成立，客户板子也会被告警 —— 正好是要避免的那个失效模式。
+
+⚠️ **代价是：项目自己轮换默认密钥时，这个常量必须一起更新**，否则出厂板会静默地不再告警。新增用例 **P6**（`tools/check-public-root.ps1`，selfcheck 步骤 **A14**）比对两者，漂了就报错，负向对照验过会响。
+
+### 第 4 步的实测结果（2026-08-18）
+
+`takeown <128hex>` 命令 + `owner_slot_claim()`。跑法：`tools/run-takeown.ps1`。
+
+| 验的 | 结果 |
+|---|---|
+| **BOOT0 没按** 时 `takeown` | `Refused`，`getpubkey` 返回的密钥一字节没变 ✅ |
+| BOOT0 按住时 `takeown` | `OK`，`getpubkey` 立刻返回新密钥 ✅ |
+| 复位后 | `Owner slot: claimed at generation 1 - firmware must be signed by that owner`，**公开根告警消失** ✅ |
+| flash 里的记录 | `4F 05 01 00 01 00 00 00 00 00 00 00 E9 59 12 FF…` —— type/slots/format_ver/generation/flags 全对 ✅ |
+
+**两个落地决定：**
+
+| 决定 | 理由 |
+|---|---|
+| **记录体先写、头最后写** | 五个 flash word 中途掉电，绝不能留下一条读起来合法的记录。头最后写，最坏情况是 `type` still `0xFF` —— 被扫描器判为"撕裂写"跳过。反过来会留下一条自称合法、密钥却写了一半的记录 |
+| **走链，不是"generation 最大的赢"** | 后者是个洞：已被 G1 认领的板子，任何能追加记录的人写一条更高 generation 的无签名记录就能夺走。**权威必须来自链，不是来自"最后一条"**。首条可以无签名（TOFU），cleared 可以无签名（物理门控，R3），其余必须被现任根签名；**某一环验不过就停下**，不跳过 —— 跳过等于让攻击者作废一环、让后面别人写的记录静默生效 |
+
+### 第 5 步的实测结果（2026-08-18）
+
+`setowner <generation> <newkey_hex> <sig_hex>` + `getowner`（返回当前 generation）。跑法：`tools/run-setowner.ps1`。
+
+**签的是新记录的前 76 字节**：`type | slots | format_ver | generation | flags | 新公钥`（1+1+2+4+4+64）。
+
+⚠️ **generation 在签名覆盖范围内是刻意的** —— 否则一条被截获的记录可以被重放到后面的槽位，把之后的一次交接抹掉。命令里带 generation，板子校验它**恰好等于当前 +1**，这样双方对"签的是哪些字节"逐位一致。
+
+⚠️ **换 owner 不需要按 BOOT0。** 现任签名本身就是授权，远程交接是设计要支持的场景。物理门只管那些**没有签名可验**的操作（首次认领、恢复出厂）。
+
+| 场景 | 结果 |
+|---|---|
+| A 签名把板子交给 B | `OK`，generation 1→2，`getpubkey` 返回 B ✅ |
+| 签名改坏一位 | `Refused`，generation 和根**都没动** ✅ |
+| 复位后 | `2 record(s), latest generation 2` + `claimed at generation 2`，无任何 "NOT in effect" ✅ |
+| **夺取攻击**：合法 G1 + 无签名 G9 | 扫描器看见 `latest generation 9`，但**链停在 generation 1**，`getpubkey` 仍返回 A ✅ |
+
+**最后一条是这一步真正的判据。** 它证明权威来自链而不是"最后一条记录"——如果按"generation 最大的赢"，任何能追加记录的人写一条更高 generation 的无签名记录就能夺走一块已认领的板子。
+
+**验签在写入之前做，不是之后。** 扫描器下次启动本来也会拒，但那条坏记录会永久占掉 51 个槽位之一，而这些槽位不擦掉 bootloader 就回收不了。拒绝不花任何代价，接受是永久的。
+
+**顺带修了一句过期日志**：`not implemented yet (M1 step 5)` —— 第 5 步做完它就不再成立了。
+
+### 第 6 步的实测结果（2026-08-18）
+
+手势（按住 BOOT0 超过 10 秒 → 三下咔哒 → 松手）接上 `owner_slot_factory_reset()`。板子先被认领到 generation 1，然后做手势：
+
+```
+** BOOT0 held - keep holding for 10 s to arm a factory reset, or let go now for upload mode **
+** Factory reset ARMED - release BOOT0 to run it, or reset the board to cancel **
+** FACTORY RESET DONE at generation 2. Back to the built-in root; the board can be claimed again. **
+Owner slot: 2 record(s), latest generation 2 (cleared)
+Owner slot: last record is a factory reset - back to the built-in root
+** This board trusts the PUBLISHED root key: anyone can sign firmware it will run. **
+```
+
+⚠️ **`FACTORY RESET DONE` 打在 `Owner slot:` 之前** —— 因为清除动作放在 `server_decide()` 之前。顺序反了的话，这次启动的日志会先报旧的所有权、然后才把它清掉，而那恰恰是唯一一次肯定有人在读日志的启动。
+
+**完整生命周期**（接着上面继续）：重新认领 → `3 record(s), latest generation 3` + `claimed at generation 3`，全链验证通过、无任何 "NOT in effect"。
+
+### ★ 差点做出一块"恢复出厂 = 永久变砖"的板子
+
+第 6 步暴露了链规则的一个缺陷：**恢复出厂之后再也无法重新认领**。
+
+新的认领记录既不是第一条、也不是 cleared、又没有签名 —— 按原规则直接判为未授权。结果就是：恢复出厂把板子打回公开根，**然后永远卡在那里**，谁也认领不了。**比不做恢复出厂更糟。**
+
+补的第三种允许情形：**紧跟在 cleared 之后的无签名记录 = 回到 TOFU**。同时 `takeown` 的门从"必须没有记录"改成"没有记录**或**最后一条是 cleared"，generation 也从写死的 1 改成接着往下排（否则重新认领会和旧记录撞号）。
+
+> 三种允许无签名的情形，各有各的理由，**不能合并成一条**：
+> **首条** —— 还没有 owner，没有签名可验；
+> **cleared** —— 要求现任签名的话，丢了私钥的客户永久变砖（R3）；
+> **cleared 之后** —— 板子已经回到 TOFU，等价于首条。
+
+### ★★ 验收抓到一个严重缺陷：认领曾经是安全剧场
+
+认领之后，**用旧的公开密钥签的 app 照样启动**。
+
+根因：`fw_verify_signature()` 写死了 `fw_public_key`，**没走 `owner_slot_root()`**。于是认领只改变了"板子报告的根"和告警文字，**没改变它实际拿来验签的密钥**。板子一边打印 `firmware must be signed by that owner`，一边照跑任何用公开密钥签的固件。
+
+**除了这条用例，没有任何东西会发现** —— 其他每个症状看起来都完全正确。
+
+修法：`fw_verify_signature()` 改用 `owner_slot_root()`；同时加了 `fw_verify_signature_with_key()` 供第 5 步验链用。未认领的板子上 `owner_slot_root()` 就是 `fw_public_key`，**行为不变**。
+
+修复后实测：认领状态下，旧 app → `** UPLOAD Mod ... (no valid application)`，**被拒**。
+
+> **教训**：一个"改变信任根"的功能，必须验的是**什么代码能真的跑起来**，不是日志说了什么。C10 的措辞是"板子有办法脱离出厂公开根"，不是"板子有办法宣称自己脱离了"。
+
+### ★ 换密钥时的一个静默陷阱（当场踩到）
+
+把 `fw_pubkey.inc` 换回来之后重编，**编进去的还是旧密钥**。
+
+原因：`Copy-Item`（以及任何普通复制/还原）**保留源文件的时间戳**，还原回来的 `.inc` 时间比 `.o` 旧，make 判定不需要重编。**依赖本身是声明对的**（`.d` 里正确列了 `.inc`），是时间戳骗了 make。
+
+后果很难看：**固件构建正常、启动正常、看起来一切健康，但带着错的信任根。** 这次能发现，只是因为 app 的签名恰好验不过了 —— 如果轮换的两把密钥都是我们自己的，**什么异常都不会有**。
+
+P6 因此还会检查 **`Debug/*.bin` 里到底有没有 `fw_pubkey.inc` 那把密钥**，把这种静默失败变成响的。
+
 ### ⚠️ 不能用编程器直接往 owner 区写
 
 **踩过了，板子当场没输出。**
@@ -152,7 +273,7 @@ owner 区在 **bootloader 自己那个扇区**的尾部，而编程器写之前�
 |---|---|---|
 | ~~保留 4K / 8K / 16K~~ | — | ✅ **定了 8K**，2026-08-17 已落地。实测余量 21%，够 M2 的证书验证代码再长一截 |
 | 认领时要不要绑 UID | 防止把一块板的记录整段搬到另一块板 | 能。建议绑，代价很小 |
-| 恢复出厂怎么触发 | 需要一个能和"进上传模式"区分开的动作 | 🔨 **2026-08-18 方向已定：同一次按压继续按到 10 秒，松手执行。** 前置的 PG9 改输入已做完，见下 |
+| ~~恢复出厂怎么触发~~ | — | ✅ **2026-08-18 已定并实现**：同一次按压继续按到 10 秒，三下咔哒后松手执行。前置的 PG9 改输入也做完了 |
 | 要不要上 WRP | 唯一能真正禁止 app 写这片区域的手段 | 可以推后，不阻塞 |
 
 ## 诚实的上限

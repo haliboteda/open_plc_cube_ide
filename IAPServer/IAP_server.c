@@ -33,6 +33,7 @@ uint32_t expected_checksum;
 static uint8_t expected_signature[FW_SIGNATURE_SIZE];
 static bool have_expected_signature;
 static uint32_t expected_version; /* 0 if the flash command didn't carry one (older PC tool) */
+static bool s_boot0_held;         /* BOOT0 was down at this boot's decision point */
 
 // volatile: written from IAP_data_recv() (USB/lwIP receive callback context)
 // and read/cleared from IAP_task() (main superloop context) -- without it
@@ -202,12 +203,90 @@ void process_command() {
 			// Lets the PC tool confirm its signing key matches the key this
 			// bootloader verifies against, before it spends time sending an
 			// image that would be rejected at the end.
-			char pubhex[sizeof(fw_public_key) * 2U + 1U];
+			//
+			// owner_slot_root(), not fw_public_key: on a claimed board those
+			// differ, and answering with the built-in key would make the tool
+			// compare against a key this board no longer trusts -- refusing
+			// good images and accepting bad ones, both silently.
+			const uint8_t *root = owner_slot_root();
+			char pubhex[64 * 2U + 1U];
 			uint32_t i;
-			for (i = 0; i < (uint32_t)sizeof(fw_public_key); i++) {
-				(void)sprintf(&pubhex[i * 2U], "%02x", fw_public_key[i]);
+			for (i = 0; i < 64U; i++) {
+				(void)sprintf(&pubhex[i * 2U], "%02x", root[i]);
 			}
 			send_response(pubhex);
+		} else if (strncmp((char *)RXBuffer, "takeown ", 8) == 0) {
+			// "takeown <128 hex chars>" -- bind this board to a signing key.
+			//
+			// Only ever the FIRST claim. Changing an existing owner needs the
+			// current owner's signature and is a different command (M1 step 5),
+			// because this one is gated by physical presence alone.
+			uint8_t key[64];
+			const char *hex = (const char *)RXBuffer + 8;
+			uint32_t i;
+			bool ok = true;
+
+			for (i = 0U; i < 64U; i++) {
+				unsigned int byte;
+				if (sscanf(&hex[i * 2U], "%2x", &byte) != 1) {
+					ok = false;
+					break;
+				}
+				key[i] = (uint8_t)byte;
+			}
+			if (!ok) {
+				send_response("Bad key");
+			} else if (owner_slot_claim(key, s_boot0_held)) {
+				send_response("OK");
+			} else {
+				send_response("Refused");
+			}
+		} else if (strncmp((char *)RXBuffer, "getowner", 8) == 0) {
+			// Generation of the record in force, 0 when unclaimed. The host
+			// needs it to build the next record's signed prefix -- both sides
+			// must agree on the exact bytes, and the generation is in them.
+			char genbuf[16];
+			snprintf(genbuf, sizeof(genbuf), "%" PRIu32, owner_slot_generation());
+			send_response(genbuf);
+		} else if (strncmp((char *)RXBuffer, "setowner ", 9) == 0) {
+			// "setowner <generation> <newkey_hex> <sig_hex>"
+			//
+			// No BOOT0 here, deliberately: the current owner's signature IS the
+			// authorisation, and handing a board over remotely is a case the
+			// design supports. Physical presence gates only the operations that
+			// have no signature to check -- the first claim and factory reset.
+			uint32_t gen = 0U;
+			char keyhex[129];
+			char sighex[129];
+			uint8_t key[64];
+			uint8_t sig[64];
+			bool ok = true;
+			uint32_t i;
+
+			if (sscanf((char *)RXBuffer + 9, "%" SCNu32 " %128s %128s",
+					&gen, keyhex, sighex) != 3) {
+				send_response("Bad args");
+			} else if ((strlen(keyhex) != 128U) || (strlen(sighex) != 128U)) {
+				send_response("Bad length");
+			} else {
+				for (i = 0U; i < 64U; i++) {
+					unsigned int kb, sb;
+					if ((sscanf(&keyhex[i * 2U], "%2x", &kb) != 1) ||
+							(sscanf(&sighex[i * 2U], "%2x", &sb) != 1)) {
+						ok = false;
+						break;
+					}
+					key[i] = (uint8_t)kb;
+					sig[i] = (uint8_t)sb;
+				}
+				if (!ok) {
+					send_response("Bad hex");
+				} else if (owner_slot_set_owner(gen, key, sig)) {
+					send_response("OK");
+				} else {
+					send_response("Refused");
+				}
+			}
 		} else if (strncmp((char *)RXBuffer, "flash", 5) == 0) {
 			// decode flash command: "flash <size> <crc32hex> <signature_hex> <hmac_hex> [version]"
 			// - signature_hex: 64-byte ECDSA r||s from IAPTool sign / IAPTool cdc (128 hex chars)
@@ -414,6 +493,11 @@ IAP_Method server_decide(uint8_t boot0Pressed) {
 	IAP_Method mode = IAP_NONE;
 	boot_req_t req;
 	bool app_signature_valid = false;
+
+	/* Remembered for the whole session: takeown needs to know the operator was
+	 * physically present, and by the time a command arrives over the network
+	 * they have long since let the button go. */
+	s_boot0_held = (boot0Pressed != 0U);
 
 	bootloader_state_init();
 

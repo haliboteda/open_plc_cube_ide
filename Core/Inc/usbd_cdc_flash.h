@@ -62,6 +62,15 @@
  * firmware metadata (size/hash/signature) and the tamper-evident event log.
  * It must never be touched by app erase/write and is excluded from the
  * app's maximum usable size. */
+/* Programs `Len` bytes at `FlashAddress`. Len and the address must both be
+ * multiples of 32: the H7 programs one 256-bit flash word at a time, and a
+ * partial word cannot be written without erasing its neighbours. Returns 0 on
+ * success. The target must already be erased.
+ *
+ * Declared here rather than left as a bare extern in callers -- owner_slot.c
+ * needs it too, and a second hand-written prototype is how the two drift. */
+uint16_t Flash_If_Write(uint8_t *DataAddress, uint8_t *FlashAddress, uint32_t Len);
+
 #define RESERVED_TAIL_SECTORS 1
 #define IAP_STATE_SECTOR_ADDR ADDR_FLASH_SECTOR_7_BANK2
 #define IAP_APP_MAX_SIZE (IAP_STATE_SECTOR_ADDR - IAP_APP_ADDRESS)

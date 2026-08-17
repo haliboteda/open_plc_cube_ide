@@ -71,6 +71,47 @@ format no released board is supposed to keep.
 IAP writes the application region only — it can never update the bootloader.
 Use ST-Link or DFU.
 
+> **Reflashing the bootloader also resets ownership.** The owner records live in
+> the top 8 KB of the bootloader's own flash sector, so erasing that sector to
+> write a new bootloader takes them with it. That is semantically right — anyone
+> who can attach ST-Link could reset the board anyway — but it stacks on top of
+> the rule above: **whoever replaces a bootloader on a claimed board must
+> re-upload the application *and* claim the board again.**
+
+## Board ownership
+
+A board verifies firmware against a root key. Out of the factory that is the key
+published with this project, and its private half is in the repository, because
+customers have to be able to sign their own sketches. So a factory board will
+run firmware signed by anybody, and it says so on every boot:
+
+```
+** This board trusts the PUBLISHED root key: anyone can sign firmware it will run. **
+```
+
+Claiming the board binds it to a key of your own, after which it runs nothing
+else. Three operations:
+
+| Operation | How it is authorised |
+|---|---|
+| **Claim** (`takeown`) | Hold BOOT0 through the startup window. There is no owner yet to sign anything, so physical presence is the only possible gate — and until a board is claimed, whoever gets there first wins |
+| **Change owner** (`setowner`) | The current owner's signature. No button: signing *is* the authorisation, and handing a board over remotely is supported |
+| **Factory reset** | Hold BOOT0 for ten seconds after reset, until three rapid relay clicks, then release. Back to the published root, and claimable again |
+
+**Factory reset deliberately needs no signature.** Requiring the current owner's
+would leave a customer who lost their private key with a board only ST-Link could
+rescue — and that customer is exactly the one without an ST-Link. The cost is
+that anybody who can physically reach a board can reset it and take it over;
+what it buys is that nobody can do it remotely.
+
+**Claim a board before putting it into service.** Everything above only starts
+protecting anything from the moment it is claimed.
+
+> ⚠️ **The device side is complete and tested; the operator-facing tooling is
+> not.** `takeown` and `setowner` are bootloader commands, and today they are
+> driven only by internal test scripts — `IAPTool` does not expose them yet.
+> Until it does, claiming a board is not a supported customer operation.
+
 ### Known issues
 
 - **The application's `[BOOT] millis=` banner reaches the RS232 terminals only
@@ -100,7 +141,16 @@ Use ST-Link or DFU.
 - **Behaviour when power is lost mid-upgrade.** Staging changed what the risky
   window is: losing power during the transfer should now be harmless, and only
   the few seconds spent erasing and writing can leave the application region
-  half-written. Neither half has been reproduced on hardware.
+  half-written. Neither half has been reproduced by *removing power*.
+
+  The erase/write window has, however, been hit by accident with a reset, and it
+  behaved as predicted: the application became invalid, the board reported
+  `metadata present` with `App signature invalid or absent`, and re-uploading
+  restored it. **That window is also wider and easier to hit than assumed** —
+  the upload tool exits as soon as it has sent the last byte, while the board is
+  still verifying, erasing and copying out of SDRAM. Anything automating an
+  upgrade should wait for the board's own `Checksum and signature OK` rather
+  than for the tool to exit.
 - Long-term stability under a real OpenPLC runtime.
 
 ### Before shipping
