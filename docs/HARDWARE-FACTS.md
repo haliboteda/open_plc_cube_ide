@@ -102,9 +102,26 @@ MAX3221 的 ±5.5V 线电平不是从 3V3 直接来的，是**电荷泵**（char
 
 1. BOOT0 网静态为低 → 复位必然从 flash 启动，不会进 ROM DFU
 2. `boot0_is_pressed()` 的 active-high 判断**正确**（SW2 按下拉到 3V3）
-3. PG9 **不需要**配成输出。当前的推挽输出驱动低有隐患：**按下 SW2 = 3V3 经引脚对地短路**。用户已知情并选择保持现状
+3. PG9 **不需要**配成输出。~~当前的推挽输出驱动低有隐患：按下 SW2 = 3V3 经引脚对地短路~~ ✅ **2026-08-18 已改成输入**，隐患消除
 
-> 早先"改成 input 后 RESET 失效"的真正原因，是同一次改动里删掉了 `SystemClock_Config()`（VOS3 + 64MHz + 0 等待周期超规格读 flash），已修复。**不是 PG9 的问题。**
+### "改成 input 会让 RESET 失效"—— 2026-08-18 受控实验否定了
+
+这条怀疑一直挂着（"只有 PG9 是 output 的时候 RESET 才正常"）。当时**同一次改动里还删掉了 `SystemClock_Config()`**（VOS3 + 64MHz + 0 等待周期超规格读 flash），症状被归到了 PG9 头上。
+
+**只改一个变量重做了一次**：PG9 `GPIO_MODE_OUTPUT_PP` → `GPIO_MODE_INPUT`，`SystemClock_Config()` 一个字没动。实测 **6 次物理 RESET**（全部 `Reset cause: PIN`）：
+
+| 次数 | BOOT0 | 结果 |
+|---|---|---|
+| 4 次 | 没按 | 正常启动进 app |
+| 2 次 | 按住过采样点 | `BOOT0 button is pressed!` → `** UPLOAD Mod ... (BOOT0 held)` |
+
+**RESET 正常，BOOT0 也读得到。真因确实是时钟配置，不是 PG9。**
+
+从电气上也说得通：**复位那一刻 MCU 所有 GPIO 都回到默认态**，固件配的推挽输出在那个瞬间根本不存在 —— 压住这条网的始终只有 R58 那个 10k 下拉，配 input 还是 output 对复位行为不起作用。
+
+⚠️ 改动放在 `Core/Src/gpio.c` 的 **`BOOT0_ConfigureAsInput()`（USER CODE 块）**，由 `main.c` 在 `MX_GPIO_Init()` 之后调用。**没有动 CubeMX 生成的那段** —— 从 `.ioc` 重新生成不会把它冲掉。
+
+> **为什么非改不可**：owner 槽的恢复出厂要按住 BOOT0 约 10 秒（模块 M1）。原来那 1.5 秒窗口短路时间短所以没出事，**按 10 秒就是短路 10 秒**。
 
 ## SDRAM 占掉的 39 个脚（用户 sketch 碰得到）
 

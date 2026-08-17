@@ -96,4 +96,39 @@ void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 2 */
 
+/*
+ * Re-configure PG9 (the BOOT0 / SW2 net) as an input.
+ *
+ * MX_GPIO_Init() above is CubeMX-generated and leaves PG9 as a push-pull
+ * output driving low, grouped with RY4/RY5. That is wrong for this net and
+ * mildly dangerous: SW2 connects PG9 to 3V3, so pressing the button shorts
+ * 3V3 into an output that is actively driving low. It survived only because
+ * the startup window is 1.5 s, so nobody holds the button for long.
+ *
+ * PG9 does not need to be an output. The net is held low by R58 (10k to GND),
+ * measured 2026-08-12: reading the pin as PULLUP, PULLDOWN and NOPULL all
+ * returned 0, so even the internal pull-up cannot lift it. boot0_is_pressed()
+ * reads IDR, which works the same either way.
+ *
+ * Done here rather than in the generated block above so that regenerating from
+ * the .ioc cannot quietly undo it -- the same reason fmc.c keeps its power-up
+ * sequence in a USER CODE section.
+ *
+ * ⚠️ There is a report that changing this pin to an input once stopped the
+ * RESET button from working. docs/HARDWARE-FACTS.md records the cause as a
+ * different change made at the same time (SystemClock_Config() had been
+ * deleted, leaving the MCU reading flash out of spec at VOS3 + 64 MHz + 0 wait
+ * states), not this pin. That is why this change is made on its own and the
+ * RESET button is tested straight after it.
+ */
+void BOOT0_ConfigureAsInput(void)
+{
+	GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+	GPIO_InitStruct.Pin  = BOOT0_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;   /* R58 does it, and it beats the internal pulls */
+	HAL_GPIO_Init(BOOT0_GPIO_Port, &GPIO_InitStruct);
+}
+
 /* USER CODE END 2 */

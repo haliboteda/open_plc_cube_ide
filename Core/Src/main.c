@@ -171,6 +171,7 @@ int main(void)
   /* Phase 1: decide. Only what the decision itself needs is brought up here, so
    * the application inherits none of our peripheral state on the jump path. */
   MX_GPIO_Init();      /* BOOT0 net, relay outputs, RS232_Enable */
+  BOOT0_ConfigureAsInput();  /* undo the generated output config on PG9 */
   Enable_RX_RS232();   /* the MAX3221 stays in shutdown until this pin is high */
   MX_UART4_Init();
 

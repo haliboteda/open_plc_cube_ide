@@ -40,6 +40,11 @@ void MX_GPIO_Init(void);
 
 /* USER CODE BEGIN Prototypes */
 
+/* Call right after MX_GPIO_Init(). See the comment on the definition: the
+ * generated code leaves the BOOT0 net as an output driving low, which shorts
+ * 3V3 through the pin whenever SW2 is held. */
+void BOOT0_ConfigureAsInput(void);
+
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus
