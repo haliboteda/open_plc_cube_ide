@@ -20,7 +20,7 @@
 | `$A15` | `C:\Users\WhoamIamwhO\AppData\Local\Arduino15` |
 | `$PKGIDX` | `E:\WorkSpace\Schaeffer-AG\package_index_json` |
 
-⚠️ **这张表是给读文档的人看的，脚本不读它。** 脚本只认 `$TOOL\TestTool\config\machine.ps1`（gitignored，模板是同目录的 `machine.example.ps1`）。两处的值应当一致，但**没有任何机制强制**——`selfcheck.ps1` 的 A0 会把脚本实际解析到的路径全部打出来，对不上时以 A0 为准。
+⚠️ **这张表是给读文档的人看的，脚本不读它。** 脚本只认 `$TOOL/TestTool/config/machine.ps1` 和 `machine.py`（都 gitignored，都由 `tools/init_machine.py` 探测生成）。两处的值应当一致，但**没有任何机制强制**——`selfcheck.ps1` 的 A0 会把脚本实际解析到的路径全部打出来，对不上时以 A0 为准。
 
 `$CORE_LIVE` 末尾的 `0.1.3-pre` 是板卡包版本号，**发版会变**；`$A15\packages\OpenPLC_Alpha\tools\STM32Tools\0.1.2` 里的 `0.1.2` 是随包分发的 IAPTool 版本，两个号互相独立。
 

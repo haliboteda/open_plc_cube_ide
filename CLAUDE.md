@@ -84,17 +84,28 @@
 
 ## 五、换台机器：配什么
 
-**全套脚本只认一个文件**：`IAPTranfer_Tool/TestTool/config/machine.ps1`（gitignored）。
+**不用手填。** 跑一条命令，它自己探测：
 
-```powershell
+```bash
 cd <workspace>/IAPTranfer_Tool/TestTool
-Copy-Item config/machine.example.ps1 config/machine.ps1   # 然后编辑
-pwsh ./tools/selfcheck.ps1          # Windows 上也可以直接 .\tools\selfcheck.ps1
+python3 tools/init_machine.py       # Windows 上是 python
 ```
 
-模板里 **Windows 和 Linux 两套示例值都给了**，删掉不用的那套即可。
+它写出 `config/machine.ps1` 和 `config/machine.py`（都 gitignored），**两份同源生成，不会互相漂移**。
 
-**只往 `machine.ps1` 里放"这台机器"的值。** 凡是能从平台推出来的东西 —— 可执行文件后缀、板卡包里的 `win`/`linux`/`macosx` 子目录、Go 的输出目录、CubeIDE 插件的 `win32`/`linux64` 后缀 —— 全部由 `tools/_common.ps1` 自动推导，不要写进配置。判断标准：**另一台同样系统的机器会不会有不同的值？** 不会就不属于这里。
+| 你要做的 | 命令 |
+|---|---|
+| 只看它会得出什么，不写文件 | `--check` |
+| 探测不到、你知道答案 | `--set CUBEIDE=/opt/st/stm32cubeide_1.10.0` |
+| 装了新东西，让它重新找某一项 | `--redetect CUBEIDE` |
+
+**它不问问题**：能探测的直接写，探测不到的**点名说缺哪个、该传什么**。已有且仍然成立的值会保留，所以手工调过的地方重跑不会被冲掉；第一次覆盖前会留一份 `.bak`。
+
+⚠️ **没有模板可抄了。** `machine.example.ps1` / `machine.example.py` 已删除 —— 它们和 `init_machine.py` 里的 `SETTINGS` 表是同一份清单的两个出处，必然漂移。而且模板那套"两个平台的值都给、删掉不用的那套"，**忘记删就是最常见的用法错误**：2026-08-20 第一次在 Debian 上就踩了。
+
+**只往配置里放"这台机器"的值。** 凡是能从平台推出来的东西 —— 可执行文件后缀、板卡包里的 `win`/`linux`/`macosx` 子目录、Go 的输出目录、CubeIDE 插件的 `win32`/`linux64` 后缀 —— 全部由 `tools/_common.ps1`（Python 侧是 `tools/common.py`）自动推导，不要写进配置。判断标准：**另一台同样系统的机器会不会有不同的值？** 不会就不属于这里。
+
+⚠️ **`CORE_LIVE` 结尾的板卡包版本号不要写死** —— 发版就变。`init_machine.py` 是用通配找出来的，升级板卡包后重跑一次即可。
 
 `selfcheck.ps1` 的 **A0** 会把这台机器上每一项解析成什么全部打出来，**缺什么点名说缺什么**，不静默跳过。全绿（或只剩它自己报出的 SKIP）就可以开工。
 
@@ -102,7 +113,7 @@ pwsh ./tools/selfcheck.ps1          # Windows 上也可以直接 .\tools\selfche
 
 | 东西 | 为什么不在 git 里 | 换机器怎么办 |
 |---|---|---|
-| `TestTool/config/machine.ps1` | 每台机器都不一样 | 从 `machine.example.ps1` 抄一份改 |
+| `TestTool/config/machine.{ps1,py}` | 每台机器都不一样 | **不用搬也不用抄**：`python3 tools/init_machine.py` 自己探测生成 |
 | `$CORE_LIVE`（Arduino IDE 实际加载的板卡包目录） | 是 IDE 的安装目录，不是仓库 | 装 Arduino IDE → 装 OpenPLC_Alpha 板卡包 → 用 `open_plc_arduino` 的内容覆盖它。⚠️ 方向是**单向的**，细节见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | `IAPServer/keys/fw_signing_key.pem`（真签名私钥） | 私钥 | **2026-08-19 确认：目前没有真私钥，开发用仓库里的 `fw_signing_key.TEST_ONLY.pem`。** 将来产生真私钥后，它就是换机器时唯一必须手工搬运的文件 —— 到时候回来改这一行 |
 | `.claude/settings.local.json` | 里面全是本机绝对路径的一次性命令，换台机器一条都匹配不上 | **不用搬。** 跨平台通用的那部分已经提交在 `.claude/settings.json` 里（只读命令：`git status/log/diff`、`go vet`、`command -v` 等），新机器开箱就有 |
@@ -115,7 +126,7 @@ pwsh ./tools/selfcheck.ps1          # Windows 上也可以直接 .\tools\selfche
 2. **相对路径一律用 `/`。** Windows 的 .NET 路径 API 全都接受正斜杠，Linux 不接受反斜杠 —— 所以 `/` 是唯一两边都对的写法。
 3. **临时文件走 `Get-ScratchFile`**，不要用 `$env:TEMP`：那个变量在 Linux 上是空的，`"$env:TEMP/x.out"` 会变成往文件系统根目录写。
 4. **可执行文件走 `Get-GoBin` / `Get-IapTool` / `Get-ProgrammerCli` / `Get-CubeIdeExe`**，不要拼 `.exe`。
-5. **遇到一个新的、只有本机知道的路径 —— 加进 `machine.example.ps1` 并告诉用户**，不要硬编码，也不要猜。
+5. **遇到一个新的、只有本机知道的路径 —— 加进 `tools/init_machine.py` 的 `SETTINGS` 表**（连同探测方式和一段说明），不要硬编码，也不要猜。加进去它就会在每台机器上被自动找出来，而不是变成又一条要人工填的说明。
 
 > ⚠️ **2026-08-19 的改造只在 Windows 上验证过**（selfcheck 全绿）。Linux 那一半是按平台差异逐条消除的，**没有真机验证** —— 第一次在 Linux 上跑时，A0 打出来的那张表就是排查起点。
 

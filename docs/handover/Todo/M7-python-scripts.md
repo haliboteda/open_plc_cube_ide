@@ -27,7 +27,7 @@ Debian 上没有 PowerShell。三条路比过（见下），选了 Python，因�
 
 - 脚本：`$TOOL/TestTool/tools/*.ps1`、`$TOOL/TestTool/host/**/*.ps1`
 - 平台兼容层：`$TOOL/TestTool/tools/_common.ps1` —— **2026-08-19 刚做完双平台改造，它就是这次改写的规格说明**
-- 本机配置：`$TOOL/TestTool/config/machine.ps1`（gitignored），模板 `machine.example.ps1`
+- 本机配置：`$TOOL/TestTool/config/machine.{ps1,py}`（gitignored）。**2026-08-20 起由 `tools/init_machine.py` 探测生成，两份同源**，模板已删除
 - 判据：`$TOOL/TestTool/TEST-CASES.md`
 
 ## 不做会怎样

@@ -51,10 +51,10 @@
 
 一句话版本：
 
-```powershell
-# clone 三个仓库（地址见 CLAUDE.md）→ 装工具 → 填本机路径 → 自检
+```bash
+# clone 三个仓库（地址见 CLAUDE.md）→ 装工具 → 生成本机配置 → 自检
 cd $TOOL/TestTool
-Copy-Item config/machine.example.ps1 config/machine.ps1   # 然后编辑
+python3 tools/init_machine.py       # Windows 上是 python。探测，不用手填
 pwsh ./tools/selfcheck.ps1
 ```
 
