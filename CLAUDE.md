@@ -48,6 +48,8 @@
 
 前三个是必须的；`Hardware` 在核实引脚接法时必须有（**文档打架时以原理图为准**）；`Hello_World_OpenPLC` 是对照，不急；`package_index_json` 只在发板卡包时用。
 
+**六个仓库各带一份 `CLAUDE.md`。** 另外五份只回答"本仓库是什么、在这里最容易踩什么坑"，然后指回本文件 —— 所以在哪个仓库里开会话都不会迷路，也不存在第二份安装说明。
+
 放在同一个父目录下，后面的配置最省事：
 
 ```
@@ -67,11 +69,12 @@
 |---|---|---|---|
 | **git** | — | — | 2.30.1 |
 | **Go** | 构建 `IAPTool` / `TestTool`；selfcheck 的 A1/A3 | 一半用例跑不了 | go 1.23.1 |
-| **Python 3** | selfcheck 的 A10/A11/A12（假板子、加密交叉验证） | 那三步报 SKIP | 3.10.4 |
+| **Python 3** | selfcheck 的 A10/A11/A12（假板子、加密交叉验证）；[M7](docs/handover/Todo/M7-python-scripts.md) 之后是**全部**测试脚本的运行时 | 那三步报 SKIP；M7 完成后一个脚本都跑不了 | 3.10.4 |
+| **`pyserial`** | 唯一一个要 `pip install` 的东西。M7 之后所有碰串口的用例都靠它 | 碰串口的用例报 SKIP（**点名说缺它**，不静默） | `pip install -r IAPTranfer_Tool/TestTool/requirements.txt`；Debian 上也可 `apt install python3-serial` |
 | **原生 C 编译器** | selfcheck 的 A2：**直接编译 bootloader 的真实 C 源码**做主机侧单元测试 | A2 报 SKIP | Windows: MinGW-W64 gcc 16.1.0；Linux: 系统 gcc 即可 |
 | **STM32CubeIDE** | 构建 bootloader；`STM32_Programmer_CLI` 烧写和读回 flash | 上不了板 | 1.10.0 |
 | **Arduino IDE 2.x** | 构建 app；它自带的 `arduino-cli` 供 selfcheck 的 A13 用 | A13 报 SKIP，app 编不了 | arduino-cli 1.5.1 |
-| **PowerShell 7 (`pwsh`)** | **Linux / macOS 上必装** —— 全套测试脚本是 PowerShell | 一个脚本都跑不了 | Windows 上 5.1 即可，脚本兼容两者 |
+| **PowerShell 7 (`pwsh`)** | **Linux / macOS 上目前必装** —— 全套测试脚本还是 PowerShell。[M7](docs/handover/Todo/M7-python-scripts.md) 改写成 Python 之后这一行就删掉 | 一个脚本都跑不了 | Windows 上 5.1 即可，脚本兼容两者 |
 
 ⚠️ **C 编译器必须是现代版本。** Dev-C++ 带的是 2004 年的 GCC 3.4.2：它直接拒绝 `-std=c11`，用 `-std=c99` 时链接器会崩。拿二十年前的编译器去验证要交给 `arm-none-eabi-gcc 12.x` 的代码，比不测还糟。
 

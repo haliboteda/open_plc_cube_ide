@@ -21,7 +21,7 @@
 
 | 文件 | 什么时候看 |
 |---|---|
-| **[../CLAUDE.md](../CLAUDE.md)** | **最外层入口，Claude Code 自动加载。** 换台机器要 clone 什么、装什么、配什么、哪些东西不在 git 里。四个仓库各有一份，都指回这里 |
+| **[../CLAUDE.md](../CLAUDE.md)** | **最外层入口，Claude Code 自动加载。** 换台机器要 clone 什么、装什么、配什么、哪些东西不在 git 里。**六个仓库各有一份**，另外五份都只说"本仓库是什么"，然后指回这里 |
 | **[handover/SESSION-START.md](handover/SESSION-START.md)** | 开工顺序与**收尾流程**。从这里进 [handover/](handover/)：需求清单、测试覆盖矩阵、待做模块的设计 |
 | [WORKING-AGREEMENTS.md](WORKING-AGREEMENTS.md) | 动手改任何东西之前 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 找不到某个仓库/文件在哪；要改跨仓共享的东西 |
