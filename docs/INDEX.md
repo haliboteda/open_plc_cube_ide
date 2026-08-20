@@ -21,7 +21,8 @@
 
 | 文件 | 什么时候看 |
 |---|---|
-| **[handover/SESSION-START.md](handover/SESSION-START.md)** | **新会话 / 换台电脑的入口。** 从这里进 [handover/](handover/)：需求清单、测试覆盖矩阵、待做模块的设计，以及"今天结束"时的收尾流程 |
+| **[../CLAUDE.md](../CLAUDE.md)** | **最外层入口，Claude Code 自动加载。** 换台机器要 clone 什么、装什么、配什么、哪些东西不在 git 里。四个仓库各有一份，都指回这里 |
+| **[handover/SESSION-START.md](handover/SESSION-START.md)** | 开工顺序与**收尾流程**。从这里进 [handover/](handover/)：需求清单、测试覆盖矩阵、待做模块的设计 |
 | [WORKING-AGREEMENTS.md](WORKING-AGREEMENTS.md) | 动手改任何东西之前 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 找不到某个仓库/文件在哪；要改跨仓共享的东西 |
 | [HARDWARE-FACTS.md](HARDWARE-FACTS.md) | 碰引脚、串口、启动模式、SRAM4 之前 |

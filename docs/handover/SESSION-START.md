@@ -34,7 +34,7 @@
 
 ## 新会话的开机顺序
 
-按这个顺序读，四步之后就能干活：
+**入口是仓库根目录的 [../../CLAUDE.md](../../CLAUDE.md)**（Claude Code 自动加载），它给的顺序是：
 
 1. **[../WORKING-AGREEMENTS.md](../WORKING-AGREEMENTS.md)** —— 规矩。改任何东西之前
 2. **[../ARCHITECTURE.md](../ARCHITECTURE.md)** —— 三个仓库在哪、哪些代码是跨仓镜像的
@@ -43,19 +43,22 @@
 
 碰硬件之前再加一份 [../HARDWARE-FACTS.md](../HARDWARE-FACTS.md)；碰 bootloader 的状态扇区之前加 [../JOURNAL.md](../JOURNAL.md)；碰签名密钥之前加 [../OWNERSHIP.md](../OWNERSHIP.md)。
 
-## 换台电脑要做的三件事
+## 换台电脑
+
+**全部写在仓库根目录的 [../../CLAUDE.md](../../CLAUDE.md) 里** —— clone 哪几个仓库（含地址和 remote 名）、装什么工具、配什么、哪些东西不在 git 里必须单独处理。
+
+那份是**新会话和新机器的入口**：Claude Code 在任何一个仓库里启动都会自动加载它，四个仓库各有一份。这里不抄第二遍。
+
+一句话版本：
 
 ```powershell
-# 1. 三个仓库都拉下来（路径见 ARCHITECTURE.md 的路径变量表）
-# 2. 填本机路径 —— 全套脚本只认这一个文件
-cd $TOOL\TestTool
-Copy-Item config\machine.example.ps1 config\machine.ps1   # 然后编辑
-
-# 3. 跑一遍主机侧自检，确认环境是通的
-.\tools\selfcheck.ps1
+# clone 三个仓库（地址见 CLAUDE.md）→ 装工具 → 填本机路径 → 自检
+cd $TOOL/TestTool
+Copy-Item config/machine.example.ps1 config/machine.ps1   # 然后编辑
+pwsh ./tools/selfcheck.ps1
 ```
 
-`selfcheck.ps1` 全绿（或只剩它自己报出来的 SKIP）就说明这台机器可以开工了。**缺什么它会说缺什么**，不会静默跳过。
+`selfcheck.ps1` 全绿（或只剩它自己报出来的 SKIP）就说明这台机器可以开工了。**缺什么它会说缺什么**，不会静默跳过 —— 第一步 **A0** 专门打印这台机器上每一项工具解析成了什么。
 
 ## 收尾流程 —— 说"今天到此为止"时要做的
 

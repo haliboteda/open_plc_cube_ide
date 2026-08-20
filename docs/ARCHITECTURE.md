@@ -6,6 +6,8 @@
 
 全套文档用下面这些变量指代路径。**换机器只改这一张表**，别的地方不写绝对路径。
 
+> **要 clone 的地址、要装的工具、要配的东西，在 [../CLAUDE.md](../CLAUDE.md)。** 那是新机器的入口，这里不抄第二份 —— 下面这张表记的是**变量含义和本机当前值**，不是安装步骤。
+
 | 变量 | 本机当前值（2026-08-16） |
 |---|---|
 | `$BOOT` | `E:\WorkSpace\Schaeffer-AG\open_plc_cube_ide` |
@@ -17,6 +19,8 @@
 | `$IDE` | `D:\Soft\arduino-2` |
 | `$A15` | `C:\Users\WhoamIamwhO\AppData\Local\Arduino15` |
 | `$PKGIDX` | `E:\WorkSpace\Schaeffer-AG\package_index_json` |
+
+⚠️ **这张表是给读文档的人看的，脚本不读它。** 脚本只认 `$TOOL\TestTool\config\machine.ps1`（gitignored，模板是同目录的 `machine.example.ps1`）。两处的值应当一致，但**没有任何机制强制**——`selfcheck.ps1` 的 A0 会把脚本实际解析到的路径全部打出来，对不上时以 A0 为准。
 
 `$CORE_LIVE` 末尾的 `0.1.3-pre` 是板卡包版本号，**发版会变**；`$A15\packages\OpenPLC_Alpha\tools\STM32Tools\0.1.2` 里的 `0.1.2` 是随包分发的 IAPTool 版本，两个号互相独立。
 

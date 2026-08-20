@@ -1,18 +1,22 @@
 # 构建与测试
 
-路径变量（`$IDE`、`$CORE_LIVE`、`$TOOL` 等）的定义见 [ARCHITECTURE.md](ARCHITECTURE.md#路径变量)。
+路径变量（`$IDE`、`$CORE_LIVE`、`$TOOL` 等）的定义见 [ARCHITECTURE.md](ARCHITECTURE.md#路径变量)。装什么、配什么在 [../CLAUDE.md](../CLAUDE.md)。
+
+> **写路径一律用 `/`。** Windows 的 .NET 路径 API 全都接受正斜杠，Linux 不接受反斜杠 —— `/` 是唯一两边都对的写法。可执行文件后缀（`.exe` 或空）不要写死，脚本里用 `_common.ps1` 的 `$EXE`。
 
 ## 命令行重编 app（不用开 Arduino IDE）
 
-IDE 自带的 CLI 在 `$IDE\resources\app\lib\backend\resources\arduino-cli.exe`（**不在 PATH 上**）。
+IDE 自带的 CLI 在 `$IDE/resources/app/lib/backend/resources/arduino-cli`（Windows 上带 `.exe`）—— **不在 PATH 上**，配置在 `$TOOL/TestTool/config/machine.ps1` 的 `$ARDUINO_CLI`。
 
 ```powershell
-arduino-cli.exe compile --warnings all `
-  --config-file "$HOME\.arduinoIDE\arduino-cli.yaml" `
+& $ARDUINO_CLI compile --warnings all `
+  --config-file $ARDUINO_CLI_CONFIG `
   --fqbn "OpenPLC_Alpha:stm32:OPEN-PLC:pnum=PLC_H743,usb=CDCgen,xusb=FS,upload_method=cdcMethod,knxrole=dual_device,downgrade=refuse" `
-  --build-path "$HOME\AppData\Local\arduino\sketches\<hash>" `
-  "<$TOOL>\TestTool\onboard\rs232\SerialPort"
+  --build-path "<IDE 的 sketch 缓存目录>/<hash>" `
+  "$TOOL/TestTool/onboard/rs232/SerialPort"
 ```
+
+`$ARDUINO_CLI_CONFIG` 默认是 `$HOME/.arduinoIDE/arduino-cli.yaml`，两个平台同名。
 
 - **`--config-file` 必须带**，否则找不到 Arduino15 packages 和用户库目录
 - **`--warnings all` 必须带** —— arduino-cli 默认 `-w`，什么警告都不打；IDE 里那个 All 档是 IDE 自己的设置，CLI 不继承
@@ -31,12 +35,12 @@ arduino-cli.exe compile --warnings all `
 | 目标 | 命令 |
 |---|---|
 | IAPTool（三平台） | `$TOOL/compile_tool.sh` —— 别手搓 `go build`，输出布局是约定好的 |
-| TestTool | `cd $TOOL && go build -o Output/windows/TestTool.exe ./TestTool` |
+| TestTool（本机） | `cd $TOOL && go build -o Output/<GOOS>/TestTool ./TestTool`。脚本里用 `_common.ps1` 的 `Get-GoBin "TestTool"` 找它，别自己拼路径 |
 | network_discovery（四平台） | `$CORE_LIVE/tools/discovery/build.sh`（或 `build.ps1`）—— **Arduino IDE 开着会因文件占用失败** |
 | bootloader | STM32CubeIDE。（cmake 路径存在，但 cmake/ninja 通常不在 PATH 上） |
 
 单文件语法检查 bootloader 的改动，不必开 CubeIDE：用 core 包里的
-`$A15/packages/OpenPLC_Alpha/tools/xpack-arm-none-eabi-gcc/*/bin/arm-none-eabi-gcc.exe`，加上 `-fsyntax-only`、
+`$A15/packages/OpenPLC_Alpha/tools/xpack-arm-none-eabi-gcc/*/bin/arm-none-eabi-gcc`（Windows 上带 `.exe`），加上 `-fsyntax-only`、
 `-mcpu=cortex-m7 -mthumb -DSTM32H743xx -DUSE_HAL_DRIVER` 和工程的 `-I` 路径。
 能在烧板之前挡住低级错误。
 
@@ -84,6 +88,6 @@ arduino-cli.exe compile --warnings all `
 
 | 想看什么 | 真实位置 |
 |---|---|
-| network_discovery 的日志 | `%TEMP%\network_discovery.log`（带 `[HH:MM:SS.mmm]` 时间戳） |
-| ~~network_discovery 的日志~~ | ~~`tools/discovery/bin/windows_amd64/err.log`~~ —— 那是 IDE 抓的 stderr，格式不同，**不是这个** |
+| network_discovery 的日志 | 系统临时目录下的 `network_discovery.log`（带 `[HH:MM:SS.mmm]` 时间戳）。Windows 是 `%TEMP%`，Linux 是 `$TMPDIR` 或 `/tmp` |
+| ~~network_discovery 的日志~~ | ~~`tools/discovery/bin/<平台>/err.log`~~ —— 那是 IDE 抓的 stderr，格式不同，**不是这个** |
 | bootloader / app 的 printf | SWO/ITM **和** UART4 → RS232 端子 C05/C06 |

@@ -22,6 +22,24 @@
 
 **只要存在多于一条路，就给对比表** —— 列出每条的代价、风险、推荐哪条及理由，由用户对比后决定。
 
+## 脚本必须同时能在 Windows 和 Linux 上跑
+
+**2026-08-19 定。** 目标是：换一台 Linux 机器，clone 下来、装好工具、填一份 `machine.ps1`，全套脚本照跑。
+
+| 要做的事 | 用这个 | 不要用 | 为什么 |
+|---|---|---|---|
+| 判断平台 | `_common.ps1` 的 `$PLATFORM` | `$IsWindows` | 那是 PowerShell 6+ 才有的变量，**5.1 下是 `$null`**，判断会反过来 |
+| 临时文件 | `Get-ScratchFile` | `$env:TEMP` | Linux 上该变量为空，`"$env:TEMP/x.out"` 会**塌成往文件系统根目录写** |
+| 可执行文件 | `Get-GoBin` / `Get-IapTool` / `Get-ProgrammerCli` / `Get-CubeIdeExe` / `$EXE` | 硬写 `.exe` | — |
+| 相对路径 | `/` | `\` | Windows 的 .NET 路径 API 接受 `/`，Linux 不接受 `\` —— `/` 是唯一两边都对的 |
+| 平台目录名 | `$GOOS_DIR` / `$A15_DIR` / `$CUBE_PLUG` | 硬写 `windows` / `win` / `win32` | 同样三个平台，三套工具用三种叫法，集中在一处映射 |
+
+**机器相关的路径一律进 `$TOOL/TestTool/config/machine.ps1`**，模板里 Windows 和 Linux 两套示例值都要给。
+
+⚠️ **判断一个值该不该进 `machine.ps1`：另一台同样系统的机器会不会有不同的值？** 不会就不属于那里 —— 那是平台派生量，归 `_common.ps1`。
+
+⚠️ **遇到一个新的、只有本机知道的路径：加进 `machine.example.ps1` 并告诉用户，不要硬编码，也不要猜。**
+
 ## 脚本和工具不许放临时目录
 
 **任何要用第二次的东西，都直接写进仓库里的固定位置**，不要放 `%TEMP%` / scratchpad。
