@@ -90,7 +90,7 @@ Debian 机器只能读代码、改代码，**跑不了任何一个用例、烧�
 | 步 | 做什么 | 验什么 |
 |---|---|---|
 | ~~1~~ | ✅ **2026-08-19 已做**：`config/machine.{py,example.py}` + `tools/common.py` | 见下 |
-| 2 | 五个 `check-*.ps1` → `.py`（版本一致、跨仓镜像、core 同步、公开根、A0） | **两版并排跑，输出逐字节比对**。这五个不碰硬件，可反复跑 |
+| ~~2~~ | ✅ **2026-08-20 已做**：四个 `check-*.ps1` → `.py`（A0 属第 1 步） | **两版并排跑，输出逐字节比对 + 七个故障注入用例**。见下 |
 | 3 | `host/` 下四套（bootloader_unit、crypto_ref、fakeboard、variant_check） | 同上：两版都跑，**通过/失败的用例集合必须完全相同** |
 | 4 | `selfcheck.py` 串起 1–3 | 和 `selfcheck.ps1` 的 12 项结果逐项对照 |
 | 5 | 板子侧 16 个（串口、烧写、跑用例） | ⚠️ **每个用例在同一块板子上先跑 ps1 版、再跑 py 版，判据必须一致** |
@@ -107,6 +107,50 @@ Debian 机器只能读代码、改代码，**跑不了任何一个用例、烧�
 改写过程中抓到并当场消掉的一处差异：**`shutil.which()` 返回的扩展名带 `PATHEXT` 的大小写**，默认是大写，于是 Python 版打 `go.EXE` 而 PowerShell 版打 `go.exe`。功能上无所谓，但 M7 的验收方式就是逐行比对 —— **一个化妆品差异会训练人忽略 diff**，所以在 `show_cmd()` 里归一化了后缀大小写。
 
 已知的**故意不一致**一处：探测命令时 Linux 上找 `python3` 而不是 `python`（Debian 上没有 `python` 这个名字）。Windows 上两者相同，所以不影响比对。
+
+### 第 2 步的实测结果（2026-08-20）
+
+改写了四个（不是五个 —— 第五个"A0"就是第 1 步的 `common.py --probe`）：
+
+| PowerShell | Python | selfcheck 里是 |
+|---|---|---|
+| `check-version-sync.ps1` | `check_version_sync.py` | A7 |
+| `check-mirror-sync.ps1` | `check_mirror_sync.py` | A8 |
+| `check-core-sync.ps1` | `check_core_sync.py` | A9 |
+| `check-public-root.ps1` | `check_public_root.py` | A14 |
+
+**验收用两个新脚本做，都在 `$TOOL/TestTool/tools/`：**
+
+| 脚本 | 干什么 | 结果 |
+|---|---|---|
+| `m7-compare.ps1` | 两版都当子进程跑，输出逐字节比对 | **4/4 完全一致** |
+| `m7-compare-faults.ps1` | 逐个注入故障，再比对一次，用完在 `finally` 里还原 | **7/7 一致**，跑完两个仓库 `git status` 干净 |
+
+⚠️ **只比对通过路径等于没比对。** 一个什么都不检查、只打印同样文字的 Python 脚本能轻松通过 `m7-compare.ps1`。所以七个故障用例是必需的，它们逼出的分支是：版本漂移、指纹漂移、单值 DIFF、**多段 DIFF**（FMC 39 个引脚那条，格式化逻辑比其余全部加起来还多）、SKIP（文件缺失）、ONLY-LIVE、ONLY-REPO。
+
+> 这条直接来自 M5 的教训：用例在**未修的**代码上跑出干净的通过。一个"不再看任何东西"的翻译版会以完全相同的方式骗过验收。
+
+**故障注入当场抓到一处真实分歧**（第一轮 7 个里错 1 个）：`check-public-root` 的 DRIFT 提示里写着"`-Print` 能生成这个常量"，而 Python 版的开关是 `--print`。照抄反而会把人指向一个不存在的开关，所以这是**必须的不一致**，登记进 `m7-compare.ps1` 的 `Known` 列表 —— 一条一条显式列出、每次命中都打印出来，而不是把比对放宽。
+
+### 三个 PowerShell 语义陷阱（翻译时逐条对着改的）
+
+**这三条不是格式差异，是会改判据的差异。**
+
+| PowerShell | 行为 | Python 要写成 |
+|---|---|---|
+| `-replace` / `-match` / `-notmatch` | **大小写不敏感** | `re.sub(..., flags=re.I)` / `re.search(..., re.I)` |
+| `[regex]::Match(...)` | **大小写敏感** | 默认即可 —— 和上一行是反的 |
+| `-ne` / `-eq`（字符串） | **大小写不敏感** | 比十六进制指纹时要 `.lower()`，否则 `owner_slot.c` 换成大写字节就一边过一边不过 |
+| `Select-Object -Unique` | **大小写不敏感** | 去重前先 `.lower()` |
+| `Get-ChildItem -Recurse`（不带 `-Force`） | **不列隐藏项**；Windows 上 `.git` 带 Hidden 属性 | `os.walk` 里显式剪掉 `.git`，否则文件集合就不同了 |
+| `Get-Content -Raw` | 保留 CRLF，吃掉 BOM | `open(..., newline="")` 再手工去 BOM（`common.py` 的 `read_text`）|
+
+顺手修掉 `common.py` 里第 1 步遗留的一处同类问题：`assert_target_reachable` 用 `in` 做子串匹配，而原版是大小写不敏感的 `-match`。
+
+### 第 2 步**没有**证明的事
+
+- **`check-core-sync` 一次差多个文件时的行列顺序没验过。** 故障用例每次只加一个文件，所以 `Get-ChildItem -Recurse` 的遍历顺序和 `os.walk` 的排序遍历有没有分歧，目前不知道。判据（谁进 ONLY-LIVE / DIFF / ONLY-REPO、退出码）一定相同，**打印顺序可能不同**。真要多文件漂移时按行比对，先按行排序再比。
+- **只在 Windows 上比过。** Debian 上跑不了 `.ps1`，没有对照基准 —— 这是 M7 从一开始就定下的，验证在 Windows 做。
 
 ---
 

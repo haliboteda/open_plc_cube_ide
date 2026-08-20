@@ -12,7 +12,7 @@
 | [M4 · FMC 引脚防护](M4-fmc-pin-guard.md) | E6 | 小 | 无 | ✅ **2026-08-17 完成**，E6 转 ✅ |
 | [M5 · Serial_Test 抢 UART4](M5-serial-conflict.md) | E7 | 小 | 需硬件验证 | ✅ **2026-08-17 完成**，E7 转 ✅ |
 | [M6 · 补齐没测到的东西](M6-test-gaps.md) | C5 C6 E1 E8 | 小到中 | 部分等第二块板 | 🟢 **主体已完成（2026-08-17）**，只剩 S4a/S4b 和被第二块板卡住的 M3 |
-| [M7 · 脚本改写成 Python](M7-python-scripts.md) | F5 | 大 | 无 | 🔨 **2026-08-19 立项**。24 个 `.ps1` / 3168 行 → Python 3，让 Debian 机器能完整替代 Windows |
+| [M7 · 脚本改写成 Python](M7-python-scripts.md) | F5 | 大 | 无 | 🔨 **6 步做完 2 步（2026-08-20）**。24 个 `.ps1` / 3168 行 → Python 3，让 Debian 机器能完整替代 Windows。第 2 步：四个 `check-*` 两版输出逐字节一致 + 7 个故障注入用例同样红 |
 
 ## 每份怎么写
 
