@@ -105,6 +105,9 @@ pwsh ./tools/selfcheck.ps1          # Windows 上也可以直接 .\tools\selfche
 | `TestTool/config/machine.ps1` | 每台机器都不一样 | 从 `machine.example.ps1` 抄一份改 |
 | `$CORE_LIVE`（Arduino IDE 实际加载的板卡包目录） | 是 IDE 的安装目录，不是仓库 | 装 Arduino IDE → 装 OpenPLC_Alpha 板卡包 → 用 `open_plc_arduino` 的内容覆盖它。⚠️ 方向是**单向的**，细节见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | `IAPServer/keys/fw_signing_key.pem`（真签名私钥） | 私钥 | **2026-08-19 确认：目前没有真私钥，开发用仓库里的 `fw_signing_key.TEST_ONLY.pem`。** 将来产生真私钥后，它就是换机器时唯一必须手工搬运的文件 —— 到时候回来改这一行 |
+| `.claude/settings.local.json` | 里面全是本机绝对路径的一次性命令，换台机器一条都匹配不上 | **不用搬。** 跨平台通用的那部分已经提交在 `.claude/settings.json` 里（只读命令：`git status/log/diff`、`go vet`、`command -v` 等），新机器开箱就有 |
+
+⚠️ **`.claude/settings.json` 提交，`.claude/settings.local.json` 不提交。** 两个仓库的 `.gitignore` 里各写了一行挡住后者 —— 之前它只被**本机的全局 gitignore** 挡着，换台电脑那条不存在，一提交就把本机私有配置推上去了。
 
 ## 七、平台差异的处理规矩
 
