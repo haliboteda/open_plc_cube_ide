@@ -147,6 +147,23 @@ Debian 机器只能读代码、改代码，**跑不了任何一个用例、烧�
 
 顺手修掉 `common.py` 里第 1 步遗留的一处同类问题：`assert_target_reachable` 用 `in` 做子串匹配，而原版是大小写不敏感的 `-match`。
 
+### 第一次 Debian 实跑（2026-08-20）
+
+跑的是 `python3 tools/common.py --probe`，机器上只有 Python 3.13.5 和 Go，别的都没装。**平台派生层在真机上没崩**：`platform linux`、`linux64` 插件后缀、`linux` 板卡包目录、找 `python3` 而不是 `python`、8 项缺失全部点名。这是这一层第一次离开 Windows。
+
+抓到两个问题，都已修（`common.py` 和 `_common.ps1` 同步改，两版输出仍逐字一致）：
+
+| 问题 | 为什么要紧 |
+|---|---|
+| `machine.example.*` 复制过去没编辑时，A0 只报 8 条 MISSING，不说"你这份配置是 Windows 的" | 模板设计成"两套值都给、删掉不用的那套"，那么**忘记删**就是最常见的用法错误，而它的表现是 8 条互不相关的缺失 |
+| `COM5 does not exist -- check the adapter and the dialout group` | **建议是错的。** Linux 上 `COM5` 根本不是设备名，让人去查串口线和 dialout 组是把人往硬件上带 |
+
+现在 A0 会在配置与平台不符时先打一段话点名是哪几个变量，并且把 `COMn` 单独识别成"配置里还是 Windows 那套"。**配置正确时一个字都不多打**，所以 Windows 上的 A0 输出没变（selfcheck 仍 12/12）。
+
+⚠️ 已知的**故意不一致**又多一处：这段话里 Python 版写 `config/machine.py`、PowerShell 版写 `config/machine.ps1`。和既有的 MISSING 提示同理，Windows 上正常时都不打印，不影响比对。
+
+⚠️ `COMn` 那条分支**只在 Windows 上按代码走查过**，没有实跑 —— 它只在非 Windows 上执行。下次 Debian 跑 A0 时确认。
+
 ### 第 2 步**没有**证明的事
 
 - **`check-core-sync` 一次差多个文件时的行列顺序没验过。** 故障用例每次只加一个文件，所以 `Get-ChildItem -Recurse` 的遍历顺序和 `os.walk` 的排序遍历有没有分歧，目前不知道。判据（谁进 ONLY-LIVE / DIFF / ONLY-REPO、退出码）一定相同，**打印顺序可能不同**。真要多文件漂移时按行比对，先按行排序再比。
