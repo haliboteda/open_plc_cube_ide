@@ -44,11 +44,13 @@
 | `IAPTranfer_Tool` | Go 写的 PC 工具 `IAPTool` + **全部测试资产 `TestTool/`** | `git@github.com:haliboteda/IAPTranfer_Tool.git` | `origin` |
 | `Hello_World_OpenPLC` | 同一块板子的 CubeIDE **参考工程**（发明新写法之前先看它） | `git@github.com:haliboteda/Hello_World_OpenPLC.git` | `origin` |
 | `Hardware` | 原理图、netlist、生产文件。**只有 Forgejo 一份** | `ssh://git@git.schaeffer-ag.de/OpenPLC_Alpha/Hardware.git` | `origin` |
-| `package_index_json` | Arduino IDE 拉板卡包用的 index json | `https://github.com/haliboteda/package_index_json.git` | `origin` |
+| `package_index_json` | Arduino IDE 拉板卡包用的 index json | `git@github.com:haliboteda/package_index_json.git` | `origin` |
 
 前三个是必须的；`Hardware` 在核实引脚接法时必须有（**文档打架时以原理图为准**）；`Hello_World_OpenPLC` 是对照，不急；`package_index_json` 只在发板卡包时用。
 
 **六个仓库各带一份 `CLAUDE.md`。** 另外五份只回答"本仓库是什么、在这里最容易踩什么坑"，然后指回本文件 —— 所以在哪个仓库里开会话都不会迷路，也不存在第二份安装说明。
+
+⚠️ **六个地址全部走 SSH，一个 HTTPS 都不要用。** GitHub 已经**不接受密码推送**，HTTPS 的 remote 表现为"能 clone、能 fetch，一 push 就 `Invalid username or token`" —— 2026-08-20 `package_index_json` 就是这么卡住的，当天改成 SSH 才推上去。
 
 放在同一个父目录下，后面的配置最省事：
 
