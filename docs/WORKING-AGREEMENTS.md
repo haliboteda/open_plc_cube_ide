@@ -8,6 +8,20 @@
 
 **给方案要给对比和取舍**，不要直接端出一个已经拍板的实现：列出可选路径、每条的代价和风险、推荐哪条及理由，由用户对比后决定。设计层面的取舍一律先摆出来；已经明确要做的小改动不用反复请示。
 
+## 提编号就给路径 —— 本项目的编号住在哪
+
+**通用那一条规则不在这里**，在 `AI-Skills/_shared/rules/cite-the-path.md`，它会作为用户级 rule 在每个项目里加载。这里只答本项目的那一半：**哪类编号在哪个文件。**
+
+| 编号 | 去哪查 |
+|---|---|
+| 用例覆盖哪条需求 + 最近一次结果 | [handover/TEST-PLAN.md](handover/TEST-PLAN.md) |
+| 用例的判据和怎么跑 | `$TOOL/TestTool/TEST-CASES.md` |
+| 需求条目 A1–A7 B1–B11 C1–C14 D1–D9 E1–E8 F1–F5 | [handover/REQUIREMENTS.md](handover/REQUIREMENTS.md) |
+| 模块 M1–M8 | [handover/Todo/BACKLOG.md](handover/Todo/BACKLOG.md) 及同目录各自一份 |
+| selfcheck 的 A0–A14 | `$TOOL/TestTool/tools/selfcheck.ps1` |
+
+实现在哪：T/N/S/AU1 → `TestTool/*.go`；K/DG1 → `TestTool/host/fakeboard/`；H2 → `TestTool/host/bootloader_unit/`；X → `TestTool/host/crypto_ref/`；P → `TestTool/tools/check-*`。
+
 ## 陈述任何问题都按这个骨架
 
 **不论是回答提问、汇报发现、还是提方案，都要写全这五项**（2026-08-16 定）：

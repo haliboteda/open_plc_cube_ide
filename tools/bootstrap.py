@@ -16,6 +16,8 @@ What it does, in order:
     5  detect this machine's paths (hands over to IAPTranfer_Tool's
        init_machine.py, which asks you about whatever it cannot find)
     6  let a Claude Code session in one repo read the sibling repos
+    6b sync AI-Skills/_shared/rules/ into ~/.claude/rules/, the only place
+       that loads into every session of every project
     7  register the AI-Skills plugin marketplace and install /openplc:init
     8  verify, and say plainly what still needs a person
 
@@ -269,15 +271,33 @@ def step_ssh(plan):
     return reachable
 
 
+def find_existing(name, rel, workspace):
+    """An existing clone, wherever it reasonably is.
+
+    The layout block gives one place per repo, but a repo shared across projects
+    is reasonably kept one level up from a single project's workspace -- which is
+    exactly where AI-Skills sits on the machine this was written on. Cloning a
+    second copy because it was not in the expected spot would be worse than
+    useless: the two would drift, and the rules sync would follow the wrong one.
+    """
+    for cand in (workspace / rel, workspace / name,
+                 workspace.parent / rel, workspace.parent / name):
+        if (cand / ".git").is_dir():
+            return cand
+    return None
+
+
 def step_clone(plan, workspace, reachable):
     Section("2  clone what is missing")
     got, failed = [], []
     for name, rel, url in plan:
-        target = workspace / rel
-        if (target / ".git").is_dir():
-            Ok("  %-22s already here  %s" % (name, target))
-            got.append((name, target))
+        found = find_existing(name, rel, workspace)
+        if found:
+            where = "already here" if found == workspace / rel else "found at"
+            Ok("  %-22s %-12s %s" % (name, where, found))
+            got.append((name, found))
             continue
+        target = workspace / rel
         host = re.search(r"(?:git@|ssh://git@)([^:/]+)", url)
         if host and not reachable.get(host.group(1), True):
             Warn("  %-22s skipped -- %s is not reachable" % (name, host.group(1)))
@@ -530,6 +550,74 @@ def step_paths(repos):
     return ok
 
 
+# ------------------------------------------------------------ 6b user rules
+# Standing rules -- "always mark hands-on steps", "always cite the path" -- are
+# not tasks, so they cannot be skills: a skill loads when it is invoked or looks
+# relevant. A plugin has no always-on slot either. The only mechanism that loads
+# something into every session of every project is ~/.claude/rules/, and that is
+# machine-local.
+#
+# So the text lives in git, in AI-Skills/_shared/rules/, and gets copied here.
+# The copy carries a header saying where it came from and how to refresh it: a
+# GENERATED copy of a tracked file is not the drift this project guards against
+# -- two hand-maintained copies are.
+RULES_HEADER = (
+    "<!-- GENERATED COPY -- do not edit here.\n"
+    "     Source : %s\n"
+    "     Refresh: python3 open_plc_cube_ide/tools/bootstrap.py --skip 1 --skip 2 "
+    "--skip 3 --skip 4 --skip 5 --skip 7 --skip 8\n"
+    "     Why a copy: ~/.claude/rules/ is the only place that loads into every\n"
+    "     session of every project, and it is machine-local. -->\n\n")
+
+
+def step_user_rules(repos):
+    Section("6b  working agreements that apply to every project")
+    skills_repo = dict(repos).get("AI-Skills")
+    if not skills_repo:
+        Warn("  AI-Skills is not on disk, so there is nothing to sync.")
+        record("user-level rules synced", False, "AI-Skills not cloned")
+        return
+    src = Path(skills_repo) / "_shared" / "rules"
+    if not src.is_dir():
+        Warn("  %s does not exist" % src)
+        record("user-level rules synced", False, "no _shared/rules in AI-Skills")
+        return
+
+    dest = Path.home() / ".claude" / "rules"
+    print("  %s" % src)
+    print("    -> %s   (loads in every session, every project)" % dest)
+
+    files = sorted(src.glob("*.md"))
+    if not files:
+        record("user-level rules synced", False, "no rule files found")
+        return
+
+    if not ARGS.dry_run:
+        dest.mkdir(parents=True, exist_ok=True)
+    written, unchanged = [], []
+    for f in files:
+        body = RULES_HEADER % f.as_posix() + f.read_text(encoding="utf-8")
+        target = dest / f.name
+        if target.exists() and target.read_text(encoding="utf-8") == body:
+            unchanged.append(f.name)
+            print("    %-28s unchanged" % f.name)
+            continue
+        if ARGS.dry_run:
+            print("    %-28s would write" % f.name)
+            written.append(f.name)
+            continue
+        # A file here that somebody edited by hand is still overwritten -- it is
+        # a generated copy and says so -- but not silently.
+        if target.exists():
+            Warn("    %-28s replacing the existing copy" % f.name)
+        target.write_text(body, encoding="utf-8", newline="\n")
+        Ok("    %-28s written" % f.name)
+        written.append(f.name)
+
+    record("user-level rules synced", True,
+           "%d written, %d already current" % (len(written), len(unchanged)))
+
+
 # ----------------------------------------------------------------- 7 skill
 def find_claude():
     hit = shutil.which("claude")
@@ -670,7 +758,8 @@ def main():
 
     reachable = step_ssh(plan) if "1" not in skip else {}
     repos = step_clone(plan, workspace, reachable) if "2" not in skip else \
-        [(n, workspace / r) for n, r, _u in plan if (workspace / r / ".git").is_dir()]
+        [(n, p) for n, r, _u in plan
+         for p in [find_existing(n, r, workspace)] if p]
 
     if "3" not in skip:
         step_branches(repos)
@@ -684,6 +773,8 @@ def main():
 
     if im and "5" not in skip:
         step_paths(repos)
+    if "6b" not in skip and "6" not in skip:
+        step_user_rules(repos)
     if "7" not in skip:
         step_skill()
     if im and "8" not in skip:

@@ -61,12 +61,14 @@ def test_parsing():
     check("a plan was produced", plan is not None, True)
     names = [n for n, _r, _u in (plan or [])]
 
-    # The layout block is what decides. AI-Skills has a row in the table but is
-    # deliberately not on disk: the plugin system fetches it. If it ever appears
-    # here, the two halves of section 3 have stopped agreeing.
-    check("AI-Skills is not cloned -- the plugin system fetches it",
-          "AI-Skills" in names, False)
-    check("package_index_json is not cloned either",
+    # The layout block is what decides what belongs on disk, and the table above
+    # it only supplies addresses. AI-Skills has to be a checkout even though the
+    # plugin system fetches its plugins separately: _shared/rules/ is copied
+    # from it into ~/.claude/rules/, and a copy needs a source.
+    check("AI-Skills is cloned -- ~/.claude/rules/ is synced from it",
+          "AI-Skills" in names, True)
+    # Only needed when publishing a board package, so it stays off disk.
+    check("package_index_json is not cloned",
           "package_index_json" in names, False)
     check("the three required repos are all in the plan",
           sorted(n for n in names if n in

@@ -49,7 +49,7 @@
 
 前三个是必须的；`Hardware` 在核实引脚接法时必须有（**文档打架时以原理图为准**）；`Hello_World_OpenPLC` 是对照，不急；`package_index_json` 只在发板卡包时用。
 
-**`AI-Skills` 不用手工 clone。** 上面五个仓库的 `.claude/settings.json` 里都声明了它是一个 plugin marketplace，Claude Code 信任目录之后自己去取。只有**要改 skill 本身**的时候才手工 clone 它。
+**`AI-Skills` 要落到磁盘上**（`bootstrap.py` 会 clone 它）。plugin 部分确实是 Claude Code 自己去取的 —— 五个仓库的 `.claude/settings.json` 里都声明了那个 marketplace —— 但它还带一份 `_shared/rules/`，那些要**同步进 `~/.claude/rules/`** 才能常驻生效（plugin 没有"常驻指令"这个槽位），而同步需要一份 checkout。
 
 **七个仓库各带一份 `CLAUDE.md`。** 另外六份只回答"本仓库是什么、在这里最容易踩什么坑"，然后指回本文件 —— 所以在哪个仓库里开会话都不会迷路，也不存在第二份安装说明。
 
@@ -64,7 +64,10 @@
   IAPTranfer_Tool/
   Hardware/
   ref/Hello_World_OpenPLC/
+  AI-Skills/
 ```
+
+⚠️ **这个代码块就是"该在磁盘上有什么"的清单** —— `tools/bootstrap.py` 直接读它来决定 clone 什么，读上面那张表来取地址。`package_index_json` 故意不在里面（只在发板卡包时才要）。改这里就等于改 bootstrap 的行为，所以改完跑一下 `python3 tools/test_bootstrap.py`。
 
 ⚠️ **clone 完先确认分支，`git clone` 给的是默认分支。** 2026-08-21 实测：五个仓库里**三个**的远端默认分支是 `master`/`main`，而活在版本分支上（当天是 `v0.1.3.1` / `v0.1.3` / `v0.1.3-dev`）。照默认分支开工就是**悄无声息落后一整个版本** —— 和下面那条 Forgejo 警告同样的症状，不同的原因。
 

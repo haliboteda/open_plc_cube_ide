@@ -67,6 +67,23 @@ Claude Code 默认只加载**当前项目**的 `.claude/skills/`。skill 要放�
 - `enabledPlugins` 是**对象映射**（`{"openplc@ai-skills": true}`），不是数组。
 - **不给 plugin 写 `version`**：写了就是钉版本，装过的副本要等版本号变才更新。新机器上拿到一份过期的 skill，正是这个 skill 要防的事。
 
+### 常驻规则不能是 skill，也不能是 plugin
+
+2026-08-21 把散在各处的 AI 侧内容归拢时撞到的机制事实：
+
+| 想要 | 唯一可行的机制 | 在 git 里吗 |
+|---|---|---|
+| 按需加载的流程 | plugin 的 `skills/` | ✅ |
+| **每个会话、每个项目常驻** | **`~/.claude/rules/*.md`** | ❌ machine-local |
+| 每个会话、单个项目常驻 | 仓库的 `CLAUDE.md` / `.claude/rules/` | ✅ |
+| Claude 自己记的东西 | `~/.claude/projects/<p>/memory/` | ❌ **官方文档明确：不跨机器共享** |
+
+**"提编号就给路径""要动手的步骤用 🍍 标出来"这两条是常驻规则，不是任务** —— skill 只在被调用或被判定相关时加载，plugin 根本没有常驻槽位。而它们当时只存在于 machine-local 的 memory 里，**换台电脑必丢**，而且 `WORKING-AGREEMENTS.md` 里也没有。
+
+解法：文本进 git（`AI-Skills/_shared/rules/`），`bootstrap.py` 第 6b 步**拷进 `~/.claude/rules/`**，每份拷贝带头注明出处和刷新命令。**"生成的拷贝"不是这个项目要防的那种重复** —— 要防的是两份手工维护的。同一道理下 `machine.py` 也是生成的。
+
+顺带清掉的三份 machine-local 记忆，其中一份已经漂了：它一直指向 2026-08-17 就改名的 `docs/ai/README.md`，还写着"提交三个仓库"（实际六个）。**没人会去更新一份不在 git 里的文件。**
+
 ### 用户 2026-08-21 改了安装的边界
 
 原来定的是「只报告，用户自己装」。当天下午改成**脚本执行安装**，于是 `PREREQS` 的每个平台值从一句话变成 `{"cmd", "auto"}`：`auto=True` 的脚本可以跑，`auto=False` 的必须人来（多步、要登录、或压根没有包）。
