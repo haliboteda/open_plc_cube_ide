@@ -6,7 +6,9 @@ Debug/
 # .claude/settings.json IS committed -- it is the shared, machine-independent
 # permission allowlist. Only the local override is private. Listing it here
 # rather than relying on a global gitignore, which a new machine will not have.
-.claude/settings.local.json
+# The trailing * also covers the .bak that init_machine.py keeps of the
+# first version it ever replaced.
+.claude/settings.local.json*
 
 # Secrets produced by IAPServer/keys/rotate_keys.sh. The backups hold the
 # private key and the password in the clear.

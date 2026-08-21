@@ -114,7 +114,7 @@
 | **F2** | 每块出厂板有逐板检查单 | 🟡 | — | `acceptance/checklist.md` C 节；**C3（MAC 唯一）现在做不了** |
 | **F3** | 发版前有验收单，且能抓住捆绑升级风险 | ✅ | — | 同上 B 节，B7 是唯一能抓住的用例 |
 | **F4** | bootloader 与 app 必须捆绑升级这条风险写进了发布说明 | ✅ | 手工 | **唯一一个纯靠流程兜的风险** |
-| **F5** | 换台电脑能接着干，不用重训一个 AI | 🟡 | — | 五个仓库各一份 `CLAUDE.md` + 本目录 + `config/machine.ps1`。⚠️ **只对"另一台 Windows"成立。** 2026-08-19 把脚本里的平台依赖逐条消掉了，但 Debian 上没有 PowerShell，**一个用例都跑不了**；而且 Linux 那半从未真机验证过。补齐它的是 [Todo/M7-python-scripts.md](Todo/M7-python-scripts.md) |
+| **F5** | 换台电脑能接着干，不用重训一个 AI | 🟡 | — | 七个仓库各一份 `CLAUDE.md` + 本目录 + `config/machine.{ps1,py}`（由 `init_machine.py` 探测生成）。2026-08-21 起有 **`/openplc:init`** 这个 skill，把「初始化」从散文变成一条命令 —— [Todo/M8-onboard-skill.md](Todo/M8-onboard-skill.md)，9 步做完 6 步。⚠️ **仍然只对"另一台 Windows"完全成立。** 2026-08-19 把脚本里的平台依赖逐条消掉了，但 Debian 上没有 PowerShell，**一个用例都跑不了** —— 补齐那半的是 [Todo/M7-python-scripts.md](Todo/M7-python-scripts.md)。Debian 2026-08-20 配置过一次；**macOS 从未在真机上跑过**，待核实清单在 M8 里 |
 
 ---
 

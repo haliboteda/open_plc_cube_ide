@@ -47,18 +47,34 @@
 
 **全部写在仓库根目录的 [../../CLAUDE.md](../../CLAUDE.md) 里** —— clone 哪几个仓库（含地址和 remote 名）、装什么工具、配什么、哪些东西不在 git 里必须单独处理。
 
-那份是**新会话和新机器的入口**：Claude Code 在任何一个仓库里启动都会自动加载它，**[../../CLAUDE.md](../../CLAUDE.md) 第三节表里的六个仓库各有一份**。这里不抄第二遍。
+那份是**新会话和新机器的入口**：Claude Code 在任何一个仓库里启动都会自动加载它，**[../../CLAUDE.md](../../CLAUDE.md) 第三节表里的七个仓库各有一份**。这里不抄第二遍。
 
-一句话版本：
+一句话版本：**clone `open_plc_cube_ide` → 开会话 → 装一次 plugin → `/openplc:init`。**
 
 ```bash
-# clone 三个仓库（地址见 CLAUDE.md）→ 装工具 → 生成本机配置 → 自检
+git clone git@github.com:haliboteda/open_plc_cube_ide.git
+cd open_plc_cube_ide
+git branch -r && git checkout <工作分支>    # ⚠️ clone 给的是默认分支，不是工作分支
+claude                                     # 交互式开一次，接受信任对话框
+claude plugin install openplc@ai-skills    # 每台机器一次。外部来源的 plugin 不会自动装
+/openplc:init                              # 剩下的它带着你走
+```
+
+⚠️ 那两条 `⚠️` 不是客套：**默认分支不是工作分支**（2026-08-21 五个仓库里三个如此，理由见 [../../CLAUDE.md](../../CLAUDE.md) 第三节），而**目录没被信任时 committed 的 settings 全部静默失效** —— 包括那条让 marketplace 自动加入的声明。
+
+那个 skill 做的事（立项文件 [Todo/M8-onboard-skill.md](Todo/M8-onboard-skill.md)）：clone 缺的仓库 → 报告缺哪些运行时 → 探测本机路径并把问题问回给你 → 把兄弟仓库授权给会话 → 自检 → 汇报这台机器能干什么、不能干什么。
+
+手工版本（skill 不可用时）：
+
+```bash
 cd $TOOL/TestTool
-python3 tools/init_machine.py       # Windows 上是 python。探测，不用手填
+python3 tools/init_machine.py --prereqs            # Windows 上是 python。缺什么、怎么装
+python3 tools/init_machine.py                      # 探测路径，不用手填
+python3 tools/init_machine.py --write-claude-dirs   # 让会话读得到兄弟仓库
 pwsh ./tools/selfcheck.ps1
 ```
 
-`selfcheck.ps1` 全绿（或只剩它自己报出来的 SKIP）就说明这台机器可以开工了。**缺什么它会说缺什么**，不会静默跳过 —— 第一步 **A0** 专门打印这台机器上每一项工具解析成了什么。
+`selfcheck.ps1` 全绿（或只剩它自己报出来的 SKIP）就说明这台机器可以开工了。**缺什么它会说缺什么**，不会静默跳过 —— 第一步 **A0** 专门打印这台机器上每一项工具解析成了什么。⚠️ A0 要 PowerShell 才跑得起来，所以 pwsh 本身缺不缺要靠 `--prereqs` 看。
 
 ## 收尾流程 —— 说"今天到此为止"时要做的
 

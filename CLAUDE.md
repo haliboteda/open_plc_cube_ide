@@ -45,12 +45,15 @@
 | `Hello_World_OpenPLC` | 同一块板子的 CubeIDE **参考工程**（发明新写法之前先看它） | `git@github.com:haliboteda/Hello_World_OpenPLC.git` | `origin` |
 | `Hardware` | 原理图、netlist、生产文件。**只有 Forgejo 一份** | `ssh://git@git.schaeffer-ag.de/OpenPLC_Alpha/Hardware.git` | `origin` |
 | `package_index_json` | Arduino IDE 拉板卡包用的 index json | `git@github.com:haliboteda/package_index_json.git` | `origin` |
+| `AI-Skills` | Claude Code 的 skill / plugin（`/openplc:init` 就在里面） | `git@github.com:haliboteda/AI-Skills.git` | `origin` |
 
 前三个是必须的；`Hardware` 在核实引脚接法时必须有（**文档打架时以原理图为准**）；`Hello_World_OpenPLC` 是对照，不急；`package_index_json` 只在发板卡包时用。
 
-**六个仓库各带一份 `CLAUDE.md`。** 另外五份只回答"本仓库是什么、在这里最容易踩什么坑"，然后指回本文件 —— 所以在哪个仓库里开会话都不会迷路，也不存在第二份安装说明。
+**`AI-Skills` 不用手工 clone。** 上面五个仓库的 `.claude/settings.json` 里都声明了它是一个 plugin marketplace，Claude Code 信任目录之后自己去取。只有**要改 skill 本身**的时候才手工 clone 它。
 
-⚠️ **六个地址全部走 SSH，一个 HTTPS 都不要用。** GitHub 已经**不接受密码推送**，HTTPS 的 remote 表现为"能 clone、能 fetch，一 push 就 `Invalid username or token`" —— 2026-08-20 `package_index_json` 就是这么卡住的，当天改成 SSH 才推上去。
+**七个仓库各带一份 `CLAUDE.md`。** 另外六份只回答"本仓库是什么、在这里最容易踩什么坑"，然后指回本文件 —— 所以在哪个仓库里开会话都不会迷路，也不存在第二份安装说明。
+
+⚠️ **七个地址全部走 SSH，一个 HTTPS 都不要用。** GitHub 已经**不接受密码推送**，HTTPS 的 remote 表现为"能 clone、能 fetch，一 push 就 `Invalid username or token`" —— 2026-08-20 `package_index_json` 就是这么卡住的，当天改成 SSH 才推上去。
 
 放在同一个父目录下，后面的配置最省事：
 
@@ -63,20 +66,39 @@
   ref/Hello_World_OpenPLC/
 ```
 
+⚠️ **clone 完先确认分支，`git clone` 给的是默认分支。** 2026-08-21 实测：五个仓库里**三个**的远端默认分支是 `master`/`main`，而活在版本分支上（当天是 `v0.1.3.1` / `v0.1.3` / `v0.1.3-dev`）。照默认分支开工就是**悄无声息落后一整个版本** —— 和下面那条 Forgejo 警告同样的症状，不同的原因。
+
+分支名每次发版都变，所以这里不写死任何一个：`python3 tools/init_machine.py` 会打出一张 **branches** 表（每个仓库当前在哪、远端默认是哪），**有的仓库在默认分支、有的不在时它直接警告**。
+
 ⚠️ **不要照 [README.md](README.md) 里那条 Forgejo 地址 clone `open_plc_cube_ide`。** 2026-08-19 实测：Forgejo 上那份**最新分支还停在 v0.1.2 时代**，既没有 `v0.1.2.1` 也没有 `v0.1.3.1`，反而多出两个 GitHub 上不存在的 `v0.1.2-lwip` / `v0.1.2-old` —— 双向分叉，说明那条 pull mirror 从来没真正跑过。照它 clone 会拿到一份差了一整个版本的代码。`open_plc_arduino` 和 `IAPTranfer_Tool` 两边分支一致，镜像是好的。
 
 ## 四、换台机器：装什么
 
-| 工具 | 干什么用的 | 不装会怎样 | 本机已知可用的版本 |
-|---|---|---|---|
-| **git** | — | — | 2.30.1 |
-| **Go** | 构建 `IAPTool` / `TestTool`；selfcheck 的 A1/A3 | 一半用例跑不了 | go 1.23.1 |
-| **Python 3** | selfcheck 的 A10/A11/A12（假板子、加密交叉验证）；[M7](docs/handover/Todo/M7-python-scripts.md) 之后是**全部**测试脚本的运行时 | 那三步报 SKIP；M7 完成后一个脚本都跑不了 | 3.10.4 |
-| **`pyserial`** | 唯一一个要 `pip install` 的东西。M7 之后所有碰串口的用例都靠它 | 碰串口的用例报 SKIP（**点名说缺它**，不静默） | `pip install -r IAPTranfer_Tool/TestTool/requirements.txt`；Debian 上也可 `apt install python3-serial` |
-| **原生 C 编译器** | selfcheck 的 A2：**直接编译 bootloader 的真实 C 源码**做主机侧单元测试 | A2 报 SKIP | Windows: MinGW-W64 gcc 16.1.0；Linux: 系统 gcc 即可 |
-| **STM32CubeIDE** | 构建 bootloader；`STM32_Programmer_CLI` 烧写和读回 flash | 上不了板 | 1.10.0 |
-| **Arduino IDE 2.x** | 构建 app；它自带的 `arduino-cli` 供 selfcheck 的 A13 用 | A13 报 SKIP，app 编不了 | arduino-cli 1.5.1 |
-| **PowerShell 7 (`pwsh`)** | **Linux / macOS 上目前必装** —— 全套测试脚本还是 PowerShell。[M7](docs/handover/Todo/M7-python-scripts.md) 改写成 Python 之后这一行就删掉 | 一个脚本都跑不了 | Windows 上 5.1 即可，脚本兼容两者 |
+**装什么、这台机器上装了没有、怎么装 —— 跑一条命令，别照着表手填：**
+
+```bash
+cd <workspace>/IAPTranfer_Tool/TestTool
+python3 tools/init_machine.py --prereqs      # Windows 上是 python
+```
+
+它打出每一项在不在、版本是什么，**并给出这台系统上装它的确切命令**（apt / brew / winget / pip 按平台选）。安装命令只存在于 `tools/init_machine.py` 的 `PREREQS` 表里 —— 这里再抄一遍就是第二份，必漂移。
+
+⚠️ **这一步不能用 `selfcheck.ps1` 的 A0 代替。** A0 要 PowerShell 才能跑，而 pwsh 恰好是 Debian / macOS 上最可能缺的那一个。
+
+下面这张表只回答表里没有的那一半：**不装会怎样**。
+
+| 工具 | 干什么用的 | 不装会怎样 |
+|---|---|---|
+| **git** | — | — |
+| **Go** | 构建 `IAPTool` / `TestTool`；selfcheck 的 A1/A3 | 一半用例跑不了 |
+| **Python 3** | selfcheck 的 A10/A11/A12（假板子、加密交叉验证）；[M7](docs/handover/Todo/M7-python-scripts.md) 之后是**全部**测试脚本的运行时 | 那三步报 SKIP；M7 完成后一个脚本都跑不了 |
+| **`pyserial`** | 唯一一个要 `pip install` 的东西。M7 之后所有碰串口的用例都靠它 | 碰串口的用例报 SKIP（**点名说缺它**，不静默） |
+| **原生 C 编译器** | selfcheck 的 A2：**直接编译 bootloader 的真实 C 源码**做主机侧单元测试 | A2 报 SKIP |
+| **STM32CubeIDE** | 构建 bootloader；`STM32_Programmer_CLI` 烧写和读回 flash | 上不了板 |
+| **Arduino IDE 2.x** | 构建 app；它自带的 `arduino-cli` 供 selfcheck 的 A13 用 | A13 报 SKIP，app 编不了 |
+| **PowerShell 7 (`pwsh`)** | **Linux / macOS 上目前必装** —— 全套测试脚本还是 PowerShell。[M7](docs/handover/Todo/M7-python-scripts.md) 改写成 Python 之后这一行就删掉 | 一个脚本都跑不了 |
+
+最后两个是**安装目录**而不是 PATH 上的可执行文件，所以它们不在 `--prereqs` 里，在第五节的路径探测里。
 
 ⚠️ **C 编译器必须是现代版本。** Dev-C++ 带的是 2004 年的 GCC 3.4.2：它直接拒绝 `-std=c11`，用 `-std=c99` 时链接器会崩。拿二十年前的编译器去验证要交给 `arm-none-eabi-gcc 12.x` 的代码，比不测还糟。
 
@@ -93,9 +115,21 @@ python3 tools/init_machine.py       # Windows 上是 python
 
 它写出 `config/machine.ps1` 和 `config/machine.py`（都 gitignored），**两份同源生成，不会互相漂移**。
 
-### 「初始化」——AI 会话在新机器上照这个走
+再跑一次带 `--write-claude-dirs`，把探测出来的兄弟仓库授权给 Claude Code（写进各仓库 `.claude/settings.local.json` 的 `additionalDirectories`）。不做这一步，会话每读一次兄弟仓库都要弹一次权限 —— 这个产品**没有共享构建系统**，一个功能常常要同时改两三个仓库，所以那是持续一整天的摩擦。
 
-**用户说"初始化"或"配一下这台机器"时，就是这个循环。**
+### 「初始化」——用户说这句话时
+
+**跑 `/openplc:init`。** 完整流程在那个 skill 里，本文件不重述 —— 重述就是第二份，必漂移。
+
+skill 装在 `AI-Skills` 仓库（第三节最后一行），由各仓库 `.claude/settings.json` 里声明的 marketplace 自动取来。**新机器上第一次要手工装一次 plugin**：
+
+```bash
+claude plugin install openplc@ai-skills
+```
+
+这一条消不掉 —— 来自外部来源的 plugin，Claude Code 不会因为项目 settings 声明了就自动安装，但它会把这条命令打给你。装完之后就只有 `/openplc:init` 一句。
+
+它比下面这个循环多做三件 `init_machine.py` 做不到的事：clone 缺的仓库、检查前置运行时（第四节）、把兄弟仓库授权给会话。核心那段还是这个循环：
 
 1. 跑 `python3 tools/init_machine.py`（我这类环境里它**不会提问**，见下）。
 2. 读它输出的 **`not found`** 一节。每一项都带齐了：**这东西是什么、已经找过哪些地方、这个平台上的例子、以及固化它的确切命令**。
@@ -112,6 +146,8 @@ python3 tools/init_machine.py       # Windows 上是 python
 | 清掉某一项 | `--set NAME=`（空值） |
 | 装了新东西，重新找 | `--redetect CUBEIDE` |
 | 只看不写、也不问 | `--check` |
+| 只看缺哪些运行时 | `--prereqs`（第四节） |
+| 授权兄弟仓库给会话 | `--write-claude-dirs` |
 
 ### 直接在终端里跑它的话
 
@@ -138,9 +174,12 @@ python3 tools/init_machine.py       # Windows 上是 python
 | `TestTool/config/machine.{ps1,py}` | 每台机器都不一样 | **不用搬也不用抄**：`python3 tools/init_machine.py` 自己探测生成 |
 | `$CORE_LIVE`（Arduino IDE 实际加载的板卡包目录） | 是 IDE 的安装目录，不是仓库 | 装 Arduino IDE → 装 OpenPLC_Alpha 板卡包 → 用 `open_plc_arduino` 的内容覆盖它。⚠️ 方向是**单向的**，细节见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | `IAPServer/keys/fw_signing_key.pem`（真签名私钥） | 私钥 | **2026-08-19 确认：目前没有真私钥，开发用仓库里的 `fw_signing_key.TEST_ONLY.pem`。** 将来产生真私钥后，它就是换机器时唯一必须手工搬运的文件 —— 到时候回来改这一行 |
-| `.claude/settings.local.json` | 里面全是本机绝对路径的一次性命令，换台机器一条都匹配不上 | **不用搬。** 跨平台通用的那部分已经提交在 `.claude/settings.json` 里（只读命令：`git status/log/diff`、`go vet`、`command -v` 等），新机器开箱就有 |
+| `.claude/settings.local.json` | 里面全是本机绝对路径的一次性命令，换台机器一条都匹配不上 | **不用搬。** 跨平台通用的那部分已经提交在 `.claude/settings.json` 里（只读命令 + `AI-Skills` marketplace 声明），新机器开箱就有；本机的 `additionalDirectories` 由 `--write-claude-dirs` 生成 |
+| 安装好的 `openplc` plugin | Claude Code 的用户级状态，不是仓库内容 | 新机器上 `claude plugin install openplc@ai-skills` 一次。marketplace 已在 `.claude/settings.json` 里声明，所以不用记地址 |
 
-⚠️ **`.claude/settings.json` 提交，`.claude/settings.local.json` 不提交。** 两个仓库的 `.gitignore` 里各写了一行挡住后者 —— 之前它只被**本机的全局 gitignore** 挡着，换台电脑那条不存在，一提交就把本机私有配置推上去了。
+⚠️ **`.claude/settings.json` 提交，`.claude/settings.local.json` 不提交。** **五个仓库**的 `.gitignore` 里各写了一行挡住后者（模式是 `.claude/settings.local.json*`，星号连 `.bak` 一起挡）。
+
+之前只有两个仓库写了这一行，`Hardware` 和 `Hello_World_OpenPLC` 靠的是**本机的全局 gitignore** —— 换台电脑那条不存在，一提交就把本机私有配置推上去了。这个事故已经发生过一次，所以 `--write-claude-dirs` 现在**会先检查这一行在不在**：只被本机全局规则挡着的仓库，它拒绝写入并说要往哪儿加哪一行。
 
 ## 七、平台差异的处理规矩
 
