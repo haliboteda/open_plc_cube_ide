@@ -128,6 +128,25 @@ UART echo ready         ← 前面是干净的
 
 # B · 卡在别人身上
 
+## B4 · SDRAM 的 D1 线要修（要硬件动手，挡住 S4a/S4b）
+
+**是什么**：MCU `PD15` 到 SDRAM（AS4C32M16SB-7BIN）D1 脚之间开路或接触不良。现象、证据链和排除过程在 [IAP-STATUS.md](IAP-STATUS.md) 的「SDRAM 数据线 D1」一节，**这里不重复**。
+
+**做什么用的**：SDRAM 是 IAP 的暂存区。不修，**任何上传都停在 checksum**，[handover/TEST-PLAN.md](handover/TEST-PLAN.md) 的 **S4a / S4b** 一条都跑不了，**E8** 也就永远停在 ⬜。
+
+**在哪找**：`Core/Src/fmc.c` 的 `HAL_FMC_MspInit()`（引脚表）；D1 = `PD15`；SDRAM 在 `0xC0000000`。
+
+**可能的影响**：⚠️ **这是推断，不是实测** —— 除 IAP 暂存之外，`OpenPLC_SDRAM` 库（[handover/Todo/M3-app-sdram.md](handover/Todo/M3-app-sdram.md)）也用这片内存，所以 app 侧 SDRAM 功能在这块板上同样不可信。M3 的 19/19 是 2026-08-17 在这块板上过的，**那时这根线还是好的**。
+
+**解决方案**：
+
+1. **万用表量通断**：MCU `PD15` ↔ SDRAM D1 脚。原理图在 `Hardware/`（**只有内网 Forgejo 一份**）。
+2. 通的话，量一下有没有虚焊 —— 间歇性开路万用表可能量不出来，轻压/加热能让它变化。
+3. 修好后跑 `pwsh ./tools/flash-bootloader.ps1`，看 T0 是否回到 `SDRAM staging buffer OK`。
+4. **第二块板到货后先跑一次 T0** —— 如果新板子也失败，那就不是这一块的偶发焊接问题，而是设计/工艺问题，要回头找硬件。
+
+**已排除**（细节见 IAP-STATUS，别重新试）：软件回归、上一个 app 留下的坏状态、SDCLK 时序、MCU 引脚损坏、外部接线拉住 `PD15`。
+
 ## B1 · `[BOOT] millis=` 靠电荷泵余电才出得来（要不要修，等你定）
 
 **2026-08-17 实测已回答"从哪个口看到的"：COM5，就是 RS232 端子 C05/C06。** 下面那个"到不了端子"的推论是错的，机理见 [IAP-STATUS.md](IAP-STATUS.md) —— `millis=12`，电荷泵余电还没塌，banner 蹭出去了。

@@ -15,3 +15,7 @@ Debug/
 IAPServer/keys/fw_signing_key.pem
 IAPServer/keys/backup/
 *.bak
+
+# Python bytecode from tools/. Committed once by accident on 2026-08-21.
+__pycache__/
+*.pyc
