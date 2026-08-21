@@ -6,14 +6,25 @@
 
 一个 Claude Code **skill**，`/openplc:init`，装在独立仓库 `AI-Skills` 里，通过 plugin marketplace 分发给本产品的每一个仓库。加上 `init_machine.py` 三处扩展，把「换台电脑」从一串要人记住的步骤变成一句话。
 
-新机器上的全部动作：
+新机器上的全部动作 —— **两条命令**：
 
 ```bash
 git clone git@github.com:haliboteda/open_plc_cube_ide.git
-cd open_plc_cube_ide && claude          # 信任目录 → marketplace 自动加入
-claude plugin install openplc@ai-skills # 每台机器一次
-/openplc:init                           # 从此以后就是这一句
+python3 open_plc_cube_ide/tools/bootstrap.py
 ```
+
+已经在会话里时，同一件事是一句 `/openplc:init`。
+
+### 两条路，一份实质
+
+| | 用在什么时候 | 谁做决定 |
+|---|---|---|
+| `tools/bootstrap.py` | 只有终端，或想无人值守 | 脚本按规则走，拿不准就问 |
+| `/openplc:init` | 已经在会话里 | AI 读输出，替你判断问什么、缺的影响哪些用例 |
+
+**substance 全在 `init_machine.py`** —— 探测什么、装什么、写哪些配置。两个外壳都不实现逻辑：`bootstrap.py` 连仓库表和目录布局都是**从 CLAUDE.md 第三节现读**，工具清单和安装命令**从 `PREREQS` 现读**。改行为改 `init_machine.py`，不是改外壳。
+
+⚠️ `bootstrap.py` 破例放在 `open_plc_cube_ide/tools/`，违反 [../../../CLAUDE.md](../../../CLAUDE.md) 第八节"脚本进 TestTool"的规矩。理由是硬的：**它必须在 `IAPTranfer_Tool` 被 clone 之前就能跑。** 这条例外写进第八节了。
 
 ## 做什么用的
 
@@ -56,11 +67,28 @@ Claude Code 默认只加载**当前项目**的 `.claude/skills/`。skill 要放�
 - `enabledPlugins` 是**对象映射**（`{"openplc@ai-skills": true}`），不是数组。
 - **不给 plugin 写 `version`**：写了就是钉版本，装过的副本要等版本号变才更新。新机器上拿到一份过期的 skill，正是这个 skill 要防的事。
 
+### 用户 2026-08-21 改了安装的边界
+
+原来定的是「只报告，用户自己装」。当天下午改成**脚本执行安装**，于是 `PREREQS` 的每个平台值从一句话变成 `{"cmd", "auto"}`：`auto=True` 的脚本可以跑，`auto=False` 的必须人来（多步、要登录、或压根没有包）。
+
+`--prereqs` 显示这份数据，`bootstrap.py` 执行它 —— **一份数据两种用法，不是两份清单**。表完整性有单测盯着（每个条目、每个平台都必须明确说 auto 是真还是假，不许默认）。
+
+同时把 **Arduino IDE 和 STM32CubeIDE 也纳入 `PREREQS`** —— 它们是安装目录不是 PATH 上的可执行文件，但"我必须装什么"是一个问题，应该有一个答案。检查函数直接复用已有的 `detect_ide()` / `detect_cubeide()`。CubeIDE 三个平台都是 `auto=False`：下载要 ST 账号，没有任何包管理器有它，假装能自动装只会在更远的地方失败。
+
+### 「装完了」和「这个进程看得见」是两回事
+
+`winget` / `apt` 装完之后，**新的 PATH 不会进入一个已经在运行的进程**。所以 `bootstrap.py` 装完会**重新跑一遍检查**，装上但看不见的点名说出来，让你开个新终端再跑一次 —— 而不是报成功，然后让你去 debug 一个错误的方向。
+
 ### fresh clone 落在默认分支上，那不是工作分支
 
 2026-08-21 查出来的：五个仓库里**三个**的远端默认分支是 `master`/`main`，工作分支却是 `v0.1.3.1` / `v0.1.3` / `v0.1.3-dev`。「clone 完就开工」等于**悄无声息落后一整个版本**，症状和 CLAUDE.md 记的 Forgejo 陈旧镜像一模一样，原因不同。
 
 分支名每次发版都变，所以不写进任何文档：`report_branches()` 现场打表，并在**有的仓库在默认分支、有的不在**时警告 —— 那正是忘了 checkout 的形状。默认分支从 clone 写下的本地 ref `refs/remotes/origin/HEAD` 读，不联网。
+
+**但"版本号最高"这个启发式不能用来自动决定。** `bootstrap.py` 第一次 `--dry-run` 当场把 `open_plc_arduino` 的 `v0.1.3.1-old-knx` 排成了最新，差一点就 checkout 过去。两处修：
+
+1. 名字里带 `old` / `backup` / `bak` / `tmp` / `wip` / `deprecated` 的直接排除；同版本号下**短名字优先**（后缀是限定词，光名字才是主线）。
+2. **默认永远是保持当前分支。** 排出来的最高版本只作为提示 —— 因为即使修好排序，`open_plc_arduino` 的最高版本是 `v0.1.3.1` 而在干活的是 `v0.1.3-dev`。**没人回答时绝不切**：只在"当前在非版本分支且存在版本分支"（也就是刚 clone 完）时才把最高版本当默认，并把这一步记成未完成。
 
 ### 信任目录是前置条件，而且非交互调用不会问
 
@@ -91,7 +119,8 @@ Claude Code v2.1.195 起，**只由项目 settings 启用、且来自外部来�
 | 3 ✅ | `--write-claude-dirs` + gitignore 护栏 | 408 条手工批准的 allow 一条不少；重跑是 no-op；解析不了的文件拒绝改写 |
 | 4 ✅ | `HW_REPO` / `REF_REPO` + macOS 串口修复 | 单测 32 例全过 |
 | 5 ✅ | 五个仓库的 `.claude/settings.json` + 缺的 `.gitignore` 行 | 每个仓库 `settings.local.json*` 都被**自己**的 `.gitignore` 挡住 |
-| 6 ✅ | 文档归位 | 本文件 + BACKLOG + F5 + CLAUDE.md 四五节 |
+| 6 ✅ | 文档归位 | 本文件 + BACKLOG + F5 + CLAUDE.md 四五八节 |
+| 6b ✅ | **`tools/bootstrap.py`** —— 八步全自动，含安装 | `--dry-run` 逐步核对；`test_bootstrap.py` 20 例；真跑装上了 pyserial 并复查可见 |
 | 7 ⬜ | **`AI-Skills` 推上 GitHub** | marketplace 拉得下来；`claude plugin install openplc@ai-skills` 成功 |
 | 8 ⬜ | **第二台机器（Debian）从零走一遍** | 见验收 |
 | 9 ⬜ | **macOS 走一遍** | 同上，外加下面那张待核实清单 |

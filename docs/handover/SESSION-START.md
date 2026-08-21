@@ -49,18 +49,27 @@
 
 那份是**新会话和新机器的入口**：Claude Code 在任何一个仓库里启动都会自动加载它，**[../../CLAUDE.md](../../CLAUDE.md) 第三节表里的七个仓库各有一份**。这里不抄第二遍。
 
-一句话版本：**clone `open_plc_cube_ide` → 开会话 → 装一次 plugin → `/openplc:init`。**
+**两条命令。** clone 文档主仓，然后跑脚本：
 
 ```bash
 git clone git@github.com:haliboteda/open_plc_cube_ide.git
-cd open_plc_cube_ide
-git branch -r && git checkout <工作分支>    # ⚠️ clone 给的是默认分支，不是工作分支
-claude                                     # 交互式开一次，接受信任对话框
-claude plugin install openplc@ai-skills    # 每台机器一次。外部来源的 plugin 不会自动装
-/openplc:init                              # 剩下的它带着你走
+python3 open_plc_cube_ide/tools/bootstrap.py       # Windows 上是 python
 ```
 
-⚠️ 那两条 `⚠️` 不是客套：**默认分支不是工作分支**（2026-08-21 五个仓库里三个如此，理由见 [../../CLAUDE.md](../../CLAUDE.md) 第三节），而**目录没被信任时 committed 的 settings 全部静默失效** —— 包括那条让 marketplace 自动加入的声明。
+第二条消不掉：脚本得先到那台机器上，而把它弄过去就是那次 clone。
+
+`bootstrap.py` 干八件事 —— 探 SSH、clone 其余仓库、**确认分支**、装缺的工具（每条命令先打出来问一次）、探测本机路径、授权兄弟仓库给会话、装 `openplc` plugin、自检并汇报。**先看它要干什么就加 `--dry-run`；可以重复跑。**
+
+已经在会话里的话，同一件事说一句 `/openplc:init` 就行。两者是同一件事的两条路，实质都在 `init_machine.py` 里 —— 分工见 [../../CLAUDE.md](../../CLAUDE.md) 第五节。
+
+⚠️ **脚本跑完还剩两件只有人能做的事，它会在最后点名说：**
+
+1. **在仓库目录里交互式开一次 Claude Code，接受信任对话框。** 没信任之前，committed 的 `.claude/settings.json` **全部静默失效** —— 包括那条让 marketplace 自动加入的声明。
+2. **装 STM32CubeIDE。** 下载要 ST 账号，任何包管理器都没有它。
+
+Linux 上还有第三件：`sudo usermod -aG dialout $USER`，然后**登出再登入**。
+
+⚠️ **默认分支不是工作分支**（2026-08-21 五个仓库里三个如此）。脚本会逐个仓库确认，而且**在没人回答时绝不替你切** —— 版本号最高的分支不一定是在干活的那个，`open_plc_arduino` 就是这样。
 
 那个 skill 做的事（立项文件 [Todo/M8-onboard-skill.md](Todo/M8-onboard-skill.md)）：clone 缺的仓库 → 报告缺哪些运行时 → 探测本机路径并把问题问回给你 → 把兄弟仓库授权给会话 → 自检 → 汇报这台机器能干什么、不能干什么。
 

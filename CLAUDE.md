@@ -106,7 +106,29 @@ python3 tools/init_machine.py --prereqs      # Windows 上是 python
 
 ## 五、换台机器：配什么
 
-**不用手填。** 跑一条命令，它自己探测：
+### 最省事：一个脚本全干完
+
+新机器上只有这个仓库时，直接跑：
+
+```bash
+python3 open_plc_cube_ide/tools/bootstrap.py      # Windows 上是 python
+```
+
+它按顺序做八件事：探 SSH → clone 缺的仓库 → **确认分支**（不是默认分支）→ 装缺的工具（**每条命令先打出来，问一次**）→ 探测本机路径 → 授权兄弟仓库给会话 → 装 `openplc` plugin → 自检并汇报。
+
+| 想 | 加什么 |
+|---|---|
+| 先看它要干什么，一个字节都不改 | `--dry-run` |
+| 无人值守，全取默认 | `--yes` |
+| 只报告缺什么，绝不安装 | `--no-install` |
+| 仓库放到别处 | `--workspace <dir>` |
+| 只跑其中几步 | `--skip 4 --skip 7` |
+
+**可以重复跑** —— 已经对的它保留，只补缺的。
+
+⚠️ **`bootstrap.py` 破例放在本仓库的 `tools/`，不在 `IAPTranfer_Tool/TestTool/tools/`**（第八节的规矩）。理由是它必须在 `IAPTranfer_Tool` 存在**之前**就能跑，而这个仓库是你第一个 clone 的。它自己不实现任何逻辑：仓库表和目录布局**从第三节现读**，工具清单和安装命令**从 `init_machine.py` 的 `PREREQS` 现读**，一份都不抄。
+
+### 手工：只配路径
 
 ```bash
 cd <workspace>/IAPTranfer_Tool/TestTool
@@ -120,6 +142,15 @@ python3 tools/init_machine.py       # Windows 上是 python
 ### 「初始化」——用户说这句话时
 
 **跑 `/openplc:init`。** 完整流程在那个 skill 里，本文件不重述 —— 重述就是第二份，必漂移。
+
+**它和 `bootstrap.py` 是同一件事的两条路，不是两套实现：**
+
+| | 用在什么时候 | 谁在做决定 |
+|---|---|---|
+| `bootstrap.py` | 手上只有终端，想一条命令跑完 | 脚本按规则走，拿不准就问，`--yes` 时取默认 |
+| `/openplc:init` | 已经在会话里 | AI 读脚本和 `init_machine` 的输出，替你判断该问什么、缺的东西影响哪些用例 |
+
+**实质都在 `init_machine.py` 里**（探测什么、装什么、写哪些配置），两条路都只是外壳。所以改行为要改 `init_machine.py`，不是改这两个外壳中的某一个。
 
 skill 装在 `AI-Skills` 仓库（第三节最后一行），由各仓库 `.claude/settings.json` 里声明的 marketplace 自动取来。**新机器上第一次要手工装一次 plugin**：
 
@@ -199,6 +230,8 @@ claude plugin install openplc@ai-skills
 |---|---|
 | 测试脚本、自动化工具 | `IAPTranfer_Tool/TestTool/tools/` 或 `host/<主题>/`，判据写进 `TestTool/TEST-CASES.md` |
 | 一次性探查命令（看个尺寸、grep 一下） | 不落盘，直接跑 |
+
+**唯一的例外是 `open_plc_cube_ide/tools/bootstrap.py`**（连同它的 `test_bootstrap.py`）。它必须在 `IAPTranfer_Tool` 被 clone **之前**就能跑，所以只能放在你第一个 clone 的仓库里。除它之外不要往这个 `tools/` 目录加东西 —— 加了就是第二个脚本目录。
 
 ## 九、语言
 
