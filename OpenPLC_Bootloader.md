@@ -6,11 +6,11 @@
 
 | 想知道 | 去哪 |
 |---|---|
-| 启动怎么决策、签名怎么验、journal 怎么记 | [docs/JOURNAL.md](docs/JOURNAL.md)、[docs/OWNERSHIP.md](docs/OWNERSHIP.md) |
-| 哪条路径验过、实测数字 | [docs/IAP-STATUS.md](docs/IAP-STATUS.md) |
-| 三个仓库在哪、哪些代码是跨仓镜像 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| 引脚、串口、启动模式的实测事实 | [docs/HARDWARE-FACTS.md](docs/HARDWARE-FACTS.md) |
-| 需求清单和测试矩阵 | [docs/handover/REQUIREMENTS.md](docs/handover/REQUIREMENTS.md)、[docs/handover/TEST-PLAN.md](docs/handover/TEST-PLAN.md) |
+| 启动怎么决策、签名怎么验、journal 怎么记 | [docs/design/JOURNAL.md](docs/design/JOURNAL.md)、[docs/design/OWNERSHIP.md](docs/design/OWNERSHIP.md) |
+| 哪条路径验过、实测数字 | [docs/test/MEASUREMENTS.md](docs/test/MEASUREMENTS.md) |
+| 三个仓库在哪、哪些代码是跨仓镜像 | [docs/design/ARCHITECTURE.md](docs/design/ARCHITECTURE.md) |
+| 引脚、串口、启动模式的实测事实 | [docs/design/HARDWARE-FACTS.md](docs/design/HARDWARE-FACTS.md) |
+| 需求清单和测试矩阵 | [docs/STATUS.md](docs/STATUS.md)、[docs/STATUS.md](docs/STATUS.md) |
 
 ## 1. 项目定位
 
@@ -36,7 +36,7 @@
 | application | `0x08020000` 起，上限 `0x081E0000` | 1,835,008 B |
 | bootloader 状态 | `0x081E0000`（bank2 sector 7，128K） | metadata + 事件 journal |
 
-⚠️ `RESERVED_TAIL_SECTORS` 这个常量被当成两个意思用，改它会静默弄坏 reclaim。**当前值 1 是对的，别动** —— 完整分析见 [docs/TODO.md](docs/TODO.md) 的 C1。
+⚠️ `RESERVED_TAIL_SECTORS` 这个常量被当成两个意思用，改它会静默弄坏 reclaim。**当前值 1 是对的，别动** —— 完整分析见 [docs/work/ISSUES.md](docs/work/ISSUES.md) 的 C1。
 
 ## 3. 编译产物
 

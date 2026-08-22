@@ -10,14 +10,14 @@
 
 | 想找 | 去哪 | 不在哪 |
 |---|---|---|
-| 产品要做到什么、做到没有 | **[REQUIREMENTS.md](REQUIREMENTS.md)** | — |
-| 怎么证明、跑什么、谁跑 | **[TEST-PLAN.md](TEST-PLAN.md)** | — |
-| 还没做的模块 + 设计思路 | **[Todo/BACKLOG.md](Todo/BACKLOG.md)** | — |
-| 某条结论的实测证据 | [../IAP-STATUS.md](../IAP-STATUS.md) | 不要抄进 REQUIREMENTS |
+| 产品要做到什么、做到没有 | **[../STATUS.md](../STATUS.md)** | — |
+| 怎么证明、跑什么、谁跑 | **[../STATUS.md](../STATUS.md)** 的覆盖矩阵 | 判据在 `$TOOL/TestTool/TEST-CASES.md` |
+| 还没做的模块 + 设计思路 | **[../work/BACKLOG.md](../work/BACKLOG.md)** | — |
+| 某条结论的实测证据 | [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md) | **数字的唯一出处**，不要抄进总表 |
 | 用例的判据、怎么跑 | `$TOOL/TestTool/TEST-CASES.md` | 判据贴着代码走，跨仓不搬 |
-| 零散 bug 和代码债 | [../TODO.md](../TODO.md) | Todo/ 只放要立项的模块 |
-| 改动前的规矩 | [../WORKING-AGREEMENTS.md](../WORKING-AGREEMENTS.md) | — |
-| 密钥/信任模型的配图版 | [artifacts/RENDERED-SNAPSHOTS.md](artifacts/RENDERED-SNAPSHOTS.md) | ⚠️ **渲染快照，不是事实来源**，打架以 `docs/` 为准 |
+| 零散 bug 和代码债 | [../work/ISSUES.md](../work/ISSUES.md) | Todo/ 只放要立项的模块 |
+| 改动前的规矩 | [WORKING-AGREEMENTS.md](WORKING-AGREEMENTS.md) | — |
+| 密钥/信任模型的配图版 | [../archive/artifacts/RENDERED-SNAPSHOTS.md](../archive/artifacts/RENDERED-SNAPSHOTS.md) | ⚠️ **渲染快照，不是事实来源**，打架以 `docs/` 为准 |
 
 ## 文件名的规矩
 
@@ -36,12 +36,12 @@
 
 **入口是仓库根目录的 [../../CLAUDE.md](../../CLAUDE.md)**（Claude Code 自动加载），它给的顺序是：
 
-1. **[../WORKING-AGREEMENTS.md](../WORKING-AGREEMENTS.md)** —— 规矩。改任何东西之前
-2. **[../ARCHITECTURE.md](../ARCHITECTURE.md)** —— 三个仓库在哪、哪些代码是跨仓镜像的
-3. **[REQUIREMENTS.md](REQUIREMENTS.md)** —— 现在做到哪一步
-4. **[Todo/BACKLOG.md](Todo/BACKLOG.md)** —— 手头该干什么
+1. **[WORKING-AGREEMENTS.md](WORKING-AGREEMENTS.md)** —— 规矩。改任何东西之前
+2. **[../design/ARCHITECTURE.md](../design/ARCHITECTURE.md)** —— 三个仓库在哪、哪些代码是跨仓镜像的
+3. **[../STATUS.md](../STATUS.md)** —— 现在做到哪一步
+4. **[../work/BACKLOG.md](../work/BACKLOG.md)** —— 手头该干什么
 
-碰硬件之前再加一份 [../HARDWARE-FACTS.md](../HARDWARE-FACTS.md)；碰 bootloader 的状态扇区之前加 [../JOURNAL.md](../JOURNAL.md)；碰签名密钥之前加 [../OWNERSHIP.md](../OWNERSHIP.md)。
+碰硬件之前再加一份 [../design/HARDWARE-FACTS.md](../design/HARDWARE-FACTS.md)；碰 bootloader 的状态扇区之前加 [../design/JOURNAL.md](../design/JOURNAL.md)；碰签名密钥之前加 [../design/OWNERSHIP.md](../design/OWNERSHIP.md)。
 
 ## 换台电脑
 
@@ -71,7 +71,7 @@ Linux 上还有第三件：`sudo usermod -aG dialout $USER`，然后**登出再�
 
 ⚠️ **默认分支不是工作分支**（2026-08-21 五个仓库里三个如此）。脚本会逐个仓库确认，而且**在没人回答时绝不替你切** —— 版本号最高的分支不一定是在干活的那个，`open_plc_arduino` 就是这样。
 
-那个 skill 做的事（立项文件 [Todo/M8-onboard-skill.md](Todo/M8-onboard-skill.md)）：clone 缺的仓库 → 报告缺哪些运行时 → 探测本机路径并把问题问回给你 → 把兄弟仓库授权给会话 → 自检 → 汇报这台机器能干什么、不能干什么。
+那个 skill 做的事（立项文件 [../work/M8-onboard-skill.md](../work/M8-onboard-skill.md)）：clone 缺的仓库 → 报告缺哪些运行时 → 探测本机路径并把问题问回给你 → 把兄弟仓库授权给会话 → 自检 → 汇报这台机器能干什么、不能干什么。
 
 手工版本（skill 不可用时）：
 
@@ -83,7 +83,7 @@ python3 tools/init_machine.py --write-claude-dirs   # 让会话读得到兄弟�
 pwsh ./tools/selfcheck.ps1
 ```
 
-`selfcheck.ps1` 全绿（或只剩它自己报出来的 SKIP）就说明这台机器可以开工了。**缺什么它会说缺什么**，不会静默跳过 —— 第一步 **A0** 专门打印这台机器上每一项工具解析成了什么。⚠️ A0 要 PowerShell 才跑得起来，所以 pwsh 本身缺不缺要靠 `--prereqs` 看。
+selfcheck 全绿（或只剩它自己报出来的 SKIP）就说明这台机器可以开工了。**缺什么它会说缺什么**，不会静默跳过 —— 第一步 **ENV** 专门打印这台机器上每一项工具解析成了什么。`--list` 可以先看它会跑哪 12 步、各证明哪条需求。⚠️ PowerShell 版的 ENV 要 pwsh 才跑得起来，所以 pwsh 本身缺不缺要靠 `--prereqs` 看。
 
 ## 收尾流程 —— 说"今天到此为止"时要做的
 
@@ -95,12 +95,12 @@ pwsh ./tools/selfcheck.ps1
 |---|---|
 | 测试脚本、自动化工具 | `$TOOL/TestTool/tools/` 或 `host/<主题>/`，判据写进 `$TOOL/TestTool/TEST-CASES.md` |
 | 一次性探查脚本，但值得留 | 同上，并补一份 README 说清"验证什么 / 前置 / 判据" |
-| 新的实测结论 | [../IAP-STATUS.md](../IAP-STATUS.md)，带日期 |
-| 新的设计决策与否决理由 | [../DEFERRED-DESIGNS.md](../DEFERRED-DESIGNS.md) 或对应模块的 Todo 文件 |
-| 新发现的问题 | [../TODO.md](../TODO.md)（零散）或 [Todo/BACKLOG.md](Todo/BACKLOG.md)（要立项） |
-| 需求状态变化 | [REQUIREMENTS.md](REQUIREMENTS.md) 的状态列 |
-| 用例跑出来的结果 | [TEST-PLAN.md](TEST-PLAN.md) 的「最近结果」列，带日期 |
-| 协作方式上的教训 | [../WORKING-AGREEMENTS.md](../WORKING-AGREEMENTS.md) |
+| 新的实测结论 | [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md)，带日期 |
+| 新的设计决策与否决理由 | [../design/DEFERRED-DESIGNS.md](../design/DEFERRED-DESIGNS.md) 或对应模块的 Todo 文件 |
+| 新发现的问题 | [../work/ISSUES.md](../work/ISSUES.md)（零散）或 [../work/BACKLOG.md](../work/BACKLOG.md)（要立项） |
+| 需求状态变化 | [../STATUS.md](../STATUS.md) 的状态列 |
+| 用例跑出来的结果 | [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md)，一行一次跑，带日期 |
+| 协作方式上的教训 | [WORKING-AGREEMENTS.md](WORKING-AGREEMENTS.md) |
 
 ⚠️ **还要人工过一遍 [../../RELEASE-NOTES.md](../../RELEASE-NOTES.md) 的 known-issues 和 not-verified 两节**，逐条问"今天这条还成立吗"。
 
@@ -110,8 +110,8 @@ pwsh ./tools/selfcheck.ps1
 
 > 换一台电脑、从零开一个新会话，照着这个目录能不能接着干？不能就是没归纳完。
 
-⚠️ **`%TEMP%` 和 scratchpad 里的东西换台电脑就全废**，而且不进 git、别人拿不到。这条已经犯过一次（自动烧写脚本写进 scratchpad 还硬编码了绝对路径），所以它是 [../WORKING-AGREEMENTS.md](../WORKING-AGREEMENTS.md) 里的正式约定，不是建议。
+⚠️ **`%TEMP%` 和 scratchpad 里的东西换台电脑就全废**，而且不进 git、别人拿不到。这条已经犯过一次（自动烧写脚本写进 scratchpad 还硬编码了绝对路径），所以它是 [WORKING-AGREEMENTS.md](WORKING-AGREEMENTS.md) 里的正式约定，不是建议。
 
 ## 语言
 
-这个目录用中文，和 `docs/` 其余部分一致。**落到文件里的其他一切用英文** —— 代码注释、脚本 stdout、各仓库 README。理由见 [../WORKING-AGREEMENTS.md](../WORKING-AGREEMENTS.md)。
+这个目录用中文，和 `docs/` 其余部分一致。**落到文件里的其他一切用英文** —— 代码注释、脚本 stdout、各仓库 README。理由见 [WORKING-AGREEMENTS.md](WORKING-AGREEMENTS.md)。

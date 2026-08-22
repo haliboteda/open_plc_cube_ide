@@ -1,6 +1,6 @@
 # M3 · app 侧能用 SDRAM
 
-**覆盖需求：[E5](../REQUIREMENTS.md)**
+**覆盖需求：[E5](../STATUS.md)**
 
 **状态：✅ 完成（2026-08-17）** —— 库、验收（19/19 实测）、两个 example、用户文档都有了。
 
@@ -90,7 +90,7 @@ app 侧三个硬要求：
 | 0 | 确认 app 是否真需要 | ✅ 2026-08-17 确认要做，且要封装 |
 | 1 | 定 API 形态 | ✅ 见上表 |
 | 2 | core 里加 FMC 初始化 | ✅ 在库的 `begin()` 里，**懒初始化** —— 不用就不花时间、不动 core 启动路径 |
-| 3 | ~~`ldscript.ld` 加 `SDRAM` MEMORY 区和 `.sdram_bss` 段~~ | ⛔ **不做了**，见上面「为什么最终不给链接脚本段」 |
+| 3 | `ldscript.ld` 加 `SDRAM` MEMORY 区和 `.sdram_bss` 段 | ⛔ **不做了**，见上面「为什么最终不给链接脚本段」 |
 | 4 | 写库（`OpenPLC_SDRAM`），含清零 | ✅ |
 | 5 | 示例 sketch + 用户文档 | ✅ `examples/SDRAM_Basic`（最小可用）、`examples/SDRAM_DataLogger`（16MB 环形历史缓冲，SDRAM 真正的用途）、`README.md`、`keywords.txt`。**由用例 P5 保证它们编得过** |
 

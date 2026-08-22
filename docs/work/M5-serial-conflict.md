@@ -1,6 +1,6 @@
 # M5 · `Serial_Test` 和 `Serial4` 抢同一个 UART4 ✅ 2026-08-17 已修并实测
 
-**覆盖需求：[E7](../REQUIREMENTS.md)**
+**覆盖需求：[E7](../STATUS.md)**
 
 **改动**：`core:cores/arduino/main.cpp` 的
 `HardwareSerial Serial_Test(PC_11, PC_10)` → `(PC_11_ALT1, PC_10_ALT1)`。
@@ -35,7 +35,7 @@
 ## 在哪找
 
 - `core:cores/arduino/main.cpp:40` 的 `HardwareSerial Serial_Test(PC_11, PC_10)`
-- 机制说明在 [../../HARDWARE-FACTS.md](../../HARDWARE-FACTS.md)
+- 机制说明在 [../design/HARDWARE-FACTS.md](../design/HARDWARE-FACTS.md)
 
 ## 不做会怎样
 

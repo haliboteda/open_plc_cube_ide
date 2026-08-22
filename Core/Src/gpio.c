@@ -119,10 +119,10 @@ void MX_GPIO_Init(void)
  * made as a controlled experiment and regenerating the whole project would
  * have added a second variable to it. Once the .ioc is updated, this function
  * and its call in main.c become a redundant re-configuration and should both
- * be deleted -- see docs/TODO.md.
+ * be deleted -- see docs/work/ISSUES.md.
  *
  * ⚠️ There is a report that changing this pin to an input once stopped the
- * RESET button from working. docs/HARDWARE-FACTS.md records the cause as a
+ * RESET button from working. docs/design/HARDWARE-FACTS.md records the cause as a
  * different change made at the same time (SystemClock_Config() had been
  * deleted, leaving the MCU reading flash out of spec at VOS3 + 64 MHz + 0 wait
  * states), not this pin. That is why this change is made on its own and the

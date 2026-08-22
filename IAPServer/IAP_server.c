@@ -18,6 +18,7 @@
 #include "iap_auth.h"
 #include "iap_keyderive.h"
 #include "IAP_boot_handoff.h"
+#include "sdram_diag.h"
 
 #include "main.h"
 
@@ -178,6 +179,36 @@ void process_command() {
 			send_response("OK");
 		} else if (strncmp((char *)RXBuffer, "info", 4) == 0) {
 			send_response(BOOT_LOADER_VERSION);
+#if IAP_SDRAM_DIAG_COMMANDS
+		// ⚠️ Both of these are UNAUTHENTICATED and BLOCK the superloop -- and
+		// this function serves TCP and USB-CDC, not just the console. "sdramlive
+		// 600" means ten minutes of no discovery replies and no uploads, from
+		// anywhere on the network. That is why they are compiled out by default
+		// (see Core/Inc/sdram_diag.h). Before turning them on for anything but a
+		// bench session, put them behind the same HMAC challenge "flash" uses,
+		// or accept them from the console only.
+		} else if (strncmp((char *)RXBuffer, "sdramdiag", 9) == 0) {
+			// Localises a fault on the SDRAM data bus from inside the MCU.
+			// That bus has no probe point at all -- both ends of every DQ net
+			// are under a BGA and there is no series resistor or test pad -- so
+			// firmware is the only instrument available. Unauthenticated on
+			// purpose: it writes nothing but the staging area, which is scratch,
+			// and restores every register it touches. See Core/Src/sdram_diag.c.
+			send_response("OK");
+			iap_sdram_diag_full_report();
+		} else if (strncmp((char *)RXBuffer, "sdramlive", 9) == 0) {
+			// "sdramlive [seconds]" -- one error-rate line per second, for the
+			// freeze-spray / hot-air test: someone cools one package while
+			// watching whether the rate moves. Blocks the superloop for that
+			// long, which is the point; there is no watchdog to feed.
+			uint32_t secs = 0U;
+			if ((sscanf((char *)RXBuffer, "sdramlive %" SCNu32, &secs) != 1)
+					|| (secs == 0U) || (secs > 600U)) {
+				secs = 60U;
+			}
+			send_response("OK");
+			iap_sdram_diag_live(secs);
+#endif /* IAP_SDRAM_DIAG_COMMANDS */
 		} else if (strncmp((char *)RXBuffer, "authchallenge", 13) == 0) {
 			char nonce_hex[IAP_AUTH_NONCE_SIZE * 2U + 1U];
 			iap_auth_issue_challenge(nonce_hex);
@@ -628,7 +659,7 @@ void server_jump_to_app(void) {
 	 * MspDeInit leaves PC10 -- the MAX3221's data input -- floating, and a
 	 * floating input on a still-powered transceiver drives whatever it picks up
 	 * onto the line. Doing it the other way round put a garbage byte in front of
-	 * the application's first log line (docs/TODO.md A2). */
+	 * the application's first log line (docs/work/ISSUES.md ISS-A2). */
 	Disable_RX_RS232();
 	HAL_UART_DeInit(&huart4);
 

@@ -2,9 +2,9 @@
 
 **状态：✅ 已实现并实测（2026-08-18）。** 配图版见 artifact「板子归谁」
 
-落地记录、每一步的实测结果、以及过程中改掉的两个设计缺陷，在 [handover/Todo/M1-owner-slot.md](handover/Todo/M1-owner-slot.md)。**本文件是设计推理的出处，那份是落地记录** —— 两边不要互抄。
+落地记录、每一步的实测结果、以及过程中改掉的两个设计缺陷，在 [../work/M1-owner-slot.md](../work/M1-owner-slot.md)。**本文件是设计推理的出处，那份是落地记录** —— 两边不要互抄。
 
-⚠️ **设备侧完整，出货工具侧还没有。** `takeown` / `setowner` 只有 TestTool 的内部脚本能发，`IAPTool` 一个入口都没有 —— 客户目前拿不到这个功能，见 [TODO.md](TODO.md) 的 A4。
+⚠️ **设备侧完整，出货工具侧还没有。** `takeown` / `setowner` 只有 TestTool 的内部脚本能发，`IAPTool` 一个入口都没有 —— 客户目前拿不到这个功能，见 [../work/ISSUES.md](../work/ISSUES.md) 的 A4。
 `https://claude.ai/code/artifact/89bd5218-b53d-4e1b-a570-d10d540971c7`。
 
 机制上和 [JOURNAL.md](JOURNAL.md) 独立，但两者都住在 bootloader 独占的 flash 区域里，改任何一边之前先读另一边。
@@ -61,7 +61,7 @@ bootloader 镜像 96,388 B（`Debug/`，-O0，**已含 FMC**）/ 扇区 131,072 
 | **8K（建议）** | **120K** | **`0x0801E000`** | **26,492 B** | **51 条** |
 | 16K | 112K | `0x0801C000` | 18,300 B | 102 条 |
 
-⚠️ 要改 `STM32H743IIKX_FLASH.ld` 的 `FLASH LENGTH` 128K → 120K，否则链接器会把代码放进这 8K。这一行已经在 [WORKING-AGREEMENTS.md](WORKING-AGREEMENTS.md) 的「重新生成后须复查」清单里，**是个已知易失守的点**；`.ld` 里那段解释"为什么写 128K 不写 2048K"的注释要一起更新。
+⚠️ 要改 `STM32H743IIKX_FLASH.ld` 的 `FLASH LENGTH` 128K → 120K，否则链接器会把代码放进这 8K。这一行已经在 [../process/WORKING-AGREEMENTS.md](../process/WORKING-AGREEMENTS.md) 的「重新生成后须复查」清单里，**是个已知易失守的点**；`.ld` 里那段解释"为什么写 128K 不写 2048K"的注释要一起更新。
 
 ### ⚠️ `RESERVED_TAIL_SECTORS` 被重载了（走这条路能绕开，但地雷还在）
 
@@ -197,7 +197,7 @@ R3 挡不住的那条**必须接受** —— `keys/README.md` 已把"防不住�
 
 备份寄存器看着很适合放"撤销到第几号"这种小状态 —— 掉电能活、不用擦扇区。**不要。**
 
-备份寄存器是**三个仓库共享、且没有任何机制统一分配**的资源。bootloader 和 app 已经为此撞过一次车：两边都占了 `DR2`，导致 bootloader 每次误报备份域丢失，同时 **app 的 nonce 计数器被反复重置成同一个值**（2026-08-17 定位，见 [IAP-STATUS.md](IAP-STATUS.md)）。`DR1` 上还留着一个同类的潜在冲突。
+备份寄存器是**三个仓库共享、且没有任何机制统一分配**的资源。bootloader 和 app 已经为此撞过一次车：两边都占了 `DR2`，导致 bootloader 每次误报备份域丢失，同时 **app 的 nonce 计数器被反复重置成同一个值**（2026-08-17 定位，见 [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md)）。`DR1` 上还留着一个同类的潜在冲突。
 
 一个连"谁占了哪个"都要靠翻代码才知道的地方，不该承载安全关键状态。分配表在 [ARCHITECTURE.md](ARCHITECTURE.md)，**认领之前先看那里**。
 
@@ -232,7 +232,7 @@ R3 挡不住的那条**必须接受** —— `keys/README.md` 已把"防不住�
 
 ### ⚠️ ST-Link 重烧 bootloader = 所有权重置
 
-owner 记录和 bootloader 同扇区，重烧会一起擦掉。**语义上是对的**（能 ST-Link 的人本来就能恢复出厂），但它和 [IAP-STATUS.md](IAP-STATUS.md) 里「bootloader 与 app 必须捆绑升级」那条风险**叠加**：换 bootloader 的人要同时重传 app **和**重新认领。**发布说明里这两条要写在一起。**
+owner 记录和 bootloader 同扇区，重烧会一起擦掉。**语义上是对的**（能 ST-Link 的人本来就能恢复出厂），但它和 [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md) 里「bootloader 与 app 必须捆绑升级」那条风险**叠加**：换 bootloader 的人要同时重传 app **和**重新认领。**发布说明里这两条要写在一起。**
 
 ## 借鉴与避坑（市面上的做法）
 
@@ -252,8 +252,8 @@ owner 记录和 bootloader 同扇区，重烧会一起擦掉。**语义上是对
 
 | | 影响 |
 |---|---|
-| ~~保留 4K / 8K / 16K~~ | ✅ **定了 8K**（2026-08-18 落地，实测镜像余量仍有 18%） |
-| ~~恢复出厂怎么触发~~ | ✅ **复位后按住 BOOT0 满 10 秒，三下继电器咔哒后松手**。不是另起一个手势，是现有 1.5 秒那次按压的自然延长 |
+| 保留 4K / 8K / 16K | ✅ **定了 8K**（2026-08-17 落地，实测镜像余量 **21%**，见 [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md)） |
+| 恢复出厂怎么触发 | ✅ **复位后按住 BOOT0 满 10 秒，三下继电器咔哒后松手**（2026-08-18）。不是另起一个手势，是现有 1.5 秒那次按压的自然延长 |
 | 要不要上 WRP | 唯一能真正禁止 app 写这片区域的手段。H7 选项字节改动需解锁并复位。**未做** |
 | 认领时要不要绑 UID | 防止把一块板的记录整段搬到另一块板。**未做** —— 记录现在可以整段复制到另一块板并生效 |
 | 会话认证换不换成证书 | 换了消掉固定密码三边镜像 + [DEFERRED-DESIGNS.md](DEFERRED-DESIGNS.md) 的产线单板密钥，但要动 core |

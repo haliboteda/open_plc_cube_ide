@@ -26,7 +26,7 @@
  * ⚠️ This is a CONSTANT, not something derived from fw_public_key at build
  * time. Deriving it would make the comparison trivially true for every build
  * and the warning would fire on customer boards that are perfectly safe --
- * which is the failure mode docs/OWNERSHIP.md spends a page warning about,
+ * which is the failure mode docs/design/OWNERSHIP.md spends a page warning about,
  * because a warning everybody learns to ignore protects nobody.
  *
  * ⚠️ If the project ever ships a DIFFERENT default key (rotate_keys.sh), that
@@ -478,7 +478,7 @@ bool owner_slot_factory_reset(bool physically_confirmed)
 	 * Unsigned is not an oversight. Requiring the current owner's signature
 	 * would mean a customer who lost their private key could never use the
 	 * board again, and the only remaining route would be ST-Link -- which the
-	 * customer typically does not have. docs/OWNERSHIP.md takes that trade
+	 * customer typically does not have. docs/design/OWNERSHIP.md takes that trade
 	 * deliberately: whoever can physically reach the board can reset it and
 	 * take it over. What that buys is that nobody can do it remotely. */
 	memset(rec.root_pubkey, 0, sizeof(rec.root_pubkey));
@@ -533,7 +533,7 @@ uint32_t owner_slot_record_count(void)
  * Printed when the root in force is the published one -- meaning its private
  * half is in everybody's hands, so anybody can sign firmware this board will
  * accept. That is the honest description of a factory board, and
- * docs/OWNERSHIP.md is explicit that it is a consequence of the product being
+ * docs/design/OWNERSHIP.md is explicit that it is a consequence of the product being
  * open, not a defect to be hidden.
  *
  * Deliberately NOT keyed on the slot being empty: a customer who built the
@@ -548,7 +548,7 @@ static void report_root_trust(void)
 	}
 	printf("** This board trusts the PUBLISHED root key: anyone can sign firmware "
 			"it will run. **\r\n"
-			"** Claim it (see docs/OWNERSHIP.md) to bind it to a key of your own. **\r\n");
+			"** Claim it (see docs/design/OWNERSHIP.md) to bind it to a key of your own. **\r\n");
 }
 
 void owner_slot_report(void)

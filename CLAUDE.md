@@ -18,18 +18,24 @@
 
 | 顺序 | 文件 | 为什么在这个位置 |
 |---|---|---|
-| 1 | [docs/WORKING-AGREEMENTS.md](docs/WORKING-AGREEMENTS.md) | **协作规矩。改任何东西之前。** 包括"改动前先提方案"、"陈述问题的五项骨架"、"不要想当然"等硬约束 |
-| 2 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 三个仓库在哪、哪些代码是跨仓镜像的、RTC 备份寄存器谁占了哪个 |
-| 3 | [docs/handover/REQUIREMENTS.md](docs/handover/REQUIREMENTS.md) | 54 条需求，每条做到没有、谁能证明 |
-| 4 | [docs/handover/Todo/BACKLOG.md](docs/handover/Todo/BACKLOG.md) | 手头该干什么 |
+| 1 | **[docs/STATUS.md](docs/STATUS.md)** | **★ 一张表看完全局：要做什么、做到哪、什么在挡路、先做哪个。** 12 行概览 + 优先级 + 54 条明细（需求和测试合并） |
+| 2 | [docs/process/WORKING-AGREEMENTS.md](docs/process/WORKING-AGREEMENTS.md) | **协作规矩。改任何东西之前。** 包括"改动前先提方案"、"陈述问题的五项骨架"、"不要想当然"等硬约束 |
+| 3 | [docs/design/ARCHITECTURE.md](docs/design/ARCHITECTURE.md) | 三个仓库在哪、哪些代码是跨仓镜像的、RTC 备份寄存器谁占了哪个 |
+| 4 | [docs/work/ISSUES.md](docs/work/ISSUES.md) | 已知问题，按优先级排。手头没活了看这里 |
 
-再往下按需取，全部索引在 [docs/INDEX.md](docs/INDEX.md)：
+再往下按需取，全部索引在 [docs/INDEX.md](docs/INDEX.md)。`docs/` 按**这份文件多久变一次**分了五个目录：`design/`（很少变）、`test/`（每次跑用例）、`work/`（经常）、`process/`（很少）、`archive/`（只增不改）。
 
-- 碰引脚 / 串口 / 启动模式 / SRAM4 → [docs/HARDWARE-FACTS.md](docs/HARDWARE-FACTS.md)
-- 碰 bootloader 的状态扇区 / metadata / 事件日志 → [docs/JOURNAL.md](docs/JOURNAL.md)
-- 碰签名密钥 / 信任根 / 扇区布局 → [docs/OWNERSHIP.md](docs/OWNERSHIP.md)
-- 要编译、要测、或在查一个时有时无的问题 → [docs/BUILD-AND-TEST.md](docs/BUILD-AND-TEST.md)
-- 开工与收尾流程 → [docs/handover/SESSION-START.md](docs/handover/SESSION-START.md)
+- **看到一个编号不知道是什么** → [docs/ID-MAP.md](docs/ID-MAP.md)。共 10 套编号，两两不撞（2026-08-22 消掉了三套撞车的）
+- **要推一个结论之前** → [docs/archive/RETRACTED.md](docs/archive/RETRACTED.md)，13 条"当初以为是 X，实测否定了"
+- 引用一个实测数字 → [docs/test/MEASUREMENTS.md](docs/test/MEASUREMENTS.md)，**唯一出处，别处只引用**
+- 碰引脚 / 串口 / 启动模式 / SRAM4 → [docs/design/HARDWARE-FACTS.md](docs/design/HARDWARE-FACTS.md)
+- 碰 bootloader 的状态扇区 / metadata / 事件日志 → [docs/design/JOURNAL.md](docs/design/JOURNAL.md)
+- 碰签名密钥 / 信任根 / 扇区布局 → [docs/design/OWNERSHIP.md](docs/design/OWNERSHIP.md)
+- 有人想重开一个已拍板的话题 → [docs/design/DECISIONS.md](docs/design/DECISIONS.md)
+- 要编译、要测、或在查一个时有时无的问题 → [docs/test/BUILD-AND-TEST.md](docs/test/BUILD-AND-TEST.md)
+- 开工与收尾流程 → [docs/process/SESSION-START.md](docs/process/SESSION-START.md)
+
+🔴 **当前唯一的 P0 是一件硬件故障**：SDRAM 的 D1 线导通极弱，一条挡着四样东西。全部内容在 [docs/work/investigations/sdram-d1.md](docs/work/investigations/sdram-d1.md)，**接手第一件事**是跑一次已经写好但从没跑过的浮空测试（5 分钟，不需要硬件动手）。
 
 ## 三、换台机器：clone 什么
 
@@ -86,20 +92,20 @@ python3 tools/init_machine.py --prereqs      # Windows 上是 python
 
 它打出每一项在不在、版本是什么，**并给出这台系统上装它的确切命令**（apt / brew / winget / pip 按平台选）。安装命令只存在于 `tools/init_machine.py` 的 `PREREQS` 表里 —— 这里再抄一遍就是第二份，必漂移。
 
-⚠️ **这一步不能用 `selfcheck.ps1` 的 A0 代替。** A0 要 PowerShell 才能跑，而 pwsh 恰好是 Debian / macOS 上最可能缺的那一个。
+⚠️ **这一步不能用 selfcheck 的 ENV 一步代替。** ENV 那步的 PowerShell 版要 pwsh 才能跑，而 pwsh 恰好是 Debian / macOS 上最可能缺的那一个。
 
 下面这张表只回答表里没有的那一半：**不装会怎样**。
 
 | 工具 | 干什么用的 | 不装会怎样 |
 |---|---|---|
 | **git** | — | — |
-| **Go** | 构建 `IAPTool` / `TestTool`；selfcheck 的 A1/A3 | 一半用例跑不了 |
-| **Python 3** | selfcheck 的 A10/A11/A12（假板子、加密交叉验证）；[M7](docs/handover/Todo/M7-python-scripts.md) 之后是**全部**测试脚本的运行时 | 那三步报 SKIP；M7 完成后一个脚本都跑不了 |
+| **Go** | 构建 `IAPTool` / `TestTool`；selfcheck 的 H1/H3 | 一半用例跑不了 |
+| **Python 3** | selfcheck 的 K1-K6 / X1-X2 / DG1（假板子、加密交叉验证）；[M7](docs/work/M7-python-scripts.md) 之后是**全部**测试脚本的运行时 | 那三步报 SKIP；M7 完成后一个脚本都跑不了 |
 | **`pyserial`** | 唯一一个要 `pip install` 的东西。M7 之后所有碰串口的用例都靠它 | 碰串口的用例报 SKIP（**点名说缺它**，不静默） |
-| **原生 C 编译器** | selfcheck 的 A2：**直接编译 bootloader 的真实 C 源码**做主机侧单元测试 | A2 报 SKIP |
+| **原生 C 编译器** | selfcheck 的 H2：**直接编译 bootloader 的真实 C 源码**做主机侧单元测试 | H2 报 SKIP |
 | **STM32CubeIDE** | 构建 bootloader；`STM32_Programmer_CLI` 烧写和读回 flash | 上不了板 |
-| **Arduino IDE 2.x** | 构建 app；它自带的 `arduino-cli` 供 selfcheck 的 A13 用 | A13 报 SKIP，app 编不了 |
-| **PowerShell 7 (`pwsh`)** | **Linux / macOS 上目前必装** —— 全套测试脚本还是 PowerShell。[M7](docs/handover/Todo/M7-python-scripts.md) 改写成 Python 之后这一行就删掉 | 一个脚本都跑不了 |
+| **Arduino IDE 2.x** | 构建 app；它自带的 `arduino-cli` 供 selfcheck 的 P4 用 | P4 报 SKIP，app 编不了 |
+| **PowerShell 7 (`pwsh`)** | **Linux / macOS 上目前必装** —— 全套测试脚本还是 PowerShell。[M7](docs/work/M7-python-scripts.md) 改写成 Python 之后这一行就删掉 | 一个脚本都跑不了 |
 
 最后两个是**安装目录**而不是 PATH 上的可执行文件，所以它们不在 `--prereqs` 里，在第五节的路径探测里。
 
@@ -199,14 +205,14 @@ claude plugin install openplc@ai-skills
 
 ⚠️ **`CORE_LIVE` 结尾的板卡包版本号不要写死** —— 发版就变。`init_machine.py` 是用通配找出来的，升级板卡包后重跑一次即可。
 
-`selfcheck.ps1` 的 **A0** 会把这台机器上每一项解析成什么全部打出来，**缺什么点名说缺什么**，不静默跳过。全绿（或只剩它自己报出的 SKIP）就可以开工。
+selfcheck 的 **ENV** 一步会把这台机器上每一项解析成什么全部打出来，**缺什么点名说缺什么**，不静默跳过。全绿（或只剩它自己报出的 SKIP）就可以开工。
 
 ## 六、不在 git 里、必须单独处理的东西
 
 | 东西 | 为什么不在 git 里 | 换机器怎么办 |
 |---|---|---|
 | `TestTool/config/machine.{ps1,py}` | 每台机器都不一样 | **不用搬也不用抄**：`python3 tools/init_machine.py` 自己探测生成 |
-| `$CORE_LIVE`（Arduino IDE 实际加载的板卡包目录） | 是 IDE 的安装目录，不是仓库 | 装 Arduino IDE → 装 OpenPLC_Alpha 板卡包 → 用 `open_plc_arduino` 的内容覆盖它。⚠️ 方向是**单向的**，细节见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| `$CORE_LIVE`（Arduino IDE 实际加载的板卡包目录） | 是 IDE 的安装目录，不是仓库 | 装 Arduino IDE → 装 OpenPLC_Alpha 板卡包 → 用 `open_plc_arduino` 的内容覆盖它。⚠️ 方向是**单向的**，细节见 [docs/design/ARCHITECTURE.md](docs/design/ARCHITECTURE.md) |
 | `IAPServer/keys/fw_signing_key.pem`（真签名私钥） | 私钥 | **2026-08-19 确认：目前没有真私钥，开发用仓库里的 `fw_signing_key.TEST_ONLY.pem`。** 将来产生真私钥后，它就是换机器时唯一必须手工搬运的文件 —— 到时候回来改这一行 |
 | `.claude/settings.local.json` | 里面全是本机绝对路径的一次性命令，换台机器一条都匹配不上 | **不用搬。** 跨平台通用的那部分已经提交在 `.claude/settings.json` 里（只读命令 + `AI-Skills` marketplace 声明），新机器开箱就有；本机的 `additionalDirectories` 由 `--write-claude-dirs` 生成 |
 | 安装好的 `openplc` plugin | Claude Code 的用户级状态，不是仓库内容 | 新机器上 `claude plugin install openplc@ai-skills` 一次。marketplace 已在 `.claude/settings.json` 里声明，所以不用记地址 |
@@ -246,6 +252,6 @@ claude plugin install openplc@ai-skills
 
 ## 十、收尾
 
-用户说"今天结束 / 到此为止"时，按 [docs/handover/SESSION-START.md](docs/handover/SESSION-START.md) 的收尾流程把当天产生的东西全部归位，并提交推送三个仓库。判断标准只有一条：
+用户说"今天结束 / 到此为止"时，按 [docs/process/SESSION-START.md](docs/process/SESSION-START.md) 的收尾流程把当天产生的东西全部归位，并提交推送三个仓库。判断标准只有一条：
 
 > 换一台电脑、从零开一个新会话，照着这些文件能不能接着干？不能就是没归纳完。

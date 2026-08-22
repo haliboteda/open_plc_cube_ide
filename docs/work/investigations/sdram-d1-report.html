@@ -1,0 +1,909 @@
+<title>FMC_D1 故障报告</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg:        #eef1ed;
+    --surface:   #fbfcfa;
+    --surface-2: #f4f6f2;
+    --ink:       #10130f;
+    --ink-2:     #4b524b;
+    --muted:     #82877f;
+    --hair:      #dfe3db;
+    --rule:      #c4c9bf;
+    --accent:    #1f5e4a;
+    --s1:        #2a78d6;
+    --s2:        #eb6834;
+    --bad:       #d03b3b;
+    --good:      #0ca30c;
+    --pred:      #9aa096;
+    --shadow:    0 1px 2px rgba(16,19,15,.05), 0 8px 24px -16px rgba(16,19,15,.18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg:        #0c0e0c;
+      --surface:   #171a16;
+      --surface-2: #1f231e;
+      --ink:       #f4f6f2;
+      --ink-2:     #c0c6bc;
+      --muted:     #8d938a;
+      --hair:      #2b2f29;
+      --rule:      #3a3f38;
+      --accent:    #6fc0a2;
+      --s1:        #3987e5;
+      --s2:        #d95926;
+      --bad:       #e35f5f;
+      --good:      #0ca30c;
+      --pred:      #6d736a;
+      --shadow:    0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg:        #0c0e0c;
+    --surface:   #171a16;
+    --surface-2: #1f231e;
+    --ink:       #f4f6f2;
+    --ink-2:     #c0c6bc;
+    --muted:     #8d938a;
+    --hair:      #2b2f29;
+    --rule:      #3a3f38;
+    --accent:    #6fc0a2;
+    --s1:        #3987e5;
+    --s2:        #d95926;
+    --bad:       #e35f5f;
+    --good:      #0ca30c;
+    --pred:      #6d736a;
+    --shadow:    0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.6);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans SC", sans-serif;
+    font-size: 16px;
+    line-height: 1.72;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 60rem; margin: 0 auto; padding: 3rem 1.5rem 6rem; }
+
+  /* ---------- masthead ---------- */
+  header.masthead {
+    border-bottom: 2px solid var(--rule);
+    padding-bottom: 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+  .eyebrow {
+    font-family: ui-monospace, "Cascadia Code", Consolas, "Liberation Mono", monospace;
+    font-size: .72rem;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 .9rem;
+  }
+  h1 {
+    font-size: clamp(1.9rem, 1.2rem + 2.4vw, 2.9rem);
+    line-height: 1.14;
+    letter-spacing: -.022em;
+    font-weight: 640;
+    text-wrap: balance;
+    margin: 0 0 .7rem;
+  }
+  .standfirst {
+    font-size: 1.09rem;
+    color: var(--ink-2);
+    max-width: 62ch;
+    margin: 0 0 1.4rem;
+  }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: .4rem 1.6rem;
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: .78rem; color: var(--muted);
+  }
+  .meta b { color: var(--ink-2); font-weight: 500; }
+
+  /* ---------- structure ---------- */
+  section { margin-top: 3.25rem; }
+  h2 {
+    font-size: 1.34rem; letter-spacing: -.012em; font-weight: 620;
+    margin: 0 0 .35rem; text-wrap: balance;
+    display: flex; align-items: baseline; gap: .6rem;
+  }
+  h2 .num {
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: .8rem; font-weight: 500; color: var(--accent);
+    letter-spacing: .06em; flex: none;
+  }
+  h3 {
+    font-size: 1.02rem; font-weight: 620; margin: 2rem 0 .3rem;
+    letter-spacing: -.005em;
+  }
+  p { margin: .55rem 0 0; max-width: 68ch; }
+  p.lede { color: var(--ink-2); }
+  ul, ol { max-width: 68ch; padding-left: 1.3rem; }
+  li { margin: .3rem 0; }
+  strong { font-weight: 640; }
+  code, .mono {
+    font-family: ui-monospace, "Cascadia Code", Consolas, "Liberation Mono", monospace;
+    font-size: .87em;
+  }
+  code {
+    background: var(--surface-2);
+    border: 1px solid var(--hair);
+    border-radius: 3px;
+    padding: .06em .34em;
+  }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- stat row ---------- */
+  .stats {
+    display: grid; gap: 2px;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    background: var(--hair);
+    border: 1px solid var(--hair);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 1.6rem;
+  }
+  .stat { background: var(--surface); padding: 1rem 1.1rem; }
+  .stat .v {
+    font-size: 1.85rem; font-weight: 620; letter-spacing: -.02em;
+    line-height: 1.1; display: block;
+  }
+  .stat .v.bad { color: var(--bad); }
+  .stat .k {
+    font-size: .8rem; color: var(--ink-2); display: block; margin-top: .3rem;
+  }
+  .stat .k .mono { color: var(--muted); }
+
+  /* ---------- figures ---------- */
+  figure {
+    margin: 1.9rem 0 0;
+    background: var(--surface);
+    border: 1px solid var(--hair);
+    border-radius: 5px;
+    box-shadow: var(--shadow);
+    padding: 1.25rem 1.25rem 1rem;
+  }
+  .figscroll { overflow-x: auto; }
+  figure svg { display: block; width: 100%; height: auto; min-width: 30rem; }
+  figcaption {
+    font-size: .86rem; color: var(--ink-2);
+    border-top: 1px solid var(--hair);
+    margin-top: .9rem; padding-top: .75rem;
+  }
+  figcaption b { color: var(--ink); font-weight: 620; }
+  .fignum {
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: .72rem; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--muted); display: block; margin-bottom: .1rem;
+  }
+  .legend {
+    display: flex; flex-wrap: wrap; gap: .35rem 1.2rem;
+    font-size: .82rem; color: var(--ink-2); margin: 0 0 .85rem;
+  }
+  .legend span { display: inline-flex; align-items: center; gap: .42rem; }
+  .swatch { width: 11px; height: 11px; border-radius: 2px; flex: none; }
+
+  details {
+    margin-top: .85rem;
+    border-top: 1px solid var(--hair);
+    padding-top: .6rem;
+  }
+  details summary {
+    cursor: pointer; font-size: .82rem; color: var(--ink-2);
+    font-family: ui-monospace, Consolas, monospace;
+  }
+  details table { margin-top: .7rem; }
+
+  /* ---------- tables ---------- */
+  .tablewrap { overflow-x: auto; margin-top: 1.1rem; }
+  table {
+    border-collapse: collapse; width: 100%; font-size: .89rem;
+    font-variant-numeric: tabular-nums;
+  }
+  th, td {
+    text-align: left; padding: .5rem .7rem;
+    border-bottom: 1px solid var(--hair); vertical-align: top;
+  }
+  th {
+    font-size: .74rem; letter-spacing: .07em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600; white-space: nowrap;
+    border-bottom: 1px solid var(--rule);
+  }
+  td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  tbody tr:last-child td { border-bottom: none; }
+  .no { color: var(--bad); font-weight: 620; }
+  .yes { color: var(--good); font-weight: 620; }
+
+  /* ---------- callouts ---------- */
+  .ask {
+    background: var(--surface);
+    border: 1px solid var(--hair);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    padding: 1.1rem 1.25rem;
+    margin-top: 1.2rem;
+  }
+  .ask h3 { margin: 0 0 .2rem; font-size: 1rem; }
+  .ask .why { font-size: .88rem; color: var(--ink-2); margin-top: .35rem; }
+  .ask .tag {
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: .7rem; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--accent); display: block; margin-bottom: .25rem;
+  }
+  .safe {
+    background: var(--surface-2);
+    border: 1px solid var(--hair);
+    border-radius: 4px;
+    padding: 1rem 1.15rem;
+    margin-top: 1.2rem;
+    font-size: .93rem;
+  }
+  .safe p { max-width: 70ch; }
+  footer {
+    margin-top: 4rem; padding-top: 1.2rem;
+    border-top: 1px solid var(--rule);
+    font-size: .84rem; color: var(--muted);
+  }
+  footer p { max-width: 72ch; }
+  .srcs { font-family: ui-monospace, Consolas, monospace; font-size: .78rem; }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">Bridge 1436_01_SCHAE-BR &nbsp;·&nbsp; 故障报告</p>
+  <h1>SDRAM 数据线 D1 上有一个只在软件里看得见的故障</h1>
+  <p class="standfirst">
+    16 位 SDRAM 数据总线里，只有 <code>FMC_D1</code>（MCU <code>PD15</code> ↔ SDRAM <code>DQ1</code>）出错，
+    其余 15 根一次都没错。8 月 18 日这块板还是好的，8 月 21 日每次复位都失败。
+    下面是软件侧能测到的全部证据、被逐条排除的解释，以及为什么这条网络在板子上<strong>没有任何可以下探头的地方</strong>。
+  </p>
+  <div class="meta">
+    <span><b>板</b> Bridge 1436_01_SCHAE-BR</span>
+    <span><b>MCU</b> U1 STM32H743IIK6</span>
+    <span><b>SDRAM</b> U6 AS4C32M16SB-7BIN</span>
+    <span><b>日期</b> 2026-08-21</span>
+  </div>
+</header>
+
+<section id="summary">
+  <h2>一句话</h2>
+  <p class="lede">
+    所有测量都指向同一件事：<strong><code>FMC_D1</code> 这一段是通的，但导通很弱</strong> ——
+    SDRAM 的 <code>DQ1</code> 输入端拿到的不是干净的逻辑电平，而是最近若干次驱动值缓慢漂移后的混合。
+    软件能证明「是这一根线、是写入方向、不是时序、不是短路、不是开路」，
+    并且已经<strong>把故障位置从四个候选缩到两个</strong>（图 6）。
+    剩下的一步是分辨这两个，那一步我们再补一次测量就行；
+    <strong>要真正确认和修复，需要你</strong> —— 第 4 节是三件具体的事。
+  </p>
+
+  <div class="stats">
+    <div class="stat">
+      <span class="v bad">48.0 %</span>
+      <span class="k">bit1 的字错误率<br><span class="mono">32,768 个 16 位字，写入并回读</span></span>
+    </div>
+    <div class="stat">
+      <span class="v">0</span>
+      <span class="k">其余 15 位的错误数<br><span class="mono">491,520 次位观测</span></span>
+    </div>
+    <div class="stat">
+      <span class="v">58 %</span>
+      <span class="k">D1 的释放时间 / 同端口 6 根好线的均值<br><span class="mono">见图 6 —— 这是定位那一半</span></span>
+    </div>
+    <div class="stat">
+      <span class="v">0.08 pt</span>
+      <span class="k">时钟降 33% 后错误率的变化<br><span class="mono">40.52 % → 40.44 %</span></span>
+    </div>
+  </div>
+
+  <p>
+    板子上的表现是启动自检打出
+    <code>** SDRAM SELF-TEST FAILED at offset 00000000 **</code>，每次复位都一样，
+    位置总在偏移 0。软件侧没有改动：<code>8-18</code> 那次通过之后，
+    bootloader 的 <code>Core/</code>、<code>Drivers/</code>、FMC 配置一行都没动过。
+  </p>
+</section>
+
+<section id="topology">
+  <h2><span class="num">1</span>这条网络长什么样 —— 以及为什么量不了</h2>
+  <p>
+    从原理图（<span class="mono">1436_01_SCHAE-BR</span> Sheet 5 / Sheet 6）核实：
+    <code>FMC_D1</code> 是一条<strong>两端都在 BGA 球下、中间没有任何器件</strong>的网络。
+    整条 16 位数据总线上没有串联电阻，也没有测试点 ——
+    板上仅有的四个测试点是 TP1/TP2 <code>/RESET</code>、TP3 <code>VREF</code>、TP5 <code>ETH_nINT</code>。
+  </p>
+
+  <figure>
+    <span class="fignum">图 1 · 网络拓扑与四个候选故障位置</span>
+    <div class="figscroll">
+      <svg viewBox="0 0 720 300" role="img" aria-labelledby="f1t">
+        <title id="f1t">FMC_D1 从 U1 ball L14 直连 U6 ball B9，中间无器件，四个候选故障位置</title>
+        <defs>
+          <marker id="dot" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="8" markerHeight="8">
+            <circle cx="4" cy="4" r="3" fill="var(--bad)"/>
+          </marker>
+        </defs>
+
+        <!-- U1 -->
+        <rect x="24" y="52" width="150" height="104" rx="4"
+              fill="var(--surface-2)" stroke="var(--rule)" stroke-width="1"/>
+        <text x="38" y="76" font-size="13" font-weight="620" fill="var(--ink)">U1</text>
+        <text x="38" y="94" font-size="11" fill="var(--ink-2)" font-family="ui-monospace, Consolas, monospace">STM32H743IIK6</text>
+        <text x="38" y="110" font-size="10.5" fill="var(--muted)">UFBGA176 · 0.65 mm</text>
+        <text x="38" y="136" font-size="12" font-weight="620" fill="var(--ink)" font-family="ui-monospace, Consolas, monospace">ball L14 = PD15</text>
+
+        <!-- U6 -->
+        <rect x="546" y="52" width="150" height="104" rx="4"
+              fill="var(--surface-2)" stroke="var(--rule)" stroke-width="1"/>
+        <text x="560" y="76" font-size="13" font-weight="620" fill="var(--ink)">U6</text>
+        <text x="560" y="94" font-size="11" fill="var(--ink-2)" font-family="ui-monospace, Consolas, monospace">AS4C32M16SB-7BIN</text>
+        <text x="560" y="110" font-size="10.5" fill="var(--muted)">54-ball FBGA · 0.8 mm</text>
+        <text x="560" y="136" font-size="12" font-weight="620" fill="var(--ink)" font-family="ui-monospace, Consolas, monospace">ball B9 = DQ1</text>
+
+        <!-- the bad net -->
+        <line x1="174" y1="104" x2="546" y2="104" stroke="var(--bad)" stroke-width="2.5"/>
+        <text x="360" y="94" text-anchor="middle" font-size="12" font-weight="620"
+              fill="var(--bad)" font-family="ui-monospace, Consolas, monospace">FMC_D1</text>
+        <text x="360" y="126" text-anchor="middle" font-size="10.5" fill="var(--muted)">
+          无串联电阻 · 无测试点 · 两端出线都在封装阴影内
+        </text>
+
+        <!-- candidate fault sites -->
+        <g font-size="10.5" fill="var(--ink-2)">
+          <circle cx="192" cy="104" r="6" fill="var(--bad)" fill-opacity=".16" stroke="var(--bad)" stroke-width="1.5"/>
+          <text x="192" y="107.5" text-anchor="middle" font-size="8.5" font-weight="700" fill="var(--bad)">1</text>
+          <text x="192" y="176" text-anchor="middle">MCU 焊球</text>
+
+          <circle cx="330" cy="104" r="6" fill="var(--bad)" fill-opacity=".16" stroke="var(--bad)" stroke-width="1.5"/>
+          <text x="330" y="107.5" text-anchor="middle" font-size="8.5" font-weight="700" fill="var(--bad)">2</text>
+          <text x="330" y="176" text-anchor="middle">走线 / 内层过孔</text>
+
+          <circle cx="470" cy="104" r="6" fill="var(--bad)" fill-opacity=".16" stroke="var(--bad)" stroke-width="1.5"/>
+          <text x="470" y="107.5" text-anchor="middle" font-size="8.5" font-weight="700" fill="var(--bad)">3</text>
+          <text x="470" y="176" text-anchor="middle">SDRAM 焊球</text>
+
+          <circle cx="546" cy="104" r="6" fill="var(--bad)" fill-opacity=".16" stroke="var(--bad)" stroke-width="1.5"/>
+          <text x="546" y="107.5" text-anchor="middle" font-size="8.5" font-weight="700" fill="var(--bad)">4</text>
+          <text x="600" y="176" text-anchor="middle">DQ1 输入单元</text>
+        </g>
+        <line x1="192" y1="150" x2="192" y2="164" stroke="var(--rule)" stroke-width="1"/>
+        <line x1="330" y1="150" x2="330" y2="164" stroke="var(--rule)" stroke-width="1"/>
+        <line x1="470" y1="150" x2="470" y2="164" stroke="var(--rule)" stroke-width="1"/>
+        <line x1="546" y1="150" x2="600" y2="164" stroke="var(--rule)" stroke-width="1"/>
+
+        <!-- the 15 good lines -->
+        <g stroke="var(--pred)" stroke-width="1.5" opacity=".55">
+          <line x1="174" y1="214" x2="546" y2="214"/>
+          <line x1="174" y1="224" x2="546" y2="224"/>
+          <line x1="174" y1="234" x2="546" y2="234"/>
+          <line x1="174" y1="244" x2="546" y2="244"/>
+          <line x1="174" y1="254" x2="546" y2="254"/>
+        </g>
+        <text x="360" y="278" text-anchor="middle" font-size="11" fill="var(--ink-2)">
+          D0, D2 … D15 —— 同样的拓扑、同样的封装、同一层布线，0 错误
+        </text>
+        <text x="38" y="238" font-size="10.5" fill="var(--muted)">其余 15 根</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>四个候选位置在 CPU 看来完全一样。</b>软件能区分「哪一根线」和「哪个方向」，
+      不能区分「这条路径的哪一段」。而 ①–④ 全部落在 BGA 球下或内层 ——
+      0.65 mm 球距的扇出过孔只能落在封装阴影里，所以万用表和示波器都没有落点。
+    </figcaption>
+  </figure>
+</section>
+
+<section id="evidence">
+  <h2><span class="num">2</span>测到的：错误只在一根线、只在写入方向</h2>
+
+  <figure>
+    <span class="fignum">图 2 · 逐位错误率（32,768 个字，写入并回读）</span>
+    <div class="figscroll">
+      <svg viewBox="0 0 720 290" role="img" aria-labelledby="f2t">
+        <title id="f2t">bit1 错误率 40.5%，其余 15 位为 0</title>
+        <!-- gridlines -->
+        <g stroke="var(--hair)" stroke-width="1">
+          <line x1="56" y1="40"  x2="700" y2="40"/>
+          <line x1="56" y1="82"  x2="700" y2="82"/>
+          <line x1="56" y1="124" x2="700" y2="124"/>
+          <line x1="56" y1="166" x2="700" y2="166"/>
+          <line x1="56" y1="208" x2="700" y2="208"/>
+        </g>
+        <g font-size="10.5" fill="var(--muted)" text-anchor="end" font-family="ui-monospace, Consolas, monospace">
+          <text x="48" y="44">50%</text>
+          <text x="48" y="86">40%</text>
+          <text x="48" y="128">30%</text>
+          <text x="48" y="170">20%</text>
+          <text x="48" y="212">10%</text>
+          <text x="48" y="254">0%</text>
+        </g>
+        <line x1="56" y1="250" x2="700" y2="250" stroke="var(--rule)" stroke-width="1"/>
+
+        <!-- bit1 bar: 40.52% -> 170px -->
+        <rect x="96" y="80" width="38" height="170" rx="4" fill="var(--bad)">
+          <title>bit1 — 40.52 %（约 13,300 个坏字）</title>
+        </rect>
+        <text x="115" y="70" text-anchor="middle" font-size="12" font-weight="620" fill="var(--bad)">40.52%</text>
+
+        <!-- zero bars -->
+        <g fill="var(--pred)" opacity=".65">
+          <rect x="56"  y="248" width="38" height="2"><title>bit0 — 0 错误</title></rect>
+          <rect x="136" y="248" width="38" height="2"><title>bit2 — 0 错误</title></rect>
+          <rect x="176" y="248" width="38" height="2"><title>bit3 — 0 错误</title></rect>
+          <rect x="216" y="248" width="38" height="2"><title>bit4 — 0 错误</title></rect>
+          <rect x="256" y="248" width="38" height="2"><title>bit5 — 0 错误</title></rect>
+          <rect x="296" y="248" width="38" height="2"><title>bit6 — 0 错误</title></rect>
+          <rect x="336" y="248" width="38" height="2"><title>bit7 — 0 错误</title></rect>
+          <rect x="376" y="248" width="38" height="2"><title>bit8 — 0 错误</title></rect>
+          <rect x="416" y="248" width="38" height="2"><title>bit9 — 0 错误</title></rect>
+          <rect x="456" y="248" width="38" height="2"><title>bit10 — 0 错误</title></rect>
+          <rect x="496" y="248" width="38" height="2"><title>bit11 — 0 错误</title></rect>
+          <rect x="536" y="248" width="38" height="2"><title>bit12 — 0 错误</title></rect>
+          <rect x="576" y="248" width="38" height="2"><title>bit13 — 0 错误</title></rect>
+          <rect x="616" y="248" width="38" height="2"><title>bit14 — 0 错误</title></rect>
+          <rect x="656" y="248" width="38" height="2"><title>bit15 — 0 错误</title></rect>
+        </g>
+
+        <!-- x labels -->
+        <g font-size="10" fill="var(--muted)" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">
+          <text x="75"  y="266">0</text>
+          <text x="115" y="266" font-weight="700" fill="var(--bad)">1</text>
+          <text x="155" y="266">2</text>
+          <text x="195" y="266">3</text>
+          <text x="235" y="266">4</text>
+          <text x="275" y="266">5</text>
+          <text x="315" y="266">6</text>
+          <text x="355" y="266">7</text>
+          <text x="395" y="266">8</text>
+          <text x="435" y="266">9</text>
+          <text x="475" y="266">10</text>
+          <text x="515" y="266">11</text>
+          <text x="555" y="266">12</text>
+          <text x="595" y="266">13</text>
+          <text x="635" y="266">14</text>
+          <text x="675" y="266">15</text>
+        </g>
+        <text x="378" y="284" text-anchor="middle" font-size="10.5" fill="var(--ink-2)">数据位（bit）</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>只有 bit1。</b>其余 15 位在 491,520 次位观测里 0 错误。
+      总线是 16 位宽，一次 32 位访问是两个传输，两个半字的 bit1 是同一根物理线 ——
+      所以这排除了「多根线」「整体时序」「地址译码」这一整类原因。
+    </figcaption>
+    <details>
+      <summary>数据表</summary>
+      <div class="tablewrap"><table>
+        <thead><tr><th>数据位</th><th class="num">坏字数 / 32,768</th><th class="num">错误率</th></tr></thead>
+        <tbody>
+          <tr><td>bit1（<code>FMC_D1</code> / <code>PD15</code>）</td><td class="num">≈ 13,300</td><td class="num no">40.52 %</td></tr>
+          <tr><td>其余 15 位合计</td><td class="num">0 / 491,520</td><td class="num yes">0 %</td></tr>
+        </tbody>
+      </table></div>
+    </details>
+  </figure>
+
+  <figure>
+    <span class="fignum">图 3 · 三个简单故障模型的预测，和实测对不上</span>
+    <p class="legend">
+      <span><i class="swatch" style="background:var(--s1)"></i>写入 0 时读回正确的比例</span>
+      <span><i class="swatch" style="background:var(--s2)"></i>写入 1 时读回正确的比例</span>
+      <span><i class="swatch" style="background:var(--pred);opacity:.55"></i>斜纹 = 模型的预测值，实心 = 实测值</span>
+    </p>
+    <div class="figscroll">
+      <svg viewBox="0 0 720 300" role="img" aria-labelledby="f3t">
+        <title id="f3t">开路、固定拉低、固定拉高三种模型的预测与实测正确率对比</title>
+        <defs>
+          <pattern id="h1" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
+            <rect width="6" height="6" fill="var(--s1)" fill-opacity=".18"/>
+            <line x1="0" y1="0" x2="0" y2="6" stroke="var(--s1)" stroke-width="2" stroke-opacity=".75"/>
+          </pattern>
+          <pattern id="h2" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
+            <rect width="6" height="6" fill="var(--s2)" fill-opacity=".18"/>
+            <line x1="0" y1="0" x2="0" y2="6" stroke="var(--s2)" stroke-width="2" stroke-opacity=".75"/>
+          </pattern>
+        </defs>
+
+        <g stroke="var(--hair)" stroke-width="1">
+          <line x1="56" y1="40"  x2="700" y2="40"/>
+          <line x1="56" y1="92"  x2="700" y2="92"/>
+          <line x1="56" y1="198" x2="700" y2="198"/>
+        </g>
+        <line x1="56" y1="145" x2="700" y2="145" stroke="var(--rule)" stroke-width="1" stroke-dasharray="4 3"/>
+        <text x="180" y="140" font-size="10" fill="var(--muted)">50% = 全靠碰</text>
+        <g font-size="10.5" fill="var(--muted)" text-anchor="end" font-family="ui-monospace, Consolas, monospace">
+          <text x="48" y="44">100%</text>
+          <text x="48" y="96">75%</text>
+          <text x="48" y="149">50%</text>
+          <text x="48" y="202">25%</text>
+          <text x="48" y="254">0%</text>
+        </g>
+        <line x1="56" y1="250" x2="700" y2="250" stroke="var(--rule)" stroke-width="1"/>
+
+        <!-- scale: y = 250 - pct*2.1 ; 0%->250, 100%->40 -->
+        <!-- group 1: open circuit 50/50 -->
+        <rect x="86"  y="145" width="42" height="105" rx="4" fill="url(#h1)"><title>开路模型预测：写 0 正确率 50%</title></rect>
+        <rect x="130" y="145" width="42" height="105" rx="4" fill="url(#h2)"><title>开路模型预测：写 1 正确率 50%</title></rect>
+        <text x="129" y="137" text-anchor="middle" font-size="11" fill="var(--muted)">50 / 50</text>
+        <text x="129" y="268" text-anchor="middle" font-size="11.5" fill="var(--ink-2)">① 开路</text>
+        <text x="129" y="284" text-anchor="middle" font-size="10" fill="var(--muted)">两边都是碰运气</text>
+
+        <!-- group 2: stuck low 100/0 -->
+        <rect x="246" y="40"  width="42" height="210" rx="4" fill="url(#h1)"><title>固定拉低模型预测：写 0 正确率 100%</title></rect>
+        <rect x="290" y="248" width="42" height="2"  fill="url(#h2)"><title>固定拉低模型预测：写 1 正确率 0%</title></rect>
+        <text x="289" y="32" text-anchor="middle" font-size="11" fill="var(--muted)">100 / 0</text>
+        <text x="289" y="268" text-anchor="middle" font-size="11.5" fill="var(--ink-2)">② 固定拉低</text>
+        <text x="289" y="284" text-anchor="middle" font-size="10" fill="var(--muted)">短到 GND 或常低</text>
+
+        <!-- group 3: stuck high 0/100 -->
+        <rect x="406" y="248" width="42" height="2"  rx="1" fill="url(#h1)"><title>固定拉高模型预测：写 0 正确率 0%</title></rect>
+        <rect x="450" y="40"  width="42" height="210" rx="4" fill="url(#h2)"><title>固定拉高模型预测：写 1 正确率 100%</title></rect>
+        <text x="449" y="32" text-anchor="middle" font-size="11" fill="var(--muted)">0 / 100</text>
+        <text x="449" y="268" text-anchor="middle" font-size="11.5" fill="var(--ink-2)">③ 固定拉高</text>
+        <text x="449" y="284" text-anchor="middle" font-size="10" fill="var(--muted)">短到 VDD 或常高</text>
+
+        <!-- group 4: measured 13.4 / 90.7 -->
+        <rect x="566" y="222" width="42" height="28"  rx="4" fill="var(--s1)"><title>实测：写 0 时读回正确 13.4%</title></rect>
+        <rect x="610" y="60"  width="42" height="190" rx="4" fill="var(--s2)"><title>实测：写 1 时读回正确 90.7%</title></rect>
+        <text x="587" y="214" text-anchor="middle" font-size="11.5" font-weight="620" fill="var(--s1)">13.4</text>
+        <text x="631" y="52" text-anchor="middle" font-size="11.5" font-weight="620" fill="var(--s2)">90.7</text>
+        <text x="609" y="268" text-anchor="middle" font-size="11.5" font-weight="620" fill="var(--ink)">④ 实测</text>
+        <text x="609" y="284" text-anchor="middle" font-size="10" fill="var(--muted)">写 1 大多对，写 0 大多错</text>
+
+        <line x1="530" y1="40" x2="530" y2="252" stroke="var(--rule)" stroke-width="1"/>
+      </svg>
+    </div>
+    <figcaption>
+      <b>这根线被往高电平那一侧拖着，但信息没有完全断。</b>
+      真开路的话，读回值和写入值毫无相关性，两根柱子都该在 50%（<span class="mono">①</span>）——
+      实测一根 90.7 一根 13.4，离 50 都很远，所以<strong>不是开路</strong>。
+      硬拉高的话写 0 应该 <strong>0%</strong> 成功（<span class="mono">③</span>）——
+      实测有 13.4% 的 0 确实写进去了，所以<strong>也不是硬拉高</strong>。
+      剩下的形状是：<strong>驱动值到得了对面，但这根线有一股往高处的偏置，把 0 大量吃掉了。</strong>
+      这个偏置从哪来，是图 6 要回答的。
+    </figcaption>
+    <details>
+      <summary>数据表</summary>
+      <div class="tablewrap"><table>
+        <thead><tr><th>模型 / 测量</th><th class="num">写 0 → 读回正确</th><th class="num">写 1 → 读回正确</th><th>与实测一致？</th></tr></thead>
+        <tbody>
+          <tr><td>① 开路（线断了）</td><td class="num">50 %</td><td class="num">50 %</td><td class="no">否</td></tr>
+          <tr><td>② 固定拉低</td><td class="num">100 %</td><td class="num">0 %</td><td class="no">否</td></tr>
+          <tr><td>③ 固定拉高</td><td class="num">0 %</td><td class="num">100 %</td><td class="no">否（接近，但 0 没有全灭）</td></tr>
+          <tr><td><b>④ 实测</b></td><td class="num">13.4 %</td><td class="num">90.7 %</td><td>—</td></tr>
+        </tbody>
+      </table></div>
+    </details>
+  </figure>
+
+  <figure>
+    <span class="fignum">图 4 · 把 SDCLK 降 33%，错误率一动不动</span>
+    <div class="figscroll">
+      <svg viewBox="0 0 720 230" role="img" aria-labelledby="f4t">
+        <title id="f4t">100 MHz 时错误率 40.52%，66.7 MHz 时 40.44%</title>
+        <g stroke="var(--hair)" stroke-width="1">
+          <line x1="120" y1="40"  x2="640" y2="40"/>
+          <line x1="120" y1="70"  x2="640" y2="70"/>
+          <line x1="120" y1="100" x2="640" y2="100"/>
+          <line x1="120" y1="130" x2="640" y2="130"/>
+          <line x1="120" y1="160" x2="640" y2="160"/>
+        </g>
+        <g font-size="10.5" fill="var(--muted)" text-anchor="end" font-family="ui-monospace, Consolas, monospace">
+          <text x="112" y="44">50%</text>
+          <text x="112" y="74">40%</text>
+          <text x="112" y="104">30%</text>
+          <text x="112" y="134">20%</text>
+          <text x="112" y="164">10%</text>
+        </g>
+        <line x1="120" y1="190" x2="640" y2="190" stroke="var(--rule)" stroke-width="1"/>
+
+        <!-- scale: 0% -> 190, 50% -> 40 ; 3px per % -->
+        <rect x="190" y="68"  width="110" height="122" rx="4" fill="var(--bad)"><title>SDCLK 100 MHz，位周期 10 ns：错误率 40.52 %</title></rect>
+        <rect x="420" y="69"  width="110" height="121" rx="4" fill="var(--bad)"><title>SDCLK 66.7 MHz，位周期 15 ns：错误率 40.44 %</title></rect>
+        <text x="245" y="60" text-anchor="middle" font-size="13" font-weight="620" fill="var(--bad)">40.52 %</text>
+        <text x="475" y="60" text-anchor="middle" font-size="13" font-weight="620" fill="var(--bad)">40.44 %</text>
+        <text x="245" y="208" text-anchor="middle" font-size="11.5" fill="var(--ink-2)">SDCLK 100 MHz · 位周期 10 ns</text>
+        <text x="475" y="208" text-anchor="middle" font-size="11.5" fill="var(--ink-2)">SDCLK 66.7 MHz · 位周期 15 ns</text>
+        <path d="M 306 122 L 414 122" stroke="var(--muted)" stroke-width="1" stroke-dasharray="4 3"/>
+        <text x="360" y="114" text-anchor="middle" font-size="10.5" fill="var(--muted)">位周期 +50%</text>
+        <text x="360" y="138" text-anchor="middle" font-size="10.5" fill="var(--muted)">错误率 −0.08 pt</text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>所以不是时序余量的问题。</b>HCLK/3 是这颗 MCU 上唯一的另一档分频，
+      刷新计数也同步从 762 改成了 501。如果失败是建立/保持时间不够，
+      位周期加长一半必然带来明显改善；这里只动了 0.08 个百分点。
+      反过来说，这条线的时间常数<strong>远大于</strong> 15 ns。
+    </figcaption>
+  </figure>
+
+  <figure>
+    <span class="fignum">图 5 · 同一份数据写两遍，坏在同样的地方</span>
+    <div class="figscroll">
+      <svg viewBox="0 0 720 240" role="img" aria-labelledby="f5t">
+        <title id="f5t">两遍写入的坏字重叠 12,371，接近完全确定性的 13,278，远高于独立随机的 5,406</title>
+        <g stroke="var(--hair)" stroke-width="1">
+          <line x1="150" y1="40" x2="690" y2="40"/>
+          <line x1="150" y1="88" x2="690" y2="88"/>
+          <line x1="150" y1="136" x2="690" y2="136"/>
+        </g>
+        <line x1="150" y1="184" x2="690" y2="184" stroke="var(--rule)" stroke-width="1"/>
+        <!-- scale: 0 -> x=150 ; 14000 -> x=690 ; 0.03857 px per word -->
+        <rect x="150" y="48"  width="512" height="30" rx="4" fill="var(--pred)" fill-opacity=".5"><title>完全确定的话应重叠 13,278</title></rect>
+        <rect x="150" y="96"  width="477" height="30" rx="4" fill="var(--s1)"><title>实测重叠 12,371 个坏字</title></rect>
+        <rect x="150" y="144" width="209" height="30" rx="4" fill="var(--pred)" fill-opacity=".5"><title>互相独立的话应重叠 5,406</title></rect>
+
+        <g font-size="11.5" text-anchor="end" fill="var(--ink-2)">
+          <text x="142" y="68">完全确定 → 应重叠</text>
+          <text x="142" y="116" font-weight="620" fill="var(--ink)">实测重叠</text>
+          <text x="142" y="164">互相独立 → 应重叠</text>
+        </g>
+        <g font-size="12" font-family="ui-monospace, Consolas, monospace" font-variant-numeric="tabular-nums">
+          <text x="672" y="68" fill="var(--muted)">13,278</text>
+          <text x="637" y="116" font-weight="700" fill="var(--s1)">12,371</text>
+          <text x="369" y="164" fill="var(--muted)">5,406</text>
+        </g>
+        <text x="420" y="216" text-anchor="middle" font-size="11" fill="var(--ink-2)">
+          两遍写入分别产生 13,278 和 13,340 个坏字 · 重叠 12,371 = 93 % 可重复
+        </text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>93% 可重复 —— 这不是噪声，是这条线对波形的确定性反应。</b>
+      同一份数据写两遍，坏掉的字几乎是同一批（如果两遍互相独立，重叠只该有 5,406 个）。
+      另外，<strong>同一份已存储的内容读两次，bit1 只差 1.3%，其余 15 位差 0</strong> ——
+      读路径是稳的，<strong>损坏发生在写入方向</strong>：存进 SDRAM 的就是一个稳定的错值。
+    </figcaption>
+  </figure>
+
+  <figure>
+    <span class="fignum">图 6 · 用软件替代示波器：D1 这根线"装满"得太快</span>
+    <div class="figscroll">
+      <svg viewBox="0 0 720 268" role="img" aria-labelledby="f6t">
+        <title id="f6t">D1 释放后 170 ns 到达高电平，同一端口的六根好线在 263 至 320 ns 之间</title>
+        <!-- peer spread band: 263..320 ns -->
+        <rect x="544" y="40" width="86" height="188" fill="var(--s1)" fill-opacity=".08"/>
+        <line x1="588" y1="40" x2="588" y2="228" stroke="var(--s1)" stroke-width="1" stroke-dasharray="4 3"/>
+        <text x="588" y="32" text-anchor="middle" font-size="10" fill="var(--s1)">6 根好线：均值 292 ns，范围 263–320</text>
+
+        <g stroke="var(--hair)" stroke-width="1">
+          <line x1="150" y1="228" x2="660" y2="228"/>
+        </g>
+
+        <!-- rows: 1.5 px per ns from x=150 -->
+        <g font-size="11">
+          <rect x="150" y="50"  width="425" height="16" rx="4" fill="var(--s1)"><title>D0 (PD14) 283 ns</title></rect>
+          <rect x="150" y="76"  width="255" height="16" rx="4" fill="var(--bad)"><title>D1 (PD15) 170 ns -- the bad line</title></rect>
+          <rect x="150" y="102" width="480" height="16" rx="4" fill="var(--s1)"><title>D2 (PD0) 320 ns</title></rect>
+          <rect x="150" y="128" width="480" height="16" rx="4" fill="var(--s1)"><title>D3 (PD1) 320 ns</title></rect>
+          <rect x="150" y="154" width="395" height="16" rx="4" fill="var(--s1)"><title>D13 (PD8) 263 ns</title></rect>
+          <rect x="150" y="180" width="423" height="16" rx="4" fill="var(--s1)"><title>D14 (PD9) 282 ns</title></rect>
+          <rect x="150" y="206" width="423" height="16" rx="4" fill="var(--s1)"><title>D15 (PD10) 282 ns</title></rect>
+        </g>
+
+        <g font-size="11" text-anchor="end" fill="var(--ink-2)" font-family="ui-monospace, Consolas, monospace">
+          <text x="142" y="62">D0  PD14</text>
+          <text x="142" y="88" font-weight="700" fill="var(--bad)">D1  PD15</text>
+          <text x="142" y="114">D2  PD0</text>
+          <text x="142" y="140">D3  PD1</text>
+          <text x="142" y="166">D13 PD8</text>
+          <text x="142" y="192">D14 PD9</text>
+          <text x="142" y="218">D15 PD10</text>
+        </g>
+        <g font-size="11" font-family="ui-monospace, Consolas, monospace" font-variant-numeric="tabular-nums" fill="var(--muted)">
+          <text x="583" y="62">283 ns</text>
+          <text x="413" y="88" font-weight="700" fill="var(--bad)">170 ns</text>
+          <text x="638" y="114">320 ns</text>
+          <text x="638" y="140">320 ns</text>
+          <text x="553" y="166">263 ns</text>
+          <text x="581" y="192">282 ns</text>
+          <text x="581" y="218">282 ns</text>
+        </g>
+        <text x="405" y="252" text-anchor="middle" font-size="10.5" fill="var(--ink-2)">
+          释放后到达高电平的时间 —— 同一个 GPIO 端口、同一瞬间放开、同一段代码采样，96 次平均
+        </text>
+      </svg>
+    </div>
+    <figcaption>
+      <b>原理：每根线都是一个小水桶。</b>MCU 内部有一个固定的弱上拉（30–50 kΩ）当水龙头，
+      把线驱动到 0 之后放开，用 CPU 数着多久读到 1。线越长、连的东西越多，桶越大，装得越慢。
+      D1 只用了 <strong>170 ns</strong>，而同一个端口上的六根好线要 263–320 ns ——
+      <strong>D1 是它们的 58%，落在六根线的分布之外。</strong>
+      <br><br>
+      <b>这缩掉了一半的候选，但还没缩到一个。</b>两种机理都能让它变快：
+      <strong>(A) MCU 这一端看不到远端的电容</strong>（球下或走线断开／高阻），
+      或 <strong>(B) 这根线上有一条通往高电平的漏电路径</strong>（也解释了图 3 里"写 0 大量失败"）。
+      分开这两个只需要一次「放开后不加任何上下拉、等 2 ms 再读」的测量：
+      只有自身电容的线会保持原样，有漏电的线会被拖走。
+      <strong>那一项已经写好，但板子已断电，还没跑过</strong> —— 结果一出来就补进这份报告。
+      <br><br>
+      ⚠️ <b>只能在同一个端口内比。</b>另一个端口（PE7–PE15）九根好线从 245 到 528 ns，跨了 2.2 倍
+      —— 走线长度和引脚位置本身差别就这么大。所以参照物必须是同端口、同一次释放采的样。
+      内部上拉本身有 30–50 kΩ 的容差，六根好线的分布范围就是这个方法的噪声底。
+    </figcaption>
+  </figure>
+
+  <h3>还有三条，图上不好画，但同样重要</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>测量</th><th>结果</th><th>排除了什么</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>错误与<strong>邻近字</strong>的 bit1 的相关性（字偏移 −2…+2）</td>
+          <td>四个邻位分别 <span class="mono">59.7 / 59.5 / 53.8 / 53.7 %</span>，基线 50 %；<br>其余 15 根数据线全部 ≈ 50 %</td>
+          <td>不是与另一根数据线短接。<strong>只与自己这根线的近期历史相关</strong> —— 这正是「电平慢慢漂移」的样子</td>
+        </tr>
+        <tr>
+          <td>错误与 15 根<strong>地址线</strong>的相关性</td>
+          <td>全部偏离 50 % 不到 3 %</td>
+          <td>不是与地址线短接，也不是某个地址位译码错</td>
+        </tr>
+        <tr>
+          <td>把地址空间切 8 段分别统计</td>
+          <td>各段错误率 <span class="mono">40.0 – 41.2 %</span>，完全均匀</td>
+          <td>不是某个 row / bank / 区域的坏单元 —— 芯片内部的存储阵列没问题</td>
+        </tr>
+        <tr>
+          <td><code>PD15</code> 配成 GPIO，接内部上拉 / 下拉</td>
+          <td>完全跟随（上拉读 1，下拉读 0）</td>
+          <td>MCU 引脚能读；<strong>外部没有硬短路，也没有别的驱动源在抢这根线</strong>（40 kΩ 的内部上拉赢不过任何真实驱动）</td>
+        </tr>
+        <tr>
+          <td><code>PD15</code> 配成推挽输出</td>
+          <td>驱动 0 读回 0，驱动 1 读回 1</td>
+          <td>MCU 的输出驱动在直流上是好的</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="excluded">
+  <h2><span class="num">3</span>已经排除的，请不要重复</h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>怀疑过的原因</th><th>怎么排除的</th></tr></thead>
+      <tbody>
+        <tr><td>软件回归（我们自己改坏了）</td><td><span class="mono">8-18</span> 那次通过之后，bootloader 的 <code>Core/</code>、<code>Drivers/</code>、FMC 配置零改动</td></tr>
+        <tr><td>上一个应用程序留下的坏状态</td><td>真正的冷启动（<span class="mono">Reset cause: POR</span>）照样失败</td></tr>
+        <tr><td>SDCLK 时序余量</td><td>见图 4。最慢档也没有改善，而这是硬件上唯一的另一档</td></tr>
+        <tr><td>MCU 引脚损坏 / 外部有东西拉住这根线</td><td>内部上拉下拉完全跟随，推挽驱动读回正确</td></tr>
+        <tr><td>与其他数据线或地址线短接</td><td>相关性分析：只与自己这根线的近期历史相关</td></tr>
+        <tr><td>SDRAM 内部某个 row / bank / 区域坏</td><td>8 个区间错误率 40.0–41.2 %，完全均匀</td></tr>
+        <tr><td>开路 / 固定拉高 / 固定拉低</td><td>见图 3，三个都和实测对不上</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="ask">
+  <h2><span class="num">4</span>需要你做的三件事</h2>
+  <p class="lede">
+    按性价比排的。三件都不需要在这条网络上下探头 —— 因为下不了。
+  </p>
+
+  <div class="ask">
+    <span class="tag">优先 · 不用拆板</span>
+    <h3>① 局部冷冻或加热 U6，然后 U1，我们同时在线读错误率</h3>
+    <p>
+      冷冻喷剂或热风局部作用在其中一颗芯片上，如果错误率<strong>跟着变</strong>，
+      故障就在那一颗的球下；如果两颗都不敏感，嫌疑转向内层走线。
+      <span class="why"><strong>固件和脚本已经做好了</strong>：板子上一条串口命令就开始每秒打一行错误率
+      （<code>sdramlive 120</code>，或主机侧 <code>run-sdram-diag.ps1 -Live 120</code>）。
+      你喷、我读，不需要探头，也不需要你等我们。
+      这是唯一一个能<strong>非破坏性地缩小到某一颗芯片</strong>的办法。</span>
+    </p>
+  </div>
+
+  <div class="ask">
+    <span class="tag">决定性 · 需要设备</span>
+    <h3>② X-ray 看 U1 的 ball L14 和 U6 的 ball B9</h3>
+    <p>
+      这条网络两端各一颗球。找空洞、裂纹、少锡、球形异常。
+      <span class="why">这块板 8 月 18 日还是好的，中间只经历过反复上电和 SWD 烧写 ——
+      「从好变坏」比「一开始就坏」更像焊点疲劳而不是设计问题，所以先看球。
+      如果你手上有 8-18 之后的返修、拆装、热风或机械应力记录，那条信息比 X-ray 还值钱，请告诉我们。</span>
+    </p>
+  </div>
+
+  <div class="ask">
+    <span class="tag">对照 · 一次就够</span>
+    <h3>③ 第二块板到货后，先跑一次上电自检再做别的</h3>
+    <p>
+      看它打 <code>SDRAM staging buffer OK</code> 还是 <code>SDRAM SELF-TEST FAILED</code>。
+      <span class="why">这一次运行就能分开两种世界：新板子也失败 → 是设计或工艺问题，要回到布线和回流曲线；
+      新板子正常 → 这一块是个体故障，重点放在返修记录上。这是<strong>唯一能区分这两者</strong>的实验，成本是一次上电。</span>
+    </p>
+  </div>
+
+  <h3>如果动手修：先动 U6，别先动 U1</h3>
+  <p>
+    U6 是 54 球、0.8 mm 球距的 SDRAM，重新回流或换一颗都比动 176 球、0.65 mm 的 MCU 容易得多，
+    而候选位置里有两个（③ SDRAM 焊球、④ DQ1 输入单元）都在它那一侧。
+    <strong>动之前先跑一次 ① 的冷热测试</strong> —— 返修会把证据一起抹掉，而这块板目前是我们唯一的样本。
+  </p>
+</section>
+
+<section id="more">
+  <h2><span class="num">5</span>软件这一侧做到哪儿了</h2>
+  <p class="lede">
+    这些测量现在都在固件里（<code>sdramdiag</code> / <code>sdramlive</code> 两条串口命令），
+    不是一次性脚本 —— 第二块板到货、或者这块板返修之后，同一条命令再跑一遍就能对照。
+  </p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>测什么</th><th>状态</th><th>结果</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>16 根 DQ 线的近端电容对比</strong><br>
+              <span class="mono">内部上拉当电流源，同端口同时释放同时采样</span></td>
+          <td class="yes">已完成</td>
+          <td>见图 6：D1 是同端口六根好线的 <strong>58%</strong>，落在它们的分布之外</td>
+        </tr>
+        <tr>
+          <td><strong>整定时间常数</strong><br>
+              <span class="mono">同一个值连写 1/2/4/8/16 遍再读</span></td>
+          <td class="yes">已完成（只给出下界）</td>
+          <td>错误率 48.6% → <strong>43.6%</strong>。确实随驻留变长而降，但 16 倍驻留只换来 5 个百分点 ——
+              <strong>整定时间远大于 16 个总线周期（160 ns）</strong>。要给出确切的 τ 需要更长的驻留扫描</td>
+        </tr>
+        <tr>
+          <td><strong>浮空测试</strong><br>
+              <span class="mono">放开后不加任何上下拉，2 ms 后再读</span></td>
+          <td class="no">已写好，未跑</td>
+          <td>分开图 6 里那两个候选（远端没接上 / 有漏电路径）。
+              写完时板子已断电，<strong>下次上电第一件事</strong></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="impact">
+  <h2><span class="num">6</span>这件事的影响范围（先说不紧急的部分）</h2>
+  <div class="safe">
+    <p>
+      <strong>坏掉的 SDRAM 不会破坏板子上已经装好的程序。</strong>
+      固件升级是先把镜像暂存进 SDRAM、校验通过之后才擦写 flash 的。
+      SDRAM 一坏，镜像在校验那一步就被拦下，应用程序区根本不会被碰到 ——
+      这一点今天被实测确认了：板子始终能正常启动旧程序。
+    </p>
+    <p style="margin-top:.6rem">
+      代价是：<strong>这块板上任何升级都停在校验，两个掉电中断测试用例跑不了</strong>。
+      所以这不是救火，但它挡住了验收。
+    </p>
+  </div>
+</section>
+
+<footer>
+  <p>
+    <strong>所有数字的出处</strong>：本报告不含任何估算值，
+    每一条都来自 2026-08-21 在这块板上的实测，原始记录在 bootloader 仓库的
+    <span class="srcs">docs/IAP-STATUS.md</span> 「SDRAM 数据线 D1」一节；
+    引脚与球号来自 <span class="srcs">Hardware/Production/Bridge/1436_01_SCHAE-BR</span> 的 Sheet 5（MCU）和 Sheet 6（Memory）。
+  </p>
+  <p style="margin-top:.6rem">
+    <strong>两轮测量，一处对不上。</strong>图 2 / 3 / 6 和「软件这一侧做到哪儿了」来自当天傍晚的
+    <strong>仪器化复测</strong> —— 实现进了固件（<span class="srcs">Core/Src/sdram_diag.c</span>）、
+    判据进了脚本（<span class="srcs">TestTool/tools/run-sdram-diag.ps1</span>）、原始 capture 也提交了，
+    所以任何人都能重跑。图 4 / 5 来自当天下午的<strong>一次性脚本</strong>，那些脚本没有留存。
+    两轮里只有一处对不上：写 0 / 写 1 的成功率，下午测到 56.3% / 62.7%，傍晚测到 13.4% / 90.7%。
+    可能是两次的写入序列不同，也可能这根线在几个小时里漂了。
+    <strong>本报告采用能复现的那一版</strong>，并把这件事写在这里而不是抹掉。
+  </p>
+  <p style="margin-top:.6rem">
+    <strong>一处记录不全</strong>：图上「邻近字相关性」的四个数
+    （59.7 / 59.5 / 53.8 / 53.7 %）确定分别对应字偏移 −2、−1、+1、+2 这四个位置，
+    但当时没有记下哪个数对应哪个偏移，原始数据也没有留存。
+    结论只用到「四个邻位都显著高于 50 %、其余 15 根线都在 50 %」这一点，不依赖具体对应关系。
+  </p>
+</footer>
+
+</div>

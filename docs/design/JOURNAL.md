@@ -142,6 +142,6 @@ s_last_metadata_slot 有吗？
 | **换了新 bootloader** | slot 0 是认不出的字节 | **true** | 多一行 `unrecognised record at slot 0` | 重传一次 app → reclaim → 恢复 |
 | **上传中断 / 签名不过** | 有 `M`，但验签失败 | false | `metadata present` + `App signature invalid` | 重传 |
 
-第二种就是 [IAP-STATUS.md](IAP-STATUS.md) 里那条捆绑升级风险：**0.1.2 的记录头是 `uint32_t type`（`'META'` = `0x4D455441`），小端存进 flash 后偏移 0 是 `0x41`；新解析器把偏移 0 当 `type` 读，`0x41` 三种都不匹配 → 在 slot 0 就干净地落进"认不出"分支。** 不会误读成新格式、也不会捡到错的 metadata —— 格式变更是可靠可检测的。
+第二种就是 [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md) 里那条捆绑升级风险：**0.1.2 的记录头是 `uint32_t type`（`'META'` = `0x4D455441`），小端存进 flash 后偏移 0 是 `0x41`；新解析器把偏移 0 当 `type` 读，`0x41` 三种都不匹配 → 在 slot 0 就干净地落进"认不出"分支。** 不会误读成新格式、也不会捡到错的 metadata —— 格式变更是可靠可检测的。
 
 第三种的两半（上传时拒绝 / 下次启动时拒绝）是测试用例 S1 分开测的对象，别把它们合成一个。

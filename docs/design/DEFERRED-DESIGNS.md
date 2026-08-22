@@ -42,7 +42,7 @@
 
 ### IWDG 兜底这条路是堵的
 
-H7 的 IWDG 一旦启动**只有上电复位能停**，会跟着跳进用户 app，要求每个 sketch 都喂狗 —— 违反[「设计不能限制用户的 app」](WORKING-AGREEMENTS.md)。
+H7 的 IWDG 一旦启动**只有上电复位能停**，会跟着跳进用户 app，要求每个 sketch 都喂狗 —— 违反[「设计不能限制用户的 app」](../process/WORKING-AGREEMENTS.md)。
 
 相关：[HARDWARE-FACTS.md](HARDWARE-FACTS.md) 的 SRAM4 no-init 机制。
 

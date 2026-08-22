@@ -1,10 +1,10 @@
 # M2 · 证书链
 
-**覆盖需求：[C11](../REQUIREMENTS.md)**（板子从第一版就懂证书链，简单模式走同一条验证路径）、**[C12](../REQUIREMENTS.md)**（撤销）。
+**覆盖需求：[C11](../STATUS.md)**（板子从第一版就懂证书链，简单模式走同一条验证路径）、**[C12](../STATUS.md)**（撤销）。
 
 **依赖 [M1](M1-owner-slot.md)** —— 证书要有一个根来验，那把根住在 owner 槽里。
 
-> 设计推理在 [../../OWNERSHIP.md](../../OWNERSHIP.md)。这份只写落地。
+> 设计推理在 [../design/OWNERSHIP.md](../design/OWNERSHIP.md)。这份只写落地。
 
 ## 一句话
 
@@ -52,13 +52,13 @@ cert{ pubkey=K_pub, sig=K签 }        cert{ pubkey=L_pub, sig=K签 }
 | | 影响 | 归属 |
 |---|---|---|
 | **`serial` 谁分配、怎么保证不重复** | 它是撤销的唯一依据。两张叶子拿到同一编号，撤销一张会**连坐**另一张 | 工具侧。做第 5 步之前必须定 |
-| 会话认证换不换成证书 | 换了能消掉固定密码的三边镜像 + [../../DEFERRED-DESIGNS.md](../../DEFERRED-DESIGNS.md) 里的产线单板密钥 | ⚠️ **要动 core**，成本差一个数量级 |
+| 会话认证换不换成证书 | 换了能消掉固定密码的三边镜像 + [../design/DEFERRED-DESIGNS.md](../design/DEFERRED-DESIGNS.md) 里的产线单板密钥 | ⚠️ **要动 core**，成本差一个数量级 |
 
 `serial` 的候选：根私钥旁边放个计数器文件／时间戳／用户指定。**不阻塞 M1，做证书那步再定。**
 
 ## 成本提醒
 
-[../../OWNERSHIP.md](../../OWNERSHIP.md) 的位置表最后一列全是"不用改 core" —— **那是对 owner 槽说的，不是对证书说的**。
+[../design/OWNERSHIP.md](../design/OWNERSHIP.md) 的位置表最后一列全是"不用改 core" —— **那是对 owner 槽说的，不是对证书说的**。
 
 > 会话认证一旦改成证书，core 侧 `iap_keyderive` 必须跟着改。**两件事成本差一个数量级，应该影响实施顺序。**
 

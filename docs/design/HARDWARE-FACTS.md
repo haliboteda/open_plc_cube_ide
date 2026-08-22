@@ -51,9 +51,9 @@ MAX3221 的 ±5.5V 线电平不是从 3V3 直接来的，是**电荷泵**（char
 
 ⚠️ **这是"能出来"，不是"保证能出来"。** 成立条件是「app 从交权到打印那行的耗时」< 「电容放电到不足以产生有效电平的时间」。现在 12ms 够用，但**没有任何东西保证它** —— 电容容差、温度、app 启动变慢，任何一个都能让这行悄悄消失。
 
-**所以在 core 里加启动打印之前要想清楚这一条**：加得越多，越可能超出余电窗口而**静默丢失**。要可靠输出的唯一办法是打印前主动拉高 PB10，但那会抢走用户 app 对收发器初始状态的控制权 —— 取舍见 [TODO.md](TODO.md) 的 B1。
+**所以在 core 里加启动打印之前要想清楚这一条**：加得越多，越可能超出余电窗口而**静默丢失**。要可靠输出的唯一办法是打印前主动拉高 PB10，但那会抢走用户 app 对收发器初始状态的控制权 —— 取舍见 [../work/ISSUES.md](../work/ISSUES.md) 的 B1。
 
-## ~~UART4 被重复占用~~ ✅ 2026-08-17 已修（M5），后果比原先以为的严重得多
+## UART4 曾被重复占用 ✅ 2026-08-17 已修（M5），后果比原先以为的严重得多
 
 `Serial_Test` 已从 UART4 挪到 **USART3**（`core:cores/arduino/main.cpp` 的 `HardwareSerial Serial_Test(PC_11_ALT1, PC_10_ALT1)`）。**`ALT1` 是关键**：同样两个引脚，AF8 = UART4，AF7 = USART3。**线一根没变**，端子 C05/C06 和 bootloader 自己的 UART4 日志都不受影响。
 
@@ -74,17 +74,9 @@ MAX3221 的 ±5.5V 线电平不是从 3V3 直接来的，是**电荷泵**（char
 
 判据和跑法见 `$TOOL/TestTool/TEST-CASES.md` 的 **M5** 一节（`tools/run-m5.ps1`）。
 
-<details><summary>原始记录（推断部分已被实测否定，保留以免重走）</summary>
+**机制**（修之前）：`HardwareSerial Serial_Test(PC_11, PC_10)` 解析到 **UART4**（AF8），而 `Serial4` / `Serial` 在 PH13/PH14 上**也是 UART4**。`uart_handlers[]` 每个外设只有一个槽位，**最后一次 `begin()` 赢**。
 
-### ~~UART4 被重复占用（潜在 bug，未修）~~
-
-`HardwareSerial Serial_Test(PC_11, PC_10)`（core `main.cpp`）解析到 **UART4**（AF8），而 `Serial4` / `Serial` 在 PH13/PH14 上**也是 UART4**。
-
-`uart_handlers[]` 每个外设只有一个槽位，**最后一次 `begin()` 赢**。所以将来任何 `Serial4.begin()`（或把 USB 菜单切到 "CDC (no generic 'Serial')"）都会**静默掐掉 `Serial_Test` 的接收**，而发送看起来一切正常。
-
-修法：`HardwareSerial Serial_Test(PC_11_ALT1, PC_10_ALT1)` 挪到没人用的 USART3（AF7）。**尚未实施** —— 需要硬件验证，并且要提交到共享的 core 包。
-
-</details>
+⚠️ 当时记的后果（"静默掐掉接收、发送看起来正常"）**是推断，已被实测否定** —— 见 [../archive/RETRACTED.md](../archive/RETRACTED.md) 第 13 条。
 
 ## USB 菜单影响 `Serial` 的含义
 
@@ -102,7 +94,7 @@ MAX3221 的 ±5.5V 线电平不是从 3V3 直接来的，是**电荷泵**（char
 
 1. BOOT0 网静态为低 → 复位必然从 flash 启动，不会进 ROM DFU
 2. `boot0_is_pressed()` 的 active-high 判断**正确**（SW2 按下拉到 3V3）
-3. PG9 **不需要**配成输出。~~当前的推挽输出驱动低有隐患：按下 SW2 = 3V3 经引脚对地短路~~ ✅ **2026-08-18 已改成输入**，隐患消除
+3. PG9 **不需要**配成输出。曾经的推挽输出配置有隐患（按下 SW2 = 3V3 经引脚对地短路）—— ✅ **2026-08-18 已改成输入**，隐患消除
 
 ### "改成 input 会让 RESET 失效"—— 2026-08-18 受控实验否定了
 
@@ -140,6 +132,21 @@ MAX3221 的 ±5.5V 线电平不是从 3V3 直接来的，是**电荷泵**（char
 **2026-08-17 起这 39 个脚在变体头里有名字了** —— `core:variants/STM32H7xx/H743/variant_PLC_H743.h` 的 `FMC_RESERVED_*`。**起名不阻止任何事**（`digitalWrite(PE7, ...)` 照样编得过，这是刻意的），只是让人在头文件里就能看见。改 `fmc.c` 的引脚时**两边都要改**，`FMC_RESERVED_PIN_COUNT` 那个 39 是给编译期断言用的锚。
 
 **这不是排布错误** —— 这 39 个脚和本板所有对外 IO（DOUT×8 / DIN×8 / AIN×2 / AOUT×2 / RS232 / RS485 / CAN / KNX）一个都不撞，连 BOOT0 的 PG9 都恰好夹在 PG8 和 PG15 中间空着。**是缺一道防护。**
+
+### ⚠️ 这条总线上没有任何可以下探头的地方 —— 2026-08-21 查原理图确认
+
+**查的是** `Hardware/Production/Bridge/1436_01_SCHAE-BR` 的 Sheet 5（MPU）和 Sheet 6（Memory）。
+
+| | |
+|---|---|
+| 两端封装 | U1 `STM32H743IIK6` **UFBGA176，0.65 mm 球距**；U6 `AS4C32M16SB-7BIN` **54-ball FBGA，0.8 mm** |
+| 中间有没有器件 | **一个都没有**。16 根数据线全部是球到球直连，无串联电阻、无排阻、无测试点 |
+| 板上仅有的 4 个测试点 | TP1 / TP2 `/RESET`、TP3 `VREF`、TP5 `ETH_nINT` —— 都不在总线上 |
+| 已核实的球号 | `FMC_D0` = `PD14` = U1 **ball M14** ↔ U6 **ball A8**；`FMC_D1` = `PD15` = U1 **ball L14** ↔ U6 **ball B9** |
+
+⚠️ **别再提"量某根数据线的电阻"或"用示波器看 SDRAM 那一端"** —— 两端出线都在封装阴影内（0.65 mm 球距的扇出过孔只能落在那里），万用表和示波器都没有落点。数据总线上的故障**只能靠软件、冷热喷剂、X-ray 或换板对照**去定位。
+
+⚠️ **R32 / R33 那两个 0Ω 不在 `FMC_D2/D3` 上**，它们在 32.768 kHz 晶振（`XTAL2`）那一路。`PD0`（U1 ball B12）和 `PD1`（ball C12）到 SDRAM 同样是直连。曾经照原理图缩略图误认过一次。
 
 ## SRAM4 的 no-init 机制
 

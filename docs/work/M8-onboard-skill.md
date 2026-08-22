@@ -24,17 +24,17 @@ python3 open_plc_cube_ide/tools/bootstrap.py
 
 **substance 全在 `init_machine.py`** —— 探测什么、装什么、写哪些配置。两个外壳都不实现逻辑：`bootstrap.py` 连仓库表和目录布局都是**从 CLAUDE.md 第三节现读**，工具清单和安装命令**从 `PREREQS` 现读**。改行为改 `init_machine.py`，不是改外壳。
 
-⚠️ `bootstrap.py` 破例放在 `open_plc_cube_ide/tools/`，违反 [../../../CLAUDE.md](../../../CLAUDE.md) 第八节"脚本进 TestTool"的规矩。理由是硬的：**它必须在 `IAPTranfer_Tool` 被 clone 之前就能跑。** 这条例外写进第八节了。
+⚠️ `bootstrap.py` 破例放在 `open_plc_cube_ide/tools/`，违反 [../../CLAUDE.md](../../CLAUDE.md) 第八节"脚本进 TestTool"的规矩。理由是硬的：**它必须在 `IAPTranfer_Tool` 被 clone 之前就能跑。** 这条例外写进第八节了。
 
 ## 做什么用的
 
 **换台电脑（Windows / Debian / macOS）不用重训一个 AI，也不用照着 CLAUDE.md 手工走五步。**
 
-之前缺的不是能力，是**入口**：那五步只存在于 [../../../CLAUDE.md](../../../CLAUDE.md) 第五节的散文里，没有任何东西保证一个新会话会照着走 —— 它得先读到、还得认出「初始化」这句话对应的是它。
+之前缺的不是能力，是**入口**：那五步只存在于 [../../CLAUDE.md](../../CLAUDE.md) 第五节的散文里，没有任何东西保证一个新会话会照着走 —— 它得先读到、还得认出「初始化」这句话对应的是它。
 
 ## 覆盖哪条需求
 
-**[F5](../REQUIREMENTS.md)**（换台电脑能接着干，不用重训一个 AI）。
+**[F5](../STATUS.md)**（换台电脑能接着干，不用重训一个 AI）。
 
 与 [M7](M7-python-scripts.md) **正交**，两个都覆盖 F5 但方向不同：M7 让 Debian 机器**跑得动用例**，M8 让任何机器**配得起来**。M7 没做完之前，M8 在 Debian / macOS 上的产出是"配好了，但用例要 pwsh"，skill 会照实说而不是假装跳过几项。
 
@@ -119,7 +119,7 @@ Claude Code v2.1.195 起，**只由项目 settings 启用、且来自外部来�
 
 | 扩展 | 为什么 `init_machine.py` 非做不可 |
 |---|---|
-| `--prereqs` | 前置运行时检查必须在 **Python** 里。`selfcheck.ps1` 的 A0 要 PowerShell 才能跑，而 pwsh 恰好是 Debian / macOS 上最可能缺的那一个 —— 一个在缺前置条件的机器上跑不起来的前置检查器不算检查器 |
+| `--prereqs` | 前置运行时检查必须在 **Python** 里。selfcheck 的 ENV 一步（PowerShell 版）要 pwsh 才能跑，而 pwsh 恰好是 Debian / macOS 上最可能缺的那一个 —— 一个在缺前置条件的机器上跑不起来的前置检查器不算检查器 |
 | `--write-claude-dirs` | 这个产品没有共享构建系统，一个功能常常要同时改两三个仓库。不授权兄弟仓库，会话每读一次就弹一次权限 —— 那是持续一整天的摩擦，不是一次性的 |
 | `HW_REPO` / `REF_REPO` | 不在探测表里，skill 就无从知道它们缺不缺 |
 

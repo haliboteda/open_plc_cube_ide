@@ -65,7 +65,7 @@ MEMORY
      already owns and does not fill (96,944 B used of 131,072 at the time this
      was reserved, so 8K comes out of slack, not out of code).
 
-     Design: docs/OWNERSHIP.md. Plan and steps: docs/handover/Todo/M1-owner-slot.md.
+     Design: docs/design/OWNERSHIP.md. Plan and steps: docs/work/M1-owner-slot.md.
      Requirement C10. */
   FLASH (rx)     : ORIGIN = 0x08000000, LENGTH = 120K
   DTCMRAM (xrw)  : ORIGIN = 0x20000000, LENGTH = 128K

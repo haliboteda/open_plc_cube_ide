@@ -42,7 +42,7 @@
  * reissued the same nonce numbers after every visit to the bootloader.
  *
  * Backup register allocation is shared state across three repositories with no
- * shared build -- see the table in docs/ARCHITECTURE.md before claiming one. */
+ * shared build -- see the table in docs/design/ARCHITECTURE.md before claiming one. */
 #ifndef IAP_VBAT_WITNESS_BKP_REG
 #define IAP_VBAT_WITNESS_BKP_REG RTC_BKP_DR3
 #endif

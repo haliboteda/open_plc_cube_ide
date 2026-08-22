@@ -1,8 +1,8 @@
 # 待完成的模块
 
-**这里只放需要立项的模块** —— 有设计空间、要分步做、做完会改变 [../REQUIREMENTS.md](../REQUIREMENTS.md) 里某条需求的状态。
+**这里只放需要立项的模块** —— 有设计空间、要分步做、做完会改变 [../STATUS.md](../STATUS.md) 里某条需求的状态。
 
-零散的 bug 和代码债在 [../../TODO.md](../../TODO.md)，不要两边各写一遍。
+零散的 bug 和代码债在 [../../TODO.md](ISSUES.md)，不要两边各写一遍。
 
 | 模块 | 覆盖需求 | 成本 | 依赖 | 状态 |
 |---|---|---|---|---|
@@ -17,7 +17,7 @@
 
 ## 每份怎么写
 
-统一骨架，和 [../../WORKING-AGREEMENTS.md](../../WORKING-AGREEMENTS.md) 的五项一致，外加落地需要的东西：
+统一骨架，和 [../process/WORKING-AGREEMENTS.md](../process/WORKING-AGREEMENTS.md) 的五项一致，外加落地需要的东西：
 
 | 段 | 内容 |
 |---|---|
@@ -28,12 +28,14 @@
 | **设计思路** | **已经想清楚的部分照抄进去**，落地时不用重想 |
 | **方案对比** | 多于一条路就给表：代价 / 风险 / 推荐 |
 | **分步计划** | 每步一个可验证的中间状态 |
-| **验收** | 做完跑什么用例才算过。用例没有就先去 [../TEST-PLAN.md](../TEST-PLAN.md) 写骨架 |
+| **验收** | 做完跑什么用例才算过。用例没有就先去 [../test/CASE-DESIGNS.md](../test/CASE-DESIGNS.md) 写骨架 |
 | **已否决** | 讨论过并砍掉的路，连理由一起。**防止下次重新讨论** |
 
 ## 建议顺序
 
-~~M6~~ → ~~M4~~ → ~~M5~~ → ~~M3~~ → ~~M1~~ **→ M8（主体已完成）→ M7 → M2。**
+**做完的：** M6 → M4 → M5 → M3 → M1（依次，2026-08-17 至 08-18）。
+
+**手上的：** M8（主体已完成）→ M7 → **M2**。
 
 **2026-08-21：新增 M8**（一句「初始化」就能开工）。它和 M7 都覆盖 F5 但正交：**M7 让第二台机器跑得动用例，M8 让它配得起来。** 主体一天做完，剩下三步全都卡在"需要第二台机器"，所以它不占用 M7 的时间 —— 反过来，M8 做完之后第一次上 Debian / macOS 的成本明显低了，M7 的真机验证会更快。
 
@@ -47,8 +49,8 @@ M6 是补测试覆盖，成本最低而且直接消掉 REQUIREMENTS 里的 🟡 
 
 **2026-08-17 一天做完 M6、M4、M5 三个。** 剩下 M3（需求已确认，卡 API 形态）和 M1/M2 两个大框架。
 
-⚠️ **M3 / M4 / M5 都要改 `open_plc_arduino`（共享 core）**，那是分发给其他工程师的基础设施 —— 见 [../../ARCHITECTURE.md](../../ARCHITECTURE.md)。流程是 **live 改 → 编译/上板验证 → 拷回 repo → 跑 `tools\check-core-sync.ps1`（用例 P3）**。
+⚠️ **M3 / M4 / M5 都要改 `open_plc_arduino`（共享 core）**，那是分发给其他工程师的基础设施 —— 见 [../design/ARCHITECTURE.md](../design/ARCHITECTURE.md)。流程是 **live 改 → 编译/上板验证 → 拷回 repo → 跑 `tools\check-core-sync.ps1`（用例 P3）**。
 
 ⚠️ **M5 给的教训，做 M3 之前先读**：它原文把后果写成"诊断口静默失效"，实测是**整个 app 挂死、板子失联、只能 ST-Link 救**。**Todo 里写的"可能的影响"是推断，不是实测** —— 动手前先花十分钟复现一次，否则会按错误的严重性排优先级。
 
-⚠️ **M1 和 M2 都要碰 bootloader 扇区布局**，动之前先读 [../../OWNERSHIP.md](../../OWNERSHIP.md) 和 [../../JOURNAL.md](../../JOURNAL.md) 两份。
+⚠️ **M1 和 M2 都要碰 bootloader 扇区布局**，动之前先读 [../design/OWNERSHIP.md](../design/OWNERSHIP.md) 和 [../design/JOURNAL.md](../design/JOURNAL.md) 两份。

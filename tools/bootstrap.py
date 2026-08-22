@@ -681,7 +681,7 @@ def step_verify(repos):
     if not pwsh:
         Warn("  no PowerShell, so not one test case can run yet. Every test script")
         Warn("  here is still PowerShell; the rewrite to Python is M7, tracked in")
-        Warn("  docs/handover/Todo/M7-python-scripts.md.")
+        Warn("  docs/work/M7-python-scripts.md.")
         record("selfcheck", False, "no PowerShell on this machine")
         return
     code, _o, _e = run([pwsh, "-NoProfile", "-ExecutionPolicy", "Bypass",

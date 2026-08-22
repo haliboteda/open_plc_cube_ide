@@ -1,6 +1,6 @@
 # 构建与测试
 
-路径变量（`$IDE`、`$CORE_LIVE`、`$TOOL` 等）的定义见 [ARCHITECTURE.md](ARCHITECTURE.md#路径变量)。装什么、配什么在 [../CLAUDE.md](../CLAUDE.md)。
+路径变量（`$IDE`、`$CORE_LIVE`、`$TOOL` 等）的定义见 [../design/ARCHITECTURE.md#路径变量](../design/ARCHITECTURE.md#路径变量)。装什么、配什么在 [../../CLAUDE.md](../../CLAUDE.md)。
 
 > **写路径一律用 `/`。** Windows 的 .NET 路径 API 全都接受正斜杠，Linux 不接受反斜杠 —— `/` 是唯一两边都对的写法。可执行文件后缀（`.exe` 或空）不要写死，脚本里用 `_common.ps1` 的 `$EXE`。
 

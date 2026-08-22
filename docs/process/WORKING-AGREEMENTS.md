@@ -12,15 +12,18 @@
 
 **通用那一条规则不在这里**，在 `AI-Skills/_shared/rules/cite-the-path.md`，它会作为用户级 rule 在每个项目里加载。这里只答本项目的那一半：**哪类编号在哪个文件。**
 
+> ⚠️ **完整的登记表在 [../ID-MAP.md](../ID-MAP.md)** —— 10 套编号，每套定义在哪、谁实现、结果记在哪。下面这张只是最常用的四类，**不要在这里加第二份清单**。
+
 | 编号 | 去哪查 |
 |---|---|
-| 用例覆盖哪条需求 + 最近一次结果 | [handover/TEST-PLAN.md](handover/TEST-PLAN.md) |
-| 用例的判据和怎么跑 | `$TOOL/TestTool/TEST-CASES.md` |
-| 需求条目 A1–A7 B1–B11 C1–C14 D1–D9 E1–E8 F1–F5 | [handover/REQUIREMENTS.md](handover/REQUIREMENTS.md) |
-| 模块 M1–M8 | [handover/Todo/BACKLOG.md](handover/Todo/BACKLOG.md) 及同目录各自一份 |
-| selfcheck 的 A0–A14 | `$TOOL/TestTool/tools/selfcheck.ps1` |
+| 需求 A1–A7 B1–B11 C1–C14 D1–D9 E1–E8 F1–F5 | [../STATUS.md](../STATUS.md) —— 连同用例、状态、最近结果 |
+| 用例的判据和怎么跑 | `$TOOL/TestTool/TEST-CASES.md`（跨仓，贴着代码走） |
+| 已知问题 `ISS-*` | [../work/ISSUES.md](../work/ISSUES.md) |
+| 模块 M1–M8 | [../work/BACKLOG.md](../work/BACKLOG.md) 及同目录各自一份 |
 
-实现在哪：T/N/S/AU1 → `TestTool/*.go`；K/DG1 → `TestTool/host/fakeboard/`；H2 → `TestTool/host/bootloader_unit/`；X → `TestTool/host/crypto_ref/`；P → `TestTool/tools/check-*`。
+⚠️ **2026-08-22 之前这里还有一行「selfcheck 的 A0–A14」。那套编号已经整个删掉了** —— 它每一步都只是某个用例的别名（A12 就是 DG1，A13 就是 P4），而 `A1`/`A2`/`A3`/`A7` 又和需求号撞车，"A7 过了"字面上有四个意思。selfcheck 现在直接用用例号，`selfcheck.py --list` 会打出它跑哪 12 步、各证明哪条需求。
+
+实现在哪：T/N/S/AU1 → `TestTool/*.go`；K/DG1 → `TestTool/host/fakeboard/`；H2 → `TestTool/host/bootloader_unit/`；X → `TestTool/host/crypto_ref/`；P → `TestTool/tools/check_*`。
 
 ## 陈述任何问题都按这个骨架
 
@@ -83,7 +86,7 @@
 
 涉及寄存器行为、引脚接法、链接脚本、跨仓绑定、工具链行为的结论，**先去原理图 / 数据手册 / 源码里核实**。核实不了就明说"这条没验证"。
 
-> 教训：曾凭记忆断言"软件无法让 RESET 键失效"，查原理图后发现 PG9 和 MCU BOOT0 是同一条网络（见 [HARDWARE-FACTS.md](HARDWARE-FACTS.md)）。
+> 教训：曾凭记忆断言"软件无法让 RESET 键失效"，查原理图后发现 PG9 和 MCU BOOT0 是同一条网络（见 [../design/HARDWARE-FACTS.md](../design/HARDWARE-FACTS.md)）。
 
 ## Todo 里写的"可能的影响"是推断，动手前先复现一次
 
@@ -106,7 +109,7 @@
 - 发现**重复或近似重复的功能** → **不要**静默合并或重构，问用户想怎么处理
 - 发现**死代码 / 无用代码** → 可以删，但**删之前问**
 
-**为什么**：这套系统横跨三个独立仓库、没有共享构建（见 [ARCHITECTURE.md](ARCHITECTURE.md)），**看起来的重复常常是刻意的** —— 同一个常量或算法被有意镜像到 bootloader / Arduino core / Go 工具三边。自动"清理"会静默搞坏另外两边。
+**为什么**：这套系统横跨三个独立仓库、没有共享构建（见 [../design/ARCHITECTURE.md](../design/ARCHITECTURE.md)），**看起来的重复常常是刻意的** —— 同一个常量或算法被有意镜像到 bootloader / Arduino core / Go 工具三边。自动"清理"会静默搞坏另外两边。
 
 ## 注释只说目标
 
@@ -141,7 +144,7 @@
 
 ### 重新生成后仍须复查（不在 USER CODE 块内）
 
-- `.ioc` 里 PG9 的信号类型（见 [HARDWARE-FACTS.md](HARDWARE-FACTS.md)）
+- `.ioc` 里 PG9 的信号类型（见 [../design/HARDWARE-FACTS.md](../design/HARDWARE-FACTS.md)）
 - `STM32H743IIKX_FLASH.ld` 的 `FLASH LENGTH = 128K`
 
 四个 fault handler 已经做到重新生成安全：在 PD 块里把 CubeMX 生成的版本改名让路，在 USER CODE 1 里定义真正的 naked 版本。
