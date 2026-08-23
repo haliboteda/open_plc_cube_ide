@@ -10,6 +10,8 @@
 
 它们是某个时刻的**渲染快照**，不会随代码更新。归档是为了能改能重发，不是为了被引用。**不要照着它们排查问题**，也不要在别处引用它们的结论。
 
+⚠️ **里面的数字是渲染那天的，不要回填。** 一份被改过数字的快照既不是当时的真相、也不是现在的，比两边都不是更糟。当前值去 [../../test/MEASUREMENTS.md](../../test/MEASUREMENTS.md)。
+
 | 文件 | 讲什么 | 权威文本在 | 发布于 | 状态 |
 |---|---|---|---|---|
 | [owner-slot.html](owner-slot.html) | 板子归谁：owner 槽、TOFU、Setup/User Mode | [../../design/OWNERSHIP.md](../../design/OWNERSHIP.md) | [89bd5218](https://claude.ai/code/artifact/89bd5218-b53d-4e1b-a570-d10d540971c7) | 2026-08-16，最新 |

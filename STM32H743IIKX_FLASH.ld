@@ -62,8 +62,10 @@ MEMORY
      board back to the factory root.
 
      It costs no extra sector. The area is parasitic on a sector the bootloader
-     already owns and does not fill (96,944 B used of 131,072 at the time this
-     was reserved, so 8K comes out of slack, not out of code).
+     already owns and does not fill, so the 8K comes out of slack rather than
+     out of code. Current image size and headroom: docs/test/MEASUREMENTS.md
+     (the one place that number lives -- a copy here would go stale unnoticed,
+     which is exactly what happened to the copy that used to be on this line).
 
      Design: docs/design/OWNERSHIP.md. Plan and steps: docs/work/M1-owner-slot.md.
      Requirement C10. */
