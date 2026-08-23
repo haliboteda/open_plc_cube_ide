@@ -16,8 +16,8 @@
 
 | 用例 | 覆盖 | 要板子 | 成本 | 状态 |
 |---|---|---|---|---|
-| **S4a** 传输中拔电 | E8 C4 | ✅ + 人工断电 | 中 | ⬜ 窗口宽，好命中。🔴 **卡在 SDRAM D1 线** |
-| **S4b** 擦写阶段拔电 | E8 | ✅ + 人工断电 | 高 | ⬜ ⚠️ 窗口只剩几秒。🔴 同上 |
+| **S4a** 传输中拔电 | E8 C4 | ✅ + 人工断电 | 中 | ⬜ 窗口宽，好命中。**★ 现在是 P0** —— 换了 upper deck 之后第一次能测 |
+| **S4b** 擦写阶段拔电 | E8 | ✅ + 人工断电 | 高 | ⬜ ⚠️ 窗口只剩几秒，但 IAPTool 一退出就动手即可。**同上** |
 | **M3** 两块板 MAC 不同 | E1 | ⛔ **第二块板** | — | ⬜ 阻塞。拿到板子的第一件事 |
 
 **已经做完的四条**（DG1、AU1、S2、S3）不再列在这里 —— 结果在 [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md)，状态在 [../STATUS.md](../STATUS.md)。
@@ -52,6 +52,6 @@
 - ✅ [../STATUS.md](../STATUS.md) 的 **C5 和 C6 都已从 🟡 变成 ✅**，分别指向 AU1 和 DG1；C2 另外多了 S2
 - ✅ [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md) 里 DG1 / S2 / AU1 的结果都填了日期和数字
 
-**这份还剩什么：** S4a/S4b（要人工卡时机断电，🔴 卡在 SDRAM D1）、M3（⛔ 等第二块板）。
+**这份还剩什么：** S4a/S4b（要人工卡时机断电，**现在能测了**）、M3（⛔ 等第二块板）。
 
 **S4b 现在好命中多了** —— 因为「`IAPTool` 退出 ≠ 升级完成」（见 [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md)），等它一退出就动手即可，不用掐秒表。用例骨架见 [../test/CASE-DESIGNS.md](../test/CASE-DESIGNS.md) 的 S4b 段。

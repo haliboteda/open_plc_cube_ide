@@ -24,7 +24,6 @@
 /* USER CODE BEGIN 0 */
 
 #include "IAP_config.h"
-#include "sdram_diag.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <inttypes.h>
@@ -130,11 +129,6 @@ static void FMC_SDRAM_SelfTest(void)
     printf("** SDRAM SELF-TEST FAILED at offset %08" PRIX32 " **\r\n"
            "** Staging buffer unusable: uploads will fail at the checksum step. **\r\n",
            offsets[i]);
-
-    /* Six offsets cannot tell a dead controller from one bad data line, and the
-     * difference decides who has to do something about it. This costs a few
-     * tens of milliseconds and only ever runs on a board that already failed. */
-    iap_sdram_diag_boot_summary();
   }
 }
 

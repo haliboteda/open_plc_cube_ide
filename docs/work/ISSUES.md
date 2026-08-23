@@ -16,7 +16,6 @@
 
 | 优先级 | 编号 | 一句话 | 挡着什么 | 谁能动 |
 |---|---|---|---|---|
-| **P0** | [ISS-B4](#iss-b4--sdram-的-d1-线要修) | SDRAM D1 线导通极弱 | BG1 失败、S4a/S4b 跑不了、E5 证据失效、**任何上传都停在 checksum** | 硬件 |
 | **P1** | [ISS-B5](#iss-b5--★-某些-app-装上去之后板子对-iaptool-不可达) | 某些 app 让板子对 IAPTool 不可达 | 需求 **A3** 的成立范围；无人值守的网络升级 | 我们（加个编译宏就能定位） |
 | **P2** | [ISS-A4](#iss-a4--所有权命令还没进出货工具-iaptool) | `takeown`/`setowner` 没进 IAPTool | **客户拿不到 C10 这个功能** | 我们 |
 | **P3** | [ISS-B2](#iss-b2--两块板的-mac-是否互不相同) | 两块板 MAC 是否不同 | 需求 **E1**、逐板检查单 **F2** | 等第二块板 |
@@ -27,22 +26,6 @@
 | — | [ISS-B1](#iss-b1--boot-millis-靠电荷泵余电才出得来) | `[BOOT] millis=` 靠电荷泵余电 | 无。**等一个设计决策** | 要你定 |
 | — | [ISS-C1](#iss-c1--reserved_tail_sectors-被当成两个意思用) | `RESERVED_TAIL_SECTORS` 一名两义 | 无。**当前路线碰不到** | 留档 |
 | — | [ISS-E1](#iss-e1--metasha256-写了但全代码没人读) | `meta.sha256` 写了没人读 | 无。**不打算做** | 留档 |
-
----
-
-# P0 · 挡住最多东西的
-
-## ISS-B4 · SDRAM 的 D1 线要修
-
-**要硬件动手。这是当前唯一的 P0。**
-
-D1 这一根线（MCU `PD15` ↔ SDRAM AS4C32M16SB-7BIN 的 D1 脚）**导通极弱** —— 线是通的，但 SDRAM 输入端拿不到干净的逻辑电平。
-
-**全部内容在 [investigations/sdram-d1.md](investigations/sdram-d1.md)**：32768 个字的统计、逐条排除的其他解释、还剩的两个互斥候选、给硬件那边的三条请求、以及**接手第一件事**（跑一次已经写好但从没跑过的浮空测试，5 分钟，不需要硬件动手）。
-
-**为什么是 P0**：SDRAM 是 IAP 的暂存区。不修，**任何上传都停在 checksum**，[../test/CASE-DESIGNS.md](../test/CASE-DESIGNS.md) 的 **S4a / S4b** 一条都跑不了，**E8** 也就永远停在 ⬜，而 **E5** 的 ✅ 证据也失效了。
-
-**给硬件工程师的单页报告**：[investigations/sdram-d1-report.html](investigations/sdram-d1-report.html)。
 
 ---
 

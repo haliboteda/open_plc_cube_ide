@@ -35,7 +35,9 @@
 - 要编译、要测、或在查一个时有时无的问题 → [docs/test/BUILD-AND-TEST.md](docs/test/BUILD-AND-TEST.md)
 - 开工与收尾流程 → [docs/process/SESSION-START.md](docs/process/SESSION-START.md)
 
-🔴 **当前唯一的 P0 是一件硬件故障**：SDRAM 的 D1 线导通极弱，一条挡着四样东西。全部内容在 [docs/work/investigations/sdram-d1.md](docs/work/investigations/sdram-d1.md)，**接手第一件事**是跑一次已经写好但从没跑过的浮空测试（5 分钟，不需要硬件动手）。
+**当前的 P0 在 [docs/STATUS.md](docs/STATUS.md) 第二节**，那里一张表排好了先做哪个。
+
+> 2026-08-21 到 08-23 之间那条「SDRAM D1 线」的 P0 **已经不在了** —— 换了一块新的 upper deck，SDRAM 好用了。旧板子的排查记录留在 [docs/work/investigations/sdram-d1.md](docs/work/investigations/sdram-d1.md)，**根因始终没定位到**，所以万一再出同样的症状，从那份开始看。
 
 ## 三、换台机器：clone 什么
 
