@@ -1,6 +1,6 @@
 # 用例设计
 
-**这里放用例的完整设计骨架和落地时的决定。** 从原 `TEST-PLAN.md` 拆出来（2026-08-22）—— 它的覆盖矩阵已经并进 [../STATUS.md](../STATUS.md)，覆盖缺口去了 [COVERAGE-GAPS.md](COVERAGE-GAPS.md)。
+**这里放用例的完整设计骨架和落地时的决定。** 从原 TEST-PLAN.md 拆出来（2026-08-22，那份已不存在）—— 它的覆盖矩阵已经并进 [../STATUS.md](../STATUS.md)，覆盖缺口去了 [COVERAGE-GAPS.md](COVERAGE-GAPS.md)。
 
 **判据和怎么跑不在这里，在 `$TOOL/TestTool/TEST-CASES.md`** —— 那是明文定的规矩（"贴着代码走，跨仓不搬"），也是对的：判据要跟着实现走。
 

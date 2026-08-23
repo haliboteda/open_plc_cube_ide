@@ -21,7 +21,7 @@
 | 已知问题 `ISS-*` | [../work/ISSUES.md](../work/ISSUES.md) |
 | 模块 M1–M8 | [../work/BACKLOG.md](../work/BACKLOG.md) 及同目录各自一份 |
 
-⚠️ **2026-08-22 之前这里还有一行「selfcheck 的 A0–A14」。那套编号已经整个删掉了** —— 它每一步都只是某个用例的别名（A12 就是 DG1，A13 就是 P4），而 `A1`/`A2`/`A3`/`A7` 又和需求号撞车，"A7 过了"字面上有四个意思。selfcheck 现在直接用用例号，`selfcheck.py --list` 会打出它跑哪 12 步、各证明哪条需求。
+⚠️ **2026-08-22 之前这里还有一行「selfcheck 的 A0–A14」。那套编号已经整个删掉了** —— 它每一步都只是某个用例的别名（A12 就是 DG1，A13 就是 P4），而 `A1`/`A2`/`A3`/`A7` 又和需求号撞车，"A7 过了"字面上有四个意思。selfcheck 现在直接用用例号，`selfcheck.py --list` 会打出它跑哪 15 步、各证明哪条需求。
 
 实现在哪：T/N/S/AU1 → `TestTool/*.go`；K/DG1 → `TestTool/host/fakeboard/`；H2 → `TestTool/host/bootloader_unit/`；X → `TestTool/host/crypto_ref/`；P → `TestTool/tools/check_*`。
 
@@ -145,7 +145,7 @@
 ### 重新生成后仍须复查（不在 USER CODE 块内）
 
 - `.ioc` 里 PG9 的信号类型（见 [../design/HARDWARE-FACTS.md](../design/HARDWARE-FACTS.md)）
-- `STM32H743IIKX_FLASH.ld` 的 `FLASH LENGTH = 128K`
+- `STM32H743IIKX_FLASH.ld` 的 `FLASH LENGTH` 必须是 **120K，不是 128K** —— 尾部 8K 是 owner 记录区（需求 C10）。⚠️ **看到 128K 不要“改回去”** ：那会让链接器把代码放进那 8K，把已经写在里面的所有权记录盖掉 —— 而那是静默的，板子会惄无声息地退回出厂根。理由见 [../design/OWNERSHIP.md](../design/OWNERSHIP.md)
 
 四个 fault handler 已经做到重新生成安全：在 PD 块里把 CubeMX 生成的版本改名让路，在 USER CODE 1 里定义真正的 naked 版本。
 

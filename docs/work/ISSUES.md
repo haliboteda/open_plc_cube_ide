@@ -23,7 +23,7 @@
 | P4 | [ISS-A3](#iss-a3--pg9-改输入应该挪到-ioc-里) | PG9 改输入应挪进 `.ioc` | 无（整洁问题） | 我们 |
 | P4 | [ISS-C4](#iss-c4--两个-fakeboard-的-powershell-版有一个偶发竞态) | fakeboard PS 版偶发竞态 | 无（M7 第 6 步会删掉那些文件） | 我们 |
 | P5 | [ISS-D1](#iss-d1--发现限流是固定窗口实测能超标-20) | 限流是固定窗口，能超标 20% | 无（合法用量差 25 倍） | 我们，要对外承诺数字时再做 |
-| — | [ISS-A2](#iss-a2--boot-行前有个乱码字节) | `[BOOT]` 前一个乱码字节 | 无。**根因已查清，建议接受** | 见 [../design/DECISIONS.md](../design/DECISIONS.md) 第 4 条 |
+| — | [ISS-A2](#iss-a2--boot-行前有个乱码字节) | `[BOOT]` 前一个乱码字节 | 无。**根因已查清，建议接受** | **要你定**（曾被误记成已决策，已更正） |
 | — | [ISS-B1](#iss-b1--boot-millis-靠电荷泵余电才出得来) | `[BOOT] millis=` 靠电荷泵余电 | 无。**等一个设计决策** | 要你定 |
 | — | [ISS-C1](#iss-c1--reserved_tail_sectors-被当成两个意思用) | `RESERVED_TAIL_SECTORS` 一名两义 | 无。**当前路线碰不到** | 留档 |
 | — | [ISS-E1](#iss-e1--metasha256-写了但全代码没人读) | `meta.sha256` 写了没人读 | 无。**不打算做** | 留档 |
@@ -207,7 +207,7 @@ UART echo ready         ← 前面是干净的
 | 关断前多发几个空闲位，把塌陷推到有效数据之后 | 要试出需要几个位，且塌陷时间随电容容差变 |
 | 干脆不关收发器 | ❌ 违反"app 拿到冷板子状态"的设计 |
 
-**我建议接受**，已作为决定记在 [../design/DECISIONS.md](../design/DECISIONS.md) 第 4 条。有人再问就指那里，不用重查。
+**我建议接受，但这条还没拍板 —— 等你定。** 根因已经查清，所以不用重查；要定的只是"接不接受"。定了之后再进 [../design/DECISIONS.md](../design/DECISIONS.md)。
 
 ## ISS-B1 · `[BOOT] millis=` 靠电荷泵余电才出得来
 

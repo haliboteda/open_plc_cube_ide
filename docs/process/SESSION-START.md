@@ -27,7 +27,7 @@
 
 | 问题 | 文件 |
 |---|---|
-| **要做到什么、到哪一步了、怎么证明的** | **[../STATUS.md](../STATUS.md)** —— 2026-08-22 起是一张表，原来的 `REQUIREMENTS.md` 和 `TEST-PLAN.md` 合并进去了 |
+| **要做到什么、到哪一步了、怎么证明的** | **[../STATUS.md](../STATUS.md)** —— 2026-08-22 起是一张表，原来的 REQUIREMENTS.md 和 TEST-PLAN.md 合并进去了（那两份已不存在） |
 | 某个数字的出处 | [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md) |
 | 还欠什么，怎么做 | [../work/BACKLOG.md](../work/BACKLOG.md)（立项的模块）／[../work/ISSUES.md](../work/ISSUES.md)（零散问题） |
 | 怎么开工、怎么收尾 | `SESSION-START.md`（本文件） |
@@ -84,7 +84,7 @@ python3 tools/init_machine.py --write-claude-dirs   # 让会话读得到兄弟�
 pwsh ./tools/selfcheck.ps1
 ```
 
-selfcheck 全绿（或只剩它自己报出来的 SKIP）就说明这台机器可以开工了。**缺什么它会说缺什么**，不会静默跳过 —— 第一步 **ENV** 专门打印这台机器上每一项工具解析成了什么。`--list` 可以先看它会跑哪 12 步、各证明哪条需求。⚠️ PowerShell 版的 ENV 要 pwsh 才跑得起来，所以 pwsh 本身缺不缺要靠 `--prereqs` 看。
+selfcheck 全绿（或只剩它自己报出来的 SKIP）就说明这台机器可以开工了。**缺什么它会说缺什么**，不会静默跳过 —— 第一步 **ENV** 专门打印这台机器上每一项工具解析成了什么。`--list` 可以先看它会跑哪 15 步、各证明哪条需求。⚠️ PowerShell 版的 ENV 要 pwsh 才跑得起来，所以 pwsh 本身缺不缺要靠 `--prereqs` 看。
 
 ## 收尾流程 —— 说"今天到此为止"时要做的
 
