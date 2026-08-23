@@ -114,6 +114,29 @@ protecting anything from the moment it is claimed.
 
 ### Known issues
 
+- **⚠️ On the one board we have, SDRAM data line D1 conducts too weakly to carry
+  a clean logic level, and that stops every upgrade.** Since 2026-08-21 the
+  bootloader's start-up self-test reports
+  `** SDRAM SELF-TEST FAILED at offset 00000000 **`, reproducibly. Because images
+  are staged in SDRAM before anything is written to flash, an upload gets as far
+  as the checksum and stops there — so **no upgrade completes on that board**,
+  over either Ethernet or USB.
+
+  **The board stays safe.** The staged image fails verification, the application
+  region is never touched, and whatever was installed keeps running and booting.
+  This is a failure to upgrade, not a brick.
+
+  Believed to be a single-board hardware fault, not a design problem: the same
+  board passed on 2026-08-18, nothing in `Core/`, `IAPServer/`, `Drivers/` or the
+  `.ioc` changed in between, and both ends of that net sit under BGA balls with
+  no test point anywhere on the bus. **It has not been confirmed on a second
+  board, because there is no second board** — that is the first thing to check
+  when one arrives. Measurements, the explanations already ruled out, and the two
+  candidates still open are in
+  `docs/work/investigations/sdram-d1.md`.
+
+  **If you see `SDRAM SELF-TEST FAILED`, stop and fix the hardware.** Upload
+  testing past that point tells you nothing.
 - **The application's `[BOOT] millis=` banner reaches the RS232 terminals only
   by accident of timing.** The core prints it before anything drives the
   transceiver enable high, so the MAX3221 is nominally shut down — but its

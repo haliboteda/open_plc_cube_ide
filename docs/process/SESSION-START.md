@@ -23,14 +23,15 @@
 
 **名字要说出内容或用途，不要 `README.md`。** 2026-08-17 之前这个目录和 `docs/` 下一共 5 个 `README.md`，光看名字分不清哪个是索引、哪个是入口、哪个是待办。**只有仓库根目录的 `README.md` 例外** —— 那是仓库门面。
 
-这四份的分工是正交的，名字直接对应：
+分工是正交的，目录名直接说出这份文件多久变一次：
 
 | 问题 | 文件 |
 |---|---|
-| 要做到什么，到哪一步了 | `REQUIREMENTS.md` |
-| 怎么证明做到了 | `TEST-PLAN.md` |
-| 还欠什么，怎么做 | `Todo/BACKLOG.md` |
+| **要做到什么、到哪一步了、怎么证明的** | **[../STATUS.md](../STATUS.md)** —— 2026-08-22 起是一张表，原来的 `REQUIREMENTS.md` 和 `TEST-PLAN.md` 合并进去了 |
+| 某个数字的出处 | [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md) |
+| 还欠什么，怎么做 | [../work/BACKLOG.md](../work/BACKLOG.md)（立项的模块）／[../work/ISSUES.md](../work/ISSUES.md)（零散问题） |
 | 怎么开工、怎么收尾 | `SESSION-START.md`（本文件） |
+| 某个编号是什么 | [../ID-MAP.md](../ID-MAP.md) |
 
 ## 新会话的开机顺序
 

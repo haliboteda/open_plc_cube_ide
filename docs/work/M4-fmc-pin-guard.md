@@ -49,7 +49,7 @@ PC0 · PD0,1,8,9,10,14,15 · PE0,1,7-15 · PF0-5,11-15 · PG0,1,2,4,5,8,15 · PH
 
 | 步 | 做什么 |
 |---|---|
-| 1 | 从 `Core/Src/fmc.c:153-193` 的注释块把 39 个脚和它们的 FMC 功能抄成一张表 |
+| 1 | 从 `Core/Src/fmc.c` 的 `HAL_FMC_MspInit()` 注释块把 39 个脚和它们的 FMC 功能抄成一张表（⚠️ **按函数名找，别按行号** —— 见上面那条） |
 | 2 | 在 `variant_PLC_H743.h` 里给每个起名 `FMC_RESERVED_<功能>`，并加一段注释说明后果 |
 | 3 | 同步写进 [../design/HARDWARE-FACTS.md](../design/HARDWARE-FACTS.md) |
 | 4 | ⚠️ 同步到 `$CORE_REPO` 并提交 —— `tools/check-core-sync.ps1` 会盯着 |
