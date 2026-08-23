@@ -48,7 +48,7 @@
 | **前置条件** | 板上有一个能启动的 app；镜像足够大，传输窗口有几秒可命中 |
 | **步骤** | 1. 起一次以太网升级<br>2. 日志出现 `Staging in SDRAM.` 之后、`Erasing application region` 之前**断电**<br>3. 重新上电 |
 | **预期** | `Reset cause: POR`；**旧 app 照常启动** |
-| **验证方式** | `$TOOL:tools/run_s4.py --case a --pad-to 1200000` + 人工断电 |
+| **验证方式** | `$TOOL:TestTool/tools/run_s4.py --case a --pad-to 1200000` + 人工断电 |
 | **实际结果** | — |
 | **现在能跑吗** | 🔴 **不能** —— 卡在 BG1，SDRAM 坏着，任何上传都停在 checksum。见 [../work/investigations/sdram-d1.md](../work/investigations/sdram-d1.md) |
 
@@ -61,7 +61,7 @@
 | **前置条件** | 同 S4a |
 | **步骤** | 1. 起一次升级<br>2. 日志出现 `Erasing application region` **之后**断电<br>3. 重新上电，然后重新烧一次 |
 | **预期** | 上电报 app 无效（`App signature invalid or absent`）；**重传能恢复** |
-| **验证方式** | `$TOOL:tools/run_s4.py --case b --retry 3` + 人工断电 |
+| **验证方式** | `$TOOL:TestTool/tools/run_s4.py --case b --retry 3` + 人工断电 |
 | **实际结果** | — |
 | **现在能跑吗** | 🔴 同 S4a |
 
@@ -84,7 +84,7 @@
 | **预期** | 两块板的 MAC 不同；同一块板的两侧相同 |
 | **验证方式** | 人工，两路串口 |
 | **实际结果** | — |
-| **配套** | 产线要留 MAC 记录，否则"不重复"无从判起（`$TOOL:acceptance/checklist.md` 的 `CHK-C3`） |
+| **配套** | 产线要留 MAC 记录，否则"不重复"无从判起（`$TOOL:TestTool/acceptance/checklist.md` 的 `CHK-C3`） |
 
 **现在就能做的部分**：P2 已经自动比对了两侧派生算法的一致性。剩下的只有"算法本身会不会撞"，那需要真的两块板。
 

@@ -179,7 +179,7 @@
 
 | ID | 要做到什么 | 状态 | 用例 | 最近结果 | 证据日期 | 证据还成立吗 | 挡在哪 / 备注 |
 |---|---|---|---|---|---|---|---|
-| **E8** | 掉电中断升级后板子仍可恢复 | ⬜ | **S4a S4b** | **从未跑过** | — | — | 🔴 **卡在 D4**。脚本已就绪（`$TOOL:tools/run_s4.py`），要人工断电。**这是唯一还是 ⬜ 的安全需求** —— 见 [test/CASE-DESIGNS.md](test/CASE-DESIGNS.md) |
+| **E8** | 掉电中断升级后板子仍可恢复 | ⬜ | **S4a S4b** | **从未跑过** | — | — | 🔴 **卡在 D4**。脚本已就绪（`$TOOL:TestTool/tools/run_s4.py`），要人工断电。**这是唯一还是 ⬜ 的安全需求** —— 见 [test/CASE-DESIGNS.md](test/CASE-DESIGNS.md) |
 
 ⚠️ **原来那个 S4 为什么被拆成 S4a / S4b**，见 [archive/RETRACTED.md](archive/RETRACTED.md) 第 3 条 —— 一个正确的实测结论可以因为系统变了而失效。
 
@@ -188,8 +188,8 @@
 | ID | 要做到什么 | 状态 | 用例 | 最近结果 | 证据日期 | 证据还成立吗 | 挡在哪 / 备注 |
 |---|---|---|---|---|---|---|---|
 | **E3** | bootloader 镜像装得进为它保留的 flash | ✅ | 构建门禁 | **102,328 B，余量 16.7%** | **2026-08-22** | ✅ | ⚠️ **上限是 120K 不是 128K**（122,880 B）—— 尾部 8K 预留给 owner 记录区（C10）。**按 131,072 判会多算 8K 余量**。<br>⚠️ 08-17 到 08-22 涨了 5,384 B（`sdram_diag.c`），**那五天里表上一直挂着旧数字** —— 见 [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
-| **F1** | 改完代码有一条命令能跑完所有不需要板子的检查 | ✅ | **P7 P8** | 14 步全过 | 2026-08-22 | ✅ | `$TOOL:tools/selfcheck.py`（PowerShell 版并存，M7 第 6 步会删）。⚠️ **步骤编号 2026-08-22 改成用例号本身** —— 原来的 `A0`–`A14` 和需求号撞车，见 [ID-MAP.md](ID-MAP.md) |
-| **F3** | 发版前有验收单，且能抓住捆绑升级风险 | ✅ | — | 单子存在 | — | ✅ | `$TOOL:acceptance/checklist.md` 的 `CHK-B` 节，**`CHK-B7` 是唯一能抓住的用例**（只测全新板永远发现不了"新 bootloader 读不懂旧 journal"） |
+| **F1** | 改完代码有一条命令能跑完所有不需要板子的检查 | ✅ | **P7 P8 P9** | 15 步全过 | 2026-08-22 | ✅ | `$TOOL:TestTool/tools/selfcheck.py`（PowerShell 版并存，M7 第 6 步会删）。⚠️ **步骤编号 2026-08-22 改成用例号本身** —— 原来的 `A0`–`A14` 和需求号撞车，见 [ID-MAP.md](ID-MAP.md) |
+| **F3** | 发版前有验收单，且能抓住捆绑升级风险 | ✅ | — | 单子存在 | — | ✅ | `$TOOL:TestTool/acceptance/checklist.md` 的 `CHK-B` 节，**`CHK-B7` 是唯一能抓住的用例**（只测全新板永远发现不了"新 bootloader 读不懂旧 journal"） |
 | **F4** | bootloader 与 app 必须捆绑升级这条风险写进了发布说明 | ✅ | 手工 | 已写进 | 2026-08-16 | ✅ | **唯一一个纯靠流程兜的风险**。见 [design/DECISIONS.md](design/DECISIONS.md) 第 1 条。⚠️ **再改 journal 格式，第一件事是同步那一节** |
 
 ### 11 · 硬件唯一性
