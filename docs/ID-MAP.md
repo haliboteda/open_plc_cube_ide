@@ -19,7 +19,7 @@
 | `OW1` `OW1-neg` `OW2` `OW2-attack` `OW3` | **所有权用例** | `$TOOL:TestTool/TEST-CASES.md` | `tools/run-takeown.ps1`、`run-setowner.ps1`、`inject-owner-record.ps1` | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
 | `AU1` | **nonce 跨掉电不重复** | `$TOOL:TestTool/TEST-CASES.md` | `$TOOL:TestTool/nonce_replay.go`，由 `tools/run-au1.ps1` 编排 | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
 | `H1` `H2` `H3` `K1`–`K6` `X1` `X2` `DG1` | **主机侧用例**（不需要板子） | `$TOOL:TestTool/TEST-CASES.md`；DG1 的落地决定在 [test/CASE-DESIGNS.md](test/CASE-DESIGNS.md) | H1 → `go test ./TestTool/...`；**H3 → `go vet ./...`（2026-08-22 新建）**；H2 → `host/bootloader_unit/build.py`；K → `host/fakeboard/run_cases.py`；X → `host/crypto_ref/run_checks.py`；DG1 → `host/fakeboard/run_downgrade.py` | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
-| `P1`–`P6` | **静态跨仓检查** | `$TOOL:TestTool/TEST-CASES.md` | `tools/check_version_sync.py`(P1)、`check_mirror_sync.py`(P2)、`check_core_sync.py`(P3)、`host/variant_check/build.py`(P4)、`host/examples_build/build.py`(P5)、`check_public_root.py`(P6) | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
+| `P1`–`P8` | **静态检查**（P1–P6 看代码，P7–P8 看文档）| `$TOOL:TestTool/TEST-CASES.md` | `tools/check_version_sync.py`(P1)、`check_mirror_sync.py`(P2)、`check_core_sync.py`(P3)、`host/variant_check/build.py`(P4)、`host/examples_build/build.py`(P5)、`check_public_root.py`(P6)、`check_status_sync.py`(P7)、`check_doc_dupes.py`(P8) | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
 | `BG1` | **启动门禁**（SDRAM 自检 + 日志口通不通） | `$TOOL:TestTool/acceptance/checklist.md` 的「BG1 · 启动门禁」节 | `tools/flash_bootloader.py` 判读；日志文案在 `Core/Src/fmc.c` | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
 | `SD1` `SD2` `M3` `M5` `O1` `EV1` | **零散的板级用例** | `$TOOL:TestTool/TEST-CASES.md` | SD1 → `onboard/sdram/`；**SD2 不是用例，是仪器**（`Core/Src/sdram_diag.c`，命令 `sdramdiag`/`sdramlive`，没有 PASS/FAIL 判据）；M3 要第二块板；M5 → `onboard/`；O1 → `onboard/rs232/SerialPort`；EV1 ⛔ 难以构造 | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
 | `CHK-A1`–`A7` `CHK-B1`–`B7` `CHK-C1`–`C7` | **三张验收单**（改动后自检 / 发版 / 单板出厂） | `$TOOL:TestTool/acceptance/checklist.md` | 大部分是"跑某条命令"或人工 | ⬜ **没有去处** —— 逐板记录不存在，这就是 F2 为什么是 🟡 |
@@ -51,7 +51,9 @@
 | `A4` `A5` `A6` | — | **从来不存在。** 对话里说的 "A4/A5" 一般指验收单的 `CHK-A4`（构建）/ `CHK-A5`（烧写） |
 | `A15` | — | **不是步骤号。** 那是配置变量 `$A15` / `A15_DIR`（Arduino15 数据目录），在 `tools/_common.ps1` / `tools/common.py` 里 |
 
-★ **顺带补掉一个真实缺口**：`A1`（go test）和 `A3`（go vet）此前**映射不到任何用例号，所以它们的结果从来没有被写进任何文件**。给 `go vet` 建了 `H3` 之后，12 步全部在 [STATUS.md](STATUS.md) 里有行。
+★ **顺带补掉一个真实缺口**：`A1`（go test）和 `A3`（go vet）此前**映射不到任何用例号，所以它们的结果从来没有被写进任何文件**。给 `go vet` 建了 `H3` 之后，每一步在 [STATUS.md](STATUS.md) 里都有行。
+
+同日又新增两步：**`P7`**（总表和用例不得漂移）和 **`P8`**（一个事实只能写在一个文件里）。**它们看的是文档，不是固件** —— 因为 2026-08-22 证明了这两类漂移靠眼睛找不出来。
 
 ### `T0` → `BG1`
 
@@ -84,5 +86,5 @@
 
 1. **先看这张表有没有撞。** 撞了就换一个前缀，不要"反正上下文能分清"。
 2. **编号只增不改。** 用例号写死在 Go 代码和脚本里；需求号被用例引用。
-3. **新起一套编号之前先问：它能不能就用现有某一套？** selfcheck 那 12 步就是没问这句话的后果 —— 一整套编号，零信息量，一个四义歧义。
+3. **新起一套编号之前先问：它能不能就用现有某一套？** selfcheck 原来那套步骤号就是没问这句话的后果 —— 一整套编号，零信息量，一个四义歧义。
 4. **加完回来更新这张表。**

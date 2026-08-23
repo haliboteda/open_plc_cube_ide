@@ -9,7 +9,8 @@
 新机器上的全部动作 —— **两条命令**：
 
 ```bash
-git clone git@github.com:haliboteda/open_plc_cube_ide.git
+# 地址见 ../../CLAUDE.md 第三节那张表
+git clone <open_plc_cube_ide 的 SSH 地址>
 python3 open_plc_cube_ide/tools/bootstrap.py
 ```
 

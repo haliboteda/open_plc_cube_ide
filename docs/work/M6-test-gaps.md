@@ -8,7 +8,7 @@
 
 🟡 的意思是"功能在跑，但没有任何东西能证明它还在跑"。这比 ⬜（没做）**更危险** —— 没做的东西没人依赖，🟡 的东西所有人都当它是好的。
 
-2026-08-17 刚有一个现成的例子：bootloader 的 VBAT witness 和 app 的 nonce 计数器都占 `DR2`，**app 每次经过 bootloader 就重复发放同一批 nonce**，重放保护只剩 `tick` 在撑。这个缺陷存在了两天，是靠肉眼看串口日志发现的 —— **AU1 那个用例能直接抓到它**。
+2026-08-17 刚有一个现成的例子：那次 `DR2` 跨仓撞车（见 [../design/ARCHITECTURE.md](../design/ARCHITECTURE.md) 的寄存器分配表）让 app 重复发放同一批 nonce，**缺陷存在了两天，是靠肉眼看串口日志发现的** —— 而 **AU1 那个用例能直接抓到它**。这就是 🟡 的代价。
 
 ## 清单
 
@@ -54,4 +54,4 @@
 
 **这份还剩什么：** S4a/S4b（要人工卡时机断电，🔴 卡在 SDRAM D1）、M3（⛔ 等第二块板）。
 
-**S4b 现在好命中多了**：2026-08-17 无意中撞出来一次 —— **`IAPTool` 退出 ≠ 升级完成**，它送完最后一个字节就退，板子此时才开始擦写，有好几秒。等它一退出就动手即可，不用掐秒表。详见 [../test/CASE-DESIGNS.md](../test/CASE-DESIGNS.md) 的 S4b 段。
+**S4b 现在好命中多了** —— 因为「`IAPTool` 退出 ≠ 升级完成」（见 [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md)），等它一退出就动手即可，不用掐秒表。用例骨架见 [../test/CASE-DESIGNS.md](../test/CASE-DESIGNS.md) 的 S4b 段。

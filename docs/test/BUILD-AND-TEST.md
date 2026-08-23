@@ -50,12 +50,7 @@ IDE 自带的 CLI 在 `$IDE/resources/app/lib/backend/resources/arduino-cli`（W
 
 所有为验证设备行为而存在的东西放 `$TOOL/TestTool/`（同一个 Go module 的子目录），按用例编号分文件，`README.md` 维护用例表 / 前置条件 / 判据 / 未覆盖清单。
 
-三条原则：
-
-1. **测真实代码路径。** 需要"传输进行中"的用例**把 IAPTool 当子进程拉起来**跑真实烧写，不自己实现传输。
-   > 教训：曾经手写的探测脚本能正常读到设备，掩盖了 `IAPTool` 自己 `SendCommandReadResponse` 的真 bug（单次读、不累积），直到用真实工具跑完整流程才暴露。**一次性脚本测的是它自己的逻辑。**
-2. **加密逻辑 import，不重写。** S1 需要构造出货工具按设计做不出的负向用例（签名故意写错），加密部分直接 import `IAPTool/iapcrypto`。
-3. **破坏性用例标 `destructive`**（会改变板子状态，比如 T3 烧完会重启进 app），`all` 模式自动排到最后 —— 否则它后面的用例全部假失败。
+**三条原则在 [CASE-DESIGNS.md](CASE-DESIGNS.md)**，不在这里重复。
 
 ### 用例总览 → 不在这里
 

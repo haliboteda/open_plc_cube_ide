@@ -300,6 +300,6 @@ $pyArgs = @(if ($p.PyArgs) { $p.PyArgs } else { @() }) # ✅
 
 **不是"写不出来"，是"写出来了、跑通了、但测的东西变了"。**
 
-> M5 那次第一版用例用了 `Serial` 而不是 `Serial4`，在**未修的 core** 上跑出了干净的通过 —— 差点改完 core、看到绿灯、宣布修好，而用例从头到尾没碰过那个缺陷。（[../process/WORKING-AGREEMENTS.md](../process/WORKING-AGREEMENTS.md)）
+> 同一条教训 M5 那次已经付过一次学费，记在 [../process/WORKING-AGREEMENTS.md](../process/WORKING-AGREEMENTS.md)。
 
 一套"跑得通但测的东西变了"的脚本，比跑不了更危险。**所以每一步的验收都是"和旧版比对"，不是"新版能跑"。**

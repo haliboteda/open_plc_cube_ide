@@ -39,7 +39,7 @@
 
 ## 不做会怎样
 
-`uart_handlers[]` 每个外设只有一个槽位，**最后一次 `begin()` 赢**。
+机制（`uart_handlers[]` 每个外设只有一个槽位、最后一次 `begin()` 赢）在 [../design/HARDWARE-FACTS.md](../design/HARDWARE-FACTS.md)。
 
 将来任何 `Serial4.begin()`（或把 USB 菜单切到 "CDC (no generic 'Serial')"）都会**静默掐掉 `Serial_Test` 的接收**，而发送看起来一切正常。
 

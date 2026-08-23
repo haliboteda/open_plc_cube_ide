@@ -1,11 +1,10 @@
 # 所有权与信任根
 
-**状态：✅ 已实现并实测（2026-08-18）。** 配图版见 artifact「板子归谁」
+**状态：✅ 已实现并实测（2026-08-18）。** 配图版是 [../archive/artifacts/owner-slot.html](../archive/artifacts/owner-slot.html)（⚠️ 快照，和本文打架时以本文为准）。
 
 落地记录、每一步的实测结果、以及过程中改掉的两个设计缺陷，在 [../work/M1-owner-slot.md](../work/M1-owner-slot.md)。**本文件是设计推理的出处，那份是落地记录** —— 两边不要互抄。
 
-⚠️ **设备侧完整，出货工具侧还没有。** `takeown` / `setowner` 只有 TestTool 的内部脚本能发，`IAPTool` 一个入口都没有 —— 客户目前拿不到这个功能，见 [../work/ISSUES.md](../work/ISSUES.md) 的 A4。
-`https://claude.ai/code/artifact/89bd5218-b53d-4e1b-a570-d10d540971c7`。
+⚠️ **设备侧完整，出货工具侧还没有。** `takeown` / `setowner` 只有 TestTool 的内部脚本能发，`IAPTool` 一个入口都没有 —— 客户目前拿不到这个功能，见 [../work/ISSUES.md](../work/ISSUES.md) 的 `ISS-A4`。
 
 机制上和 [JOURNAL.md](JOURNAL.md) 独立，但两者都住在 bootloader 独占的 flash 区域里，改任何一边之前先读另一边。
 
@@ -63,22 +62,9 @@ bootloader 镜像 **96,944 B**（`Debug/`，-O0，**已含 FMC**）/ 扇区 131,
 
 ⚠️ 要改 `STM32H743IIKX_FLASH.ld` 的 `FLASH LENGTH` 128K → 120K，否则链接器会把代码放进这 8K。这一行已经在 [../process/WORKING-AGREEMENTS.md](../process/WORKING-AGREEMENTS.md) 的「重新生成后须复查」清单里，**是个已知易失守的点**；`.ld` 里那段解释"为什么写 128K 不写 2048K"的注释要一起更新。
 
-### ⚠️ `RESERVED_TAIL_SECTORS` 被重载了（走这条路能绕开，但地雷还在）
+### ⚠️ 这条路恰好绕开了 `RESERVED_TAIL_SECTORS` 那个地雷
 
-同一个常量在代码里是两个意思：
-
-- `Core/Src/usbd_cdc_flash.c:237` —— 「尾部预留几个扇区」
-- `IAPServer/bootloader_state.c:317` —— `Flash_If_Erase(IAP_JOURNAL_BASE, RESERVED_TAIL_SECTORS)` 的「**reclaim 擦几个扇区**」
-
-而 `IAP_APP_MAX_SIZE` 由 `IAP_STATE_SECTOR_ADDR` 直接算，**根本不看它**。
-
-预留 1 个时三处恰好自洽。**改成 2 会同时出三件事**，且没有任何一处编译报错：
-
-1. app 区不会变小 —— 尺寸检查（`IAP_server.c:206`）照旧放行一个盖住新扇区的镜像
-2. reclaim 从 `0x081E0000` 擦**两个**扇区，第二个是 `0x08200000`，**越过 2MB flash 末尾**
-3. 只有 `maxSectors` 那处是对的
-
-**下一个想加尾部扇区的人还会踩。值得单独修掉**：拆成两个常量，reclaim 那个恒为 1。
+owner 区寄生在 bootloader 已占的扇区里，**根本不加尾部扇区**，所以碰不到它。但地雷还在，下一个想真加一个尾部扇区的人会踩 —— 三处对照表和为什么一处都不会编译报错，在 [../work/ISSUES.md](../work/ISSUES.md) 的 `ISS-C1`。
 
 ## 状态机
 
@@ -197,9 +183,9 @@ R3 挡不住的那条**必须接受** —— `keys/README.md` 已把"防不住�
 
 备份寄存器看着很适合放"撤销到第几号"这种小状态 —— 掉电能活、不用擦扇区。**不要。**
 
-备份寄存器是**三个仓库共享、且没有任何机制统一分配**的资源。bootloader 和 app 已经为此撞过一次车：两边都占了 `DR2`，导致 bootloader 每次误报备份域丢失，同时 **app 的 nonce 计数器被反复重置成同一个值**（2026-08-17 定位，见 [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md)）。`DR1` 上还留着一个同类的潜在冲突。
+备份寄存器是**三个仓库共享、且没有任何机制统一分配**的资源，而且**已经撞过一次车**。一个连"谁占了哪个"都要靠翻代码才知道的地方，不该承载安全关键状态。
 
-一个连"谁占了哪个"都要靠翻代码才知道的地方，不该承载安全关键状态。分配表在 [ARCHITECTURE.md](ARCHITECTURE.md)，**认领之前先看那里**。
+**谁占了哪个、那次撞车的经过和后果，在 [ARCHITECTURE.md](ARCHITECTURE.md) 的寄存器分配表 —— 认领任何一个之前先看那里。**
 
 ## 记录格式（**已实现，就是这个**）
 
@@ -240,13 +226,13 @@ owner 记录和 bootloader 同扇区，重烧会一起擦掉。**语义上是对
 |---|---|
 | Setup / User Mode 的术语和状态机 | UEFI Secure Boot |
 | **每次启动常驻告警**（不是一次性提示） | Android Verified Boot：运行用户签名的系统时每次启动都提示 |
-| 撤销必须保底，不能撤到没有根 | ESP32 Secure Boot v2 的教训 |
+| 撤销必须保底，不能撤到没有根 | 见上面 R4 那条 |
 | 物理存在由固件在交权前判定 | Chromebook：固件每次启动禁掉 TPM 物理存在命令，自定义 OS 也声明不了 |
 
 | 避开 | 原因 |
 |---|---|
 | Android 的"**追加**一把根"（OEM 根 + 用户根并存） | Android 的 OEM 根私钥保密，多信任一把不掉安全性。**我们的默认根私钥是公开的，只能覆盖不能追加** |
-| ESP32 的 aggressive revoke | 官方文档自己说会永久变砖 |
+| ESP32 的 aggressive revoke | 见上面 R4 那条 |
 
 ## 还没定
 

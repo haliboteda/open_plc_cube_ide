@@ -6,7 +6,7 @@
 
 ## 这个目录不重复别处的内容
 
-`docs/` 下已有的 8 份笔记是**事实的唯一出处**，这里只**引用**，不抄。抄一遍就是第二份会漂移的文档 —— 这套文档 2026-08-16 从 17 份分散笔记合并而来，合并当场就抓到一处互相矛盾，见 [../INDEX.md](../INDEX.md)。
+`docs/` 下的笔记是**事实的唯一出处**，这里只**引用**，不抄 —— 抄一遍就是第二份会漂移的文档。为什么这条是硬规矩，见 [../INDEX.md](../INDEX.md) 的「维护约定」。
 
 | 想找 | 去哪 | 不在哪 |
 |---|---|---|
@@ -53,8 +53,8 @@
 **两条命令。** clone 文档主仓，然后跑脚本：
 
 ```bash
-git clone git@github.com:haliboteda/open_plc_cube_ide.git
-python3 open_plc_cube_ide/tools/bootstrap.py       # Windows 上是 python
+git clone <地址见 CLAUDE.md 第三节那张表 —— 七个仓库只有那一份>
+python3 open_plc_cube_ide/tools/bootstrap.py       # 全部开关见 CLAUDE.md 第五节
 ```
 
 第二条消不掉：脚本得先到那台机器上，而把它弄过去就是那次 clone。
@@ -78,7 +78,7 @@ Linux 上还有第三件：`sudo usermod -aG dialout $USER`，然后**登出再�
 
 ```bash
 cd $TOOL/TestTool
-python3 tools/init_machine.py --prereqs            # Windows 上是 python。缺什么、怎么装
+python3 tools/init_machine.py --prereqs            # 缺什么、怎么装（平台差异见 CLAUDE.md 第四节）
 python3 tools/init_machine.py                      # 探测路径，不用手填
 python3 tools/init_machine.py --write-claude-dirs   # 让会话读得到兄弟仓库
 pwsh ./tools/selfcheck.ps1
@@ -105,7 +105,7 @@ selfcheck 全绿（或只剩它自己报出来的 SKIP）就说明这台机器�
 
 ⚠️ **还要人工过一遍 [../../RELEASE-NOTES.md](../../RELEASE-NOTES.md) 的 known-issues 和 not-verified 两节**，逐条问"今天这条还成立吗"。
 
-2026-08-17 收尾时四条 known-issue 全部已经不对了 —— 修好的问题没人回来删条目。这份是对外的，**一条过期的 known-issue 会让读的人去查一个不存在的问题，比没有这一条更糟**。`selfcheck` 只能抓版本号那一种形态，其余靠人。
+**这一步必须人工做，没有任何自动化能覆盖** —— `selfcheck` 只抓得住版本号那一种形态。为什么它值得每次收尾花几分钟（2026-08-17 一次核对四条全错），见 [../test/COVERAGE-GAPS.md](../test/COVERAGE-GAPS.md)。
 
 然后**提交并推送三个仓库**。判断标准只有一条：
 

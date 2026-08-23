@@ -129,12 +129,7 @@ flash 里一片只追加、永不擦除的记录区，记着"这块板现在认�
 
 告警：
 
-```
-** This board trusts the PUBLISHED root key: anyone can sign firmware it will run. **
-** Claim it (see docs/design/OWNERSHIP.md) to bind it to a key of your own. **
-```
-
-判据是**当前生效的根的 SHA-256 == 公开根的 SHA-256**，常量在 `IAPServer/owner_slot.c` 的 `k_published_root_sha256`。
+告警文字就是第 3 步实测记的那两行（见下）。判据是**当前生效的根的 SHA-256 == 公开根的 SHA-256**，常量在 `IAPServer/owner_slot.c` 的 `k_published_root_sha256`。
 
 **两条验收都做了，反向那条才是重点：**
 
@@ -280,7 +275,7 @@ owner 区在 **bootloader 自己那个扇区**的尾部，而编程器写之前�
 
 > **owner 槽的安全上限 = "这块板子上能不能跑任意代码"。**
 
-出厂状态：**能**（默认根私钥公开 → 谁都能签 sketch → 谁都能写 owner 区）。R1 的 BOOT0 只保护受支持的那条路，**不是密码学保证**，第一次认领本质上先到先得。
+出厂状态：**能**（默认根私钥公开 → 谁都能签 sketch → 谁都能写 owner 区）。R1 的 BOOT0 只保护受支持的那条路（为什么，见 [../design/OWNERSHIP.md](../design/OWNERSHIP.md) 的 R1）。
 
 已认领之后：**不能**。从那一刻起才是真保证。
 
@@ -288,7 +283,7 @@ owner 区在 **bootloader 自己那个扇区**的尾部，而编程器写之前�
 
 ## 顺带会踩到的地雷
 
-**`RESERVED_TAIL_SECTORS` 被当成两个意思用**（`Core/Inc/usbd_cdc_flash.h:65`）。走 bootloader 扇区尾部这条路**恰好绕开它**（根本不加尾部扇区），但地雷还在。详见 [../../TODO.md](ISSUES.md) C1，那里有完整的三处对照表。
+**`RESERVED_TAIL_SECTORS` 被当成两个意思用**（`Core/Inc/usbd_cdc_flash.h:65`）。走 bootloader 扇区尾部这条路**恰好绕开它**（根本不加尾部扇区），但地雷还在。详见 [ISSUES.md](ISSUES.md) 的 `ISS-C1`，那里有完整的三处对照表。
 
 ⚠️ **重烧 bootloader = 所有权重置** —— owner 记录和 bootloader 同扇区。语义上是对的，但要和"bootloader 与 app 必须捆绑升级"那条风险**写在一起**进发布说明：换 bootloader 的人要同时重传 app **和**重新认领。
 
@@ -316,4 +311,4 @@ owner 区在 **bootloader 自己那个扇区**的尾部，而编程器写之前�
 | 新开一个专用扇区 | 白付 128K，还要绕开 `RESERVED_TAIL_SECTORS` 那个陷阱 |
 | 撤销状态放 RTC 备份域 | 备份域是三仓共享、无人统一分配的资源，**已经撞过一次车**（DR2，2026-08-17）。见 [../design/ARCHITECTURE.md](../design/ARCHITECTURE.md) 的分配表 |
 | 学 Android"追加一把根"（OEM 根 + 用户根并存） | Android 的 OEM 根私钥保密，多信任一把不掉安全性。**我们的默认根私钥是公开的，只能覆盖不能追加** |
-| 学 ESP32 的 aggressive revoke | 官方文档自己写着会永久变砖 |
+| 学 ESP32 的 aggressive revoke | 会永久变砖，理由见 [../design/OWNERSHIP.md](../design/OWNERSHIP.md) 的 R4 |
