@@ -32,7 +32,6 @@
       "Bash(ssh -T git@github.com)",
       "Bash(pwsh --version)",
       "Bash(git check-ignore *)",
-
       "Bash(cd ../IAPTranfer_Tool/TestCase && NO_COLOR=1 python tools/selfcheck.py*)",
       "Bash(cd ../IAPTranfer_Tool/TestCase && NO_COLOR=1 python tools/init_machine.py --check*)",
       "Bash(cd ../IAPTranfer_Tool/TestCase && python tools/m7_compare_board.py*)",
@@ -44,7 +43,6 @@
       "Bash(cd ../IAPTranfer_Tool/TestCase && python tools/test_init_machine.py*)",
       "Bash(python -m py_compile *)",
       "Bash(python3 -m py_compile *)",
-
       "PowerShell(Set-Location \"../IAPTranfer_Tool/TestCase\"; & .\\tools\\selfcheck.ps1*)",
       "PowerShell(Set-Location \"../IAPTranfer_Tool/TestCase\"; & .\\tools\\m7-compare.ps1*)",
       "PowerShell(Set-Location \"../IAPTranfer_Tool/TestCase\"; & .\\tools\\check-core-sync.ps1*)",
@@ -52,16 +50,5 @@
       "PowerShell(Set-Location \"../IAPTranfer_Tool/TestCase\"; & .\\tools\\check-version-sync.ps1*)",
       "PowerShell(Set-Location \"../IAPTranfer_Tool/TestCase\"; & .\\tools\\check-public-root.ps1*)"
     ]
-  },
-  "extraKnownMarketplaces": {
-    "ai-skills": {
-      "source": {
-        "source": "github",
-        "repo": "haliboteda/AI-Skills"
-      }
-    }
-  },
-  "enabledPlugins": {
-    "openplc@ai-skills": true
   }
 }
