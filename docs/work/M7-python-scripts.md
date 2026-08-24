@@ -15,13 +15,13 @@
 
 ## 做什么用的
 
-**让另一台 Debian 机器能完整替代 Windows 机器** —— 包括烧板和跑全部用例，不是只看代码。
+**全套自动化测试用一种语言写，而那种语言是 Python。** 用户 2026-08-25 重申了这条要求。
 
-Debian 上没有 PowerShell。三条路比过（见下），选了 Python，因为 **Windows 和 Debian 都已经需要 Python**（selfcheck 里 K1–K6 / X1–X2 / DG1 就是 Python 写的假板子和加密交叉验证），所以两边都**不用额外装运行时**。
+选 Python 的理由：**这套东西已经需要 Python 了** —— selfcheck 里 K1–K6 / X1–X2 / DG1 就是 Python 写的假板子和加密交叉验证，三个文档检查 P7/P8/P9 也是。而 PowerShell 只被这 24 个脚本用。少一种运行时，就少一处只有一半脚本能跑的状态。
 
 ## 覆盖哪条需求
 
-**`$PROD/docs/STATUS.md`**（换台电脑能接着干）。当前状态是 ✅，但那个 ✅ 的前提是"换的是另一台 Windows"。
+**F5**（全套自动化测试脚本用 Python 写，不需要 PowerShell），登记在 `$PROD/docs/STATUS.md`。
 
 ## 在哪找
 
@@ -94,7 +94,7 @@ Debian 机器只能读代码、改代码，**跑不了任何一个用例、烧�
 | 3 | ✅ **2026-08-22 已做**：`host/` 下**六个脚本**（不是四套 —— fakeboard 有两个，还有 examples_build） | 同上：两版都跑，**通过/失败的用例集合必须完全相同**。见下 |
 | 4 | ✅ **2026-08-22 已做**：`selfcheck.py` 串起 1–3 | 和 `selfcheck.ps1` 逐项对照（**当时 12 项**，后来加了 P7/P8/P9）。见下 |
 | 5 | 板子侧 16 个（串口、烧写、跑用例） | ⚠️ **每个用例在同一块板子上先跑 ps1 版、再跑 py 版，判据必须一致** |
-| 6 | 删掉 `.ps1`，更新 CLAUDE.md / WORKING-AGREEMENTS / TEST-CASES / SESSION-START | selfcheck 全绿；在 Debian 上完整跑一遍 |
+| 6 | 删掉 `.ps1`，更新 CLAUDE.md / TEST-CASES / CONVENTIONS | selfcheck 全绿；在 Debian 上完整跑一遍 |
 
 ⚠️ **第 5 步之前不要删任何 `.ps1`。** PowerShell 版是这次改写的**对照基准** —— 删了就没有东西能证明 Python 版测的还是同一件事。
 
@@ -112,7 +112,7 @@ Debian 机器只能读代码、改代码，**跑不了任何一个用例、烧�
 | `$PROD/docs/STATUS.md` 的 F1 | F1 的证据是 `tools/selfcheck.ps1` | 改成 Python 那一版 |
 | ~~WORKING-AGREEMENTS.md 的 A0–A14 一行~~ | — | ✅ **2026-08-22 已删** —— 那套编号整个退役了，登记表搬到 `$PROD/docs/ID-MAP.md` |
 | `$PROD/docs/design/ARCHITECTURE.md` 的路径变量一节 | 「对不上时以 ENV 为准」 | ✅ **2026-08-22 已改成不点名脚本** |
-| `$PORT/docs/M8-onboard-skill.md`:122、:152 | 同一条「A0 要 PowerShell」，以及 `pwsh ./tools/selfcheck.ps1` | 同上 |
+| M8 的立项文件（已删除）:122、:152 | 同一条「A0 要 PowerShell」，以及 `pwsh ./tools/selfcheck.ps1` | 同上 |
 | `$TOOL:TestCase/acceptance/checklist.md`:27、:29 | A1–A3 / A7 一条命令 = `tools/selfcheck.ps1` | 同上 |
 | `$TOOL:TestCase/TEST-CASES.md`:21、:58 | 目录树里的 `selfcheck.ps1`；以及那条 A0 断言 | 同上 |
 | `$TOOL:TestCase/host/*/*.md` 三处 | 「Also run as step A10/A11/A12 of `tools\selfcheck.ps1`」 | ✅ **2026-08-22 已改**：改成用例号 + `selfcheck.py` |
@@ -121,7 +121,7 @@ Debian 机器只能读代码、改代码，**跑不了任何一个用例、烧�
 
 ⚠️ **本轮故意没有扫这张表。** 一次改二十几处、而被指向的文件还没删，只会留下一个半新半旧的状态 —— 而这套文档最怕的就是那个。**扫表和删文件必须在同一次提交里。**
 
-⚠️ **验证在 Windows 上做。** Debian 上跑不了 `.ps1`，两版没法对照；Windows 上两版都能跑，所以对照必须在 Windows 完成，最后才拿去 Debian 验证可移植性。
+⚠️ **验证靠两版逐字节对照。** 只有两版都能跑的机器上才有对照基准，所以对照必须在 Windows 完成，最后才拿去 Debian 验证可移植性。
 
 ### 第 1 步的实测结果（2026-08-19）
 
@@ -275,7 +275,7 @@ $pyArgs = @(if ($p.PyArgs) { $p.PyArgs } else { @() }) # ✅
 ### 第 2 步**没有**证明的事
 
 - **`check-core-sync` 一次差多个文件时的行列顺序没验过。** 故障用例每次只加一个文件，所以 `Get-ChildItem -Recurse` 的遍历顺序和 `os.walk` 的排序遍历有没有分歧，目前不知道。判据（谁进 ONLY-LIVE / DIFF / ONLY-REPO、退出码）一定相同，**打印顺序可能不同**。真要多文件漂移时按行比对，先按行排序再比。
-- **只在 Windows 上比过。** Debian 上跑不了 `.ps1`，没有对照基准 —— 这是 M7 从一开始就定下的，验证在 Windows 做。
+- **对照只在两版都能跑的地方做过。** 没有 PowerShell 的地方没有基准 —— 这是 M7 从一开始就定下的，验证在 Windows 做。
 
 ---
 
@@ -283,7 +283,7 @@ $pyArgs = @(if ($p.PyArgs) { $p.PyArgs } else { @() }) # ✅
 
 1. `selfcheck.py` 在 Windows 上 12/12 全过，且**每一项的结论和 `selfcheck.ps1` 相同**
 2. 板子侧用例在同一块板上两版判据一致（至少覆盖 T1/T3/S1/S3/DG1/AU1/OW1）
-3. 在 Debian 上完整跑一遍 selfcheck + 至少一次真实烧写
+3. 删掉 `.ps1` 之后完整跑一遍 selfcheck + 至少一次真实烧写
 4. `TEST-CASES.md` 里每条用例的"怎么跑"改成 Python 命令
 
 ## 已否决

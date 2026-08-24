@@ -2,7 +2,7 @@
 
 **这份文件是给 AI 会话看的。** 它只回答三件事：这个仓库是什么、源码在哪、改它有哪些硬规矩。
 
-> ⚠️ **产品全貌不在这里。** 六个仓库怎么分工、需求做到哪一步、跨仓镜像清单、写文档的约定 —— 跑 `/openplc:overview`。装机跑 `/portable:init`。这个仓库 2026-08-24 之前是「文档主仓」，现在只管自己那一份。
+> ⚠️ **产品全貌不在这里。** 六个仓库怎么分工、需求做到哪一步、跨仓镜像清单、写文档的约定 —— 跑 `/openplc:overview`。这个仓库 2026-08-24 之前是「文档主仓」，现在只管自己那一份。
 
 ## 一、这个仓库是什么
 
@@ -43,7 +43,7 @@ arm-none-eabi-gcc -fsyntax-only -mcpu=cortex-m7 -mthumb \
 
 1. **CubeMX 生成区不能手工改**，重新生成后有两项必查 —— [docs/design/CUBEMX-RULES.md](docs/design/CUBEMX-RULES.md)
 2. **`docs/` 下的笔记是本仓库事实的唯一出处。** 发现和现状不符就地改掉，不要另起一份 —— 约定见 `$PROD/docs/CONVENTIONS.md`
-3. **测试脚本不放这个仓库。** 它们在 `$TOOL/TestCase/tools/` 或 `host/<主题>/`，判据在 `$TOOL/TestCase/TEST-CASES.md`。这个仓库**没有 `tools/` 目录** —— 2026-08-24 之前有过一个，只为了放 `bootstrap.py`，那条例外随装机脚本一起搬走了，别再建第二个
+3. **测试脚本不放这个仓库。** 它们在 `$TOOL/TestCase/tools/` 或 `host/<主题>/`，判据在 `$TOOL/TestCase/TEST-CASES.md`。这个仓库**没有 `tools/` 目录**，也不该有
 
 ## 五、这个仓库的四份入口文件
 

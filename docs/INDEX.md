@@ -10,7 +10,6 @@
 | 某个编号（`T1`、`OW2`、`P7`、`ISS-B5`……）是什么 | `$PROD/docs/ID-MAP.md` |
 | 三个仓库怎么分工、哪些代码跨仓镜像、RTC 备份寄存器谁占了哪个 | `$PROD/docs/design/ARCHITECTURE.md` |
 | 用例的判据、怎么跑 | `$TOOL/TestCase/TEST-CASES.md` |
-| 换台机器要 clone / 装 / 配什么 | `$PORT/docs/WORKSPACES.md`、`PREREQS.md`、`CONFIGURE.md` |
 
 ## 五个目录，按「多久变一次」分
 
@@ -47,9 +46,6 @@
 | [work/M5-serial-conflict.md](work/M5-serial-conflict.md) | `Serial_Test` 与 `Serial4` 抢 UART4 ✅ |
 | [work/M6-test-gaps.md](work/M6-test-gaps.md) | 补没测到的那几项 —— 单位投入产出最高 |
 | [work/M7-python-scripts.md](work/M7-python-scripts.md) | 把全套 PowerShell 测试脚本改写成 Python 3 |
-| [work/investigations/sdram-d1.md](work/investigations/sdram-d1.md) | SDRAM D1（PD15）弱导通 —— **2026-08-23 换 upper deck 收尾，根因始终没定位到**。再出同样症状从这份开始看 |
-
-⚠️ M8（一句「初始化」就能开工）**已搬出本仓库**，在 `$PORT/docs/M8-onboard-skill.md` —— 它是装机 skill 和 `bootstrap.py` 的立项文件，那两样都在那边。
 
 ### `archive/` —— 只增不改
 

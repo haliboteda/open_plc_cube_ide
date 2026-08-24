@@ -1,9 +1,5 @@
 # open-plc
 
-> **Setting up a machine to work on this project?** Not here, and not in
-> CLAUDE.md either — which repositories to clone, what to install, what to
-> configure and what is deliberately not in git all live in the `portable`
-> Claude Code plugin (`/portable:init`, or run its `bootstrap.py` directly).
 > This README covers flashing the bootloader onto a board and the Arduino-side
 > installation only.
 >

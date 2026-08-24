@@ -13,7 +13,7 @@
 | [M5 · Serial_Test 抢 UART4](M5-serial-conflict.md) | E7 | 小 | 需硬件验证 | ✅ **2026-08-17 完成**，E7 转 ✅ |
 | [M6 · 补齐没测到的东西](M6-test-gaps.md) | C5 C6 E1 E8 | 小到中 | 部分等第二块板 | 🟢 **主体已完成（2026-08-17）**，只剩 S4a/S4b 和被第二块板卡住的 M3 |
 | [M7 · 脚本改写成 Python](M7-python-scripts.md) | F5 | 大 | 无 | 🔨 **6 步做完 2 步（2026-08-20）**。24 个 `.ps1` / 3168 行 → Python 3，让 Debian 机器能完整替代 Windows。第 2 步：四个 `check-*` 两版输出逐字节一致 + 7 个故障注入用例同样红 |
-| M8 · 一句「初始化」就能开工（已移出本仓库，见 `$PORT/docs/M8-onboard-skill.md`） | F5 | 中 | 无（与 M7 正交） | 🔨 **9 步做完 6 步（2026-08-21）**。`/portable:init` skill + `init_machine.py` 三处扩展。剩下的三步都要**别的机器**：推 `AI-Skills` 上 GitHub、Debian 走一遍、macOS 走一遍 |
+| ~~M8 · 一句「初始化」就能开工~~（2026-08-25 取消：不再考虑迁移到其他电脑） | — | 中 | 无（与 M7 正交） | 🔨 **9 步做完 6 步（2026-08-21）**。`/portable:init` skill + `init_machine.py` 三处扩展。剩下的三步都要**别的机器**：推 `AI-Skills` 上 GitHub、Debian 走一遍、macOS 走一遍 |
 
 ## 每份怎么写
 

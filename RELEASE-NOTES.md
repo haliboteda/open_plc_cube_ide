@@ -121,11 +121,9 @@ protecting anything from the moment it is claimed.
   over USB alike. **The board stays safe** (the application region is never
   written, and whatever is installed keeps running), but no upgrade completes.
 
-  One board did this between 2026-08-21 and 2026-08-23, on a single data line.
-  Replacing the upper deck fixed it; the root cause on the original board was
-  never isolated. If the symptom appears again, the measurements taken from
-  inside the MCU and the explanations already ruled out are in
-  `docs/work/investigations/sdram-d1.md`.
+  If a board shows this, the external SDRAM is the first thing to suspect: the
+  diagnostic in `TestCase/sdram_test.c` walks the data bus from inside the MCU
+  and names the failing line.
 - **The application's `[BOOT] millis=` banner reaches the RS232 terminals only
   by accident of timing.** The core prints it before anything drives the
   transceiver enable high, so the MAX3221 is nominally shut down — but its

@@ -50,7 +50,7 @@
 | **预期** | `Reset cause: POR`；**旧 app 照常启动** |
 | **验证方式** | `$TOOL:TestCase/tools/run_s4.py --case a --pad-to 1200000` + 人工断电 |
 | **实际结果** | — |
-| **现在能跑吗** | 🔴 **不能** —— 卡在 BG1，SDRAM 坏着，任何上传都停在 checksum。见 [../work/investigations/sdram-d1.md](../work/investigations/sdram-d1.md) |
+| **现在能跑吗** | ✅ 能 |
 
 ### S4b · 擦写阶段拔电
 

@@ -96,7 +96,6 @@ IAPTool 送完最后一个字节就打 `File transfer complete.` 并退出，**�
 | 2026-08-18 | **BG1** 启动门禁 | 通过，`SDRAM staging buffer OK` |
 | **2026-08-21** | **BG1** 启动门禁 | ❌ **失败**，`** SDRAM SELF-TEST FAILED at offset 00000000 **`，3/3 复现 |
 
-⚠️ **2026-08-21 起，上面 SDRAM 的两条 ✅ 都不再可信** —— D1 线导通极弱，`OpenPLC_SDRAM` 库用的是同一片内存。测量数据、已排除的解释、还剩的两个候选全在 [../work/investigations/sdram-d1.md](../work/investigations/sdram-d1.md)。
 
 ⚠️ SDRAM 自检在 `MX_FMC_Init()` 里，属于 **Phase 2** —— **只有停在 bootloader 时才会跑**，正常跳 app 的启动看不到这行，那不是失败。
 

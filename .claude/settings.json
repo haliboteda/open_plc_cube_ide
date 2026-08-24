@@ -65,7 +65,6 @@
     }
   },
   "enabledPlugins": {
-    "openplc@ai-skills": true,
-    "portable@ai-skills": true
+    "openplc@ai-skills": true
   }
 }
