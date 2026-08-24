@@ -23,17 +23,7 @@
 | 3 | [docs/design/ARCHITECTURE.md](docs/design/ARCHITECTURE.md) | 三个仓库在哪、哪些代码是跨仓镜像的、RTC 备份寄存器谁占了哪个 |
 | 4 | [docs/work/ISSUES.md](docs/work/ISSUES.md) | 已知问题，按优先级排。手头没活了看这里 |
 
-再往下按需取，全部索引在 [docs/INDEX.md](docs/INDEX.md)。`docs/` 按**这份文件多久变一次**分了五个目录：`design/`（很少变）、`test/`（每次跑用例）、`work/`（经常）、`process/`（很少）、`archive/`（只增不改）。
-
-- **看到一个编号不知道是什么** → [docs/ID-MAP.md](docs/ID-MAP.md)。共 10 套编号，两两不撞（2026-08-22 消掉了三套撞车的）
-- **要推一个结论之前** → [docs/archive/RETRACTED.md](docs/archive/RETRACTED.md)，13 条"当初以为是 X，实测否定了"
-- 引用一个实测数字 → [docs/test/MEASUREMENTS.md](docs/test/MEASUREMENTS.md)，**唯一出处，别处只引用**
-- 碰引脚 / 串口 / 启动模式 / SRAM4 → [docs/design/HARDWARE-FACTS.md](docs/design/HARDWARE-FACTS.md)
-- 碰 bootloader 的状态扇区 / metadata / 事件日志 → [docs/design/JOURNAL.md](docs/design/JOURNAL.md)
-- 碰签名密钥 / 信任根 / 扇区布局 → [docs/design/OWNERSHIP.md](docs/design/OWNERSHIP.md)
-- 有人想重开一个已拍板的话题 → [docs/design/DECISIONS.md](docs/design/DECISIONS.md)
-- 要编译、要测、或在查一个时有时无的问题 → [docs/test/BUILD-AND-TEST.md](docs/test/BUILD-AND-TEST.md)
-- 开工与收尾流程 → [docs/process/SESSION-START.md](docs/process/SESSION-START.md)
+再往下按需取，**完整路由表只有一份，在 [docs/INDEX.md](docs/INDEX.md)** —— 碰到编号、要推结论、引用数字、碰引脚/串口/密钥/扇区、要编译、要收尾……那份文件按"多久变一次"分了五个目录列好了去哪查。这里不重复列一份，重复就会漂移（[docs/INDEX.md](docs/INDEX.md) 的「维护约定」记过一次这类漂移的代价）。
 
 **当前的 P0 在 [docs/STATUS.md](docs/STATUS.md) 第二节**，那里一张表排好了先做哪个。
 
