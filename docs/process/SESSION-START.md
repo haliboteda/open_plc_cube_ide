@@ -50,48 +50,6 @@
 
 碰硬件之前再加一份 [../design/HARDWARE-FACTS.md](../design/HARDWARE-FACTS.md)；碰 bootloader 的状态扇区之前加 [../design/JOURNAL.md](../design/JOURNAL.md)；碰签名密钥之前加 [../design/OWNERSHIP.md](../design/OWNERSHIP.md)。
 
-## 换台电脑
-
-**全部写在仓库根目录的 [../../CLAUDE.md](../../CLAUDE.md) 里** —— clone 哪几个仓库（含地址和 remote 名）、装什么工具、配什么、哪些东西不在 git 里必须单独处理。
-
-那份是**新会话和新机器的入口**：Claude Code 在任何一个仓库里启动都会自动加载它，**[../../CLAUDE.md](../../CLAUDE.md) 第三节表里的七个仓库各有一份**。这里不抄第二遍。
-
-**两条命令。** clone 文档主仓，然后跑脚本：
-
-```bash
-git clone <地址见 CLAUDE.md 第三节那张表 —— 七个仓库只有那一份>
-python3 open_plc_cube_ide/tools/bootstrap.py       # 全部开关见 CLAUDE.md 第五节
-```
-
-第二条消不掉：脚本得先到那台机器上，而把它弄过去就是那次 clone。
-
-`bootstrap.py` 干八件事 —— 探 SSH、clone 其余仓库、**确认分支**、装缺的工具（每条命令先打出来问一次）、探测本机路径、授权兄弟仓库给会话、装 `openplc` plugin、自检并汇报。**先看它要干什么就加 `--dry-run`；可以重复跑。**
-
-已经在会话里的话，同一件事说一句 `/openplc:init` 就行。两者是同一件事的两条路，实质都在 `init_machine.py` 里 —— 分工见 [../../CLAUDE.md](../../CLAUDE.md) 第五节。
-
-⚠️ **脚本跑完还剩两件只有人能做的事，它会在最后点名说：**
-
-1. **在仓库目录里交互式开一次 Claude Code，接受信任对话框。** 没信任之前，committed 的 `.claude/settings.json` **全部静默失效** —— 包括那条让 marketplace 自动加入的声明。
-2. **装 STM32CubeIDE。** 下载要 ST 账号，任何包管理器都没有它。
-
-Linux 上还有第三件：`sudo usermod -aG dialout $USER`，然后**登出再登入**。
-
-⚠️ **默认分支不是工作分支**（2026-08-21 五个仓库里三个如此）。脚本会逐个仓库确认，而且**在没人回答时绝不替你切** —— 版本号最高的分支不一定是在干活的那个，`open_plc_arduino` 就是这样。
-
-那个 skill 做的事（立项文件 [../work/M8-onboard-skill.md](../work/M8-onboard-skill.md)）：clone 缺的仓库 → 报告缺哪些运行时 → 探测本机路径并把问题问回给你 → 把兄弟仓库授权给会话 → 自检 → 汇报这台机器能干什么、不能干什么。
-
-手工版本（skill 不可用时）：
-
-```bash
-cd $TOOL/TestCase
-python3 tools/init_machine.py --prereqs            # 缺什么、怎么装（平台差异见 CLAUDE.md 第四节）
-python3 tools/init_machine.py                      # 探测路径，不用手填
-python3 tools/init_machine.py --write-claude-dirs   # 让会话读得到兄弟仓库
-pwsh ./tools/selfcheck.ps1
-```
-
-selfcheck 全绿（或只剩它自己报出来的 SKIP）就说明这台机器可以开工了。**缺什么它会说缺什么**，不会静默跳过 —— 第一步 **ENV** 专门打印这台机器上每一项工具解析成了什么。`--list` 可以先看它会跑哪 15 步、各证明哪条需求。⚠️ PowerShell 版的 ENV 要 pwsh 才跑得起来，所以 pwsh 本身缺不缺要靠 `--prereqs` 看。
-
 ## 收尾流程 —— 说"今天到此为止"时要做的
 
 **流程本身是 skill `/openplc:wrap-up`**（`AI-Skills/OpenPLC/Software/skills/wrap-up/`）。它负责"什么时候该收尾、按什么顺序、别忘了什么"；**下面这张表是它照着做的那张表**，是归档位置的唯一出处，skill 不抄。

@@ -205,7 +205,7 @@
 
 | ID | 要做到什么 | 状态 | 用例 | 最近结果 | 证据日期 | 证据还成立吗 | 挡在哪 / 备注 |
 |---|---|---|---|---|---|---|---|
-| **F5** | 换台电脑能接着干，不用重训一个 AI | 🟡 | **M7** | Windows ✅ / Debian 配过一次 / **macOS 从未跑过** | 2026-08-21 | ⚠️ 只对 Windows 成立 | 七个仓库各一份 `CLAUDE.md` + 本目录 + `config/machine.{ps1,py}`（`init_machine.py` 探测生成）+ `/openplc:init` skill。[work/M8-onboard-skill.md](work/M8-onboard-skill.md) 9 步做完 6 步；把 PowerShell 换成 Python 的是 [work/M7-python-scripts.md](work/M7-python-scripts.md) 6 步做完 4 步 |
+| **F5** | 换台电脑能接着干，不用重训一个 AI | 🟡 | **M7** | Windows ✅ / Debian 配过一次 / **macOS 从未跑过** | 2026-08-21 | ⚠️ 只对 Windows 成立 | 七个仓库各一份 `CLAUDE.md` + 本目录 + `config/machine.{ps1,py}`（`init_machine.py` 探测生成）+ `/portable:init` skill。`$PORT/docs/M8-onboard-skill.md` 9 步做完 6 步；把 PowerShell 换成 Python 的是 [work/M7-python-scripts.md](work/M7-python-scripts.md) 6 步做完 4 步 |
 
 ---
 
