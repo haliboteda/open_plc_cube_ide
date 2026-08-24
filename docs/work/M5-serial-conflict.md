@@ -64,7 +64,7 @@
 
 ## 验收 —— 2026-08-17
 
-用例 **M5**，sketch 在 `$TOOL/TestTool/onboard/rs232/M5_SerialConflict/`，编排在 `tools/run-m5.ps1`。
+用例 **M5**，sketch 在 `$TOOL/TestCase/onboard/rs232/M5_SerialConflict/`，编排在 `tools/run-m5.ps1`。
 
 - ✅ sketch 里 `Serial4.begin()` **之后**，`Serial_Test` 仍能**收**：5/5 字节回显
 - ✅ **负向对照跑过**：同一个 sketch 打在**未修的 core** 上，板子挂死、连 banner 都出不来

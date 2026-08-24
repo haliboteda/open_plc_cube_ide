@@ -4,7 +4,7 @@
 
 ## 是什么
 
-`$TOOL/TestTool/` 下的 **24 个 `.ps1`、3168 行**，从 PowerShell 改写成 Python 3。改完删掉 PowerShell 版本。
+`$TOOL/TestCase/` 下的 **24 个 `.ps1`、3168 行**，从 PowerShell 改写成 Python 3。改完删掉 PowerShell 版本。
 
 | 分类 | 个数 | 行数 | 特点 |
 |---|---|---|---|
@@ -25,10 +25,10 @@ Debian 上没有 PowerShell。三条路比过（见下），选了 Python，因�
 
 ## 在哪找
 
-- 脚本：`$TOOL/TestTool/tools/*.ps1`、`$TOOL/TestTool/host/**/*.ps1`
-- 平台兼容层：`$TOOL/TestTool/tools/_common.ps1` —— **2026-08-19 刚做完双平台改造，它就是这次改写的规格说明**
-- 本机配置：`$TOOL/TestTool/config/machine.{ps1,py}`（gitignored）。**2026-08-20 起由 `tools/init_machine.py` 探测生成，两份同源**，模板已删除
-- 判据：`$TOOL/TestTool/TEST-CASES.md`
+- 脚本：`$TOOL/TestCase/tools/*.ps1`、`$TOOL/TestCase/host/**/*.ps1`
+- 平台兼容层：`$TOOL/TestCase/tools/_common.ps1` —— **2026-08-19 刚做完双平台改造，它就是这次改写的规格说明**
+- 本机配置：`$TOOL/TestCase/config/machine.{ps1,py}`（gitignored）。**2026-08-20 起由 `tools/init_machine.py` 探测生成，两份同源**，模板已删除
+- 判据：`$TOOL/TestCase/TEST-CASES.md`
 
 ## 不做会怎样
 
@@ -113,11 +113,11 @@ Debian 机器只能读代码、改代码，**跑不了任何一个用例、烧�
 | ~~WORKING-AGREEMENTS.md 的 A0–A14 一行~~ | — | ✅ **2026-08-22 已删** —— 那套编号整个退役了，登记表搬到 [../ID-MAP.md](../ID-MAP.md) |
 | [../design/ARCHITECTURE.md](../design/ARCHITECTURE.md) 的路径变量一节 | 「对不上时以 ENV 为准」 | ✅ **2026-08-22 已改成不点名脚本** |
 | [M8-onboard-skill.md](M8-onboard-skill.md):122、:152 | 同一条「A0 要 PowerShell」，以及 `pwsh ./tools/selfcheck.ps1` | 同上 |
-| `$TOOL:TestTool/acceptance/checklist.md`:27、:29 | A1–A3 / A7 一条命令 = `tools/selfcheck.ps1` | 同上 |
-| `$TOOL:TestTool/TEST-CASES.md`:21、:58 | 目录树里的 `selfcheck.ps1`；以及那条 A0 断言 | 同上 |
-| `$TOOL:TestTool/host/*/*.md` 三处 | 「Also run as step A10/A11/A12 of `tools\selfcheck.ps1`」 | ✅ **2026-08-22 已改**：改成用例号 + `selfcheck.py` |
+| `$TOOL:TestCase/acceptance/checklist.md`:27、:29 | A1–A3 / A7 一条命令 = `tools/selfcheck.ps1` | 同上 |
+| `$TOOL:TestCase/TEST-CASES.md`:21、:58 | 目录树里的 `selfcheck.ps1`；以及那条 A0 断言 | 同上 |
+| `$TOOL:TestCase/host/*/*.md` 三处 | 「Also run as step A10/A11/A12 of `tools\selfcheck.ps1`」 | ✅ **2026-08-22 已改**：改成用例号 + `selfcheck.py` |
 | `$TOOL:CLAUDE.md`:36、:55 | `pwsh ./tools/selfcheck.ps1` | 同上 |
-| [../../RELEASE-NOTES.md](../../RELEASE-NOTES.md):169 | 「now checked by `TestTool/tools/selfcheck.ps1`」 | 同上 |
+| [../../RELEASE-NOTES.md](../../RELEASE-NOTES.md):169 | 「now checked by `TestCase/tools/selfcheck.ps1`」 | 同上 |
 
 ⚠️ **本轮故意没有扫这张表。** 一次改二十几处、而被指向的文件还没删，只会留下一个半新半旧的状态 —— 而这套文档最怕的就是那个。**扫表和删文件必须在同一次提交里。**
 
@@ -142,7 +142,7 @@ Debian 机器只能读代码、改代码，**跑不了任何一个用例、烧�
 | `check-core-sync.ps1` | `check_core_sync.py` | A9 |
 | `check-public-root.ps1` | `check_public_root.py` | P6 |
 
-**验收用两个新脚本做，都在 `$TOOL/TestTool/tools/`：**
+**验收用两个新脚本做，都在 `$TOOL/TestCase/tools/`：**
 
 | 脚本 | 干什么 | 结果 |
 |---|---|---|

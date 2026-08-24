@@ -28,7 +28,7 @@ Flags:
     --no-install  skip step 4 entirely; report only
     --workspace D put the repositories under D instead of next to this repo
 
-WHY THIS FILE LIVES HERE, and not in IAPTranfer_Tool/TestTool/tools/ with
+WHY THIS FILE LIVES HERE, and not in IAPTranfer_Tool/TestCase/tools/ with
 every other script: it has to run before IAPTranfer_Tool exists. This repo is
 the one you clone first, so this is the only place a bootstrap can be reached
 from. Everything it can delegate, it delegates -- there is no second copy of
@@ -413,7 +413,7 @@ def load_init_machine(repos):
     tool = dict(repos).get("IAPTranfer_Tool")
     if not tool:
         return None
-    tools_dir = Path(tool) / "TestTool" / "tools"
+    tools_dir = Path(tool) / "TestCase" / "tools"
     if not (tools_dir / "init_machine.py").exists():
         return None
     sys.path.insert(0, str(tools_dir))
@@ -531,7 +531,7 @@ def step_paths(repos):
     if not tool:
         record("machine config written", False, "IAPTranfer_Tool is not here")
         return False
-    testtool = Path(tool) / "TestTool"
+    testtool = Path(tool) / "TestCase"
     runner = sys.executable
     print("  init_machine.py searches first and asks only about what it cannot")
     print("  find, showing where it already looked. Answer, or press Enter to")
@@ -672,7 +672,7 @@ def step_verify(repos):
     if not tool:
         record("verified", False, "IAPTranfer_Tool is not here")
         return
-    testtool = Path(tool) / "TestTool"
+    testtool = Path(tool) / "TestCase"
     code, _o, _e = run([sys.executable, "tools/common.py", "--probe"],
                        cwd=testtool, capture=False)
     record("A0 probe", code == 0 or ARGS.dry_run, "what this machine resolves to")

@@ -30,7 +30,7 @@
 
 **S3 同一天也做完了。** 起初卡在"这台机器上没有任何已签名的 app 镜像"，解法是现编译一个：
 
-1. 编译 `$TOOL/TestTool/onboard/rs232/SerialPort/`，按 [../test/BUILD-AND-TEST.md](../test/BUILD-AND-TEST.md) 的 FQBN（arduino-cli 的路径已进 `config/machine.ps1` 的 `$ARDUINO_CLI`）
+1. 编译 `$TOOL/TestCase/onboard/rs232/SerialPort/`，按 [../test/BUILD-AND-TEST.md](../test/BUILD-AND-TEST.md) 的 FQBN（arduino-cli 的路径已进 `config/machine.ps1` 的 `$ARDUINO_CLI`）
 2. `<sketch>.ino.bin` 和 `.version` 都由编译自动产出（版本 66304 = 0.1.3）
 3. **先用它正常烧一次并确认板子起得来**，再动 ST-Link —— `run-s3.ps1` 把这一步做成了脚本的第 1/4 步，恢复路径不通就拒绝往下走
 

@@ -39,7 +39,7 @@
 |---|---|---|---|
 | `open_plc_cube_ide` | bootloader（CubeIDE 工程）+ **全部共享文档** | `git@github.com:haliboteda/open_plc_cube_ide.git` | `origin` |
 | `open_plc_arduino` | 定制 Arduino 板卡包（app 侧） | `git@github.com:haliboteda/open_plc_arduino.git` | `origin`（另有 `internal` 指向 Forgejo） |
-| `IAPTranfer_Tool` | Go 写的 PC 工具 `IAPTool` + **全部测试资产 `TestTool/`** | `git@github.com:haliboteda/IAPTranfer_Tool.git` | `origin` |
+| `IAPTranfer_Tool` | Go 写的 PC 工具 `IAPTool` + **全部测试资产 `TestCase/`** | `git@github.com:haliboteda/IAPTranfer_Tool.git` | `origin` |
 | `Hello_World_OpenPLC` | 同一块板子的 CubeIDE **参考工程**（发明新写法之前先看它） | `git@github.com:haliboteda/Hello_World_OpenPLC.git` | `origin` |
 | `Hardware` | 原理图、netlist、生产文件。**只有 Forgejo 一份** | `ssh://git@git.schaeffer-ag.de/OpenPLC_Alpha/Hardware.git` | `origin` |
 | `package_index_json` | Arduino IDE 拉板卡包用的 index json | `git@github.com:haliboteda/package_index_json.git` | `origin` |
@@ -78,7 +78,7 @@
 **装什么、这台机器上装了没有、怎么装 —— 跑一条命令，别照着表手填：**
 
 ```bash
-cd <workspace>/IAPTranfer_Tool/TestTool
+cd <workspace>/IAPTranfer_Tool/TestCase
 python3 tools/init_machine.py --prereqs      # Windows 上是 python
 ```
 
@@ -91,7 +91,7 @@ python3 tools/init_machine.py --prereqs      # Windows 上是 python
 | 工具 | 干什么用的 | 不装会怎样 |
 |---|---|---|
 | **git** | — | — |
-| **Go** | 构建 `IAPTool` / `TestTool`；selfcheck 的 H1/H3 | 一半用例跑不了 |
+| **Go** | 构建 `IAPTool` / `TestCase`；selfcheck 的 H1/H3 | 一半用例跑不了 |
 | **Python 3** | selfcheck 的 K1-K6 / X1-X2 / DG1（假板子、加密交叉验证）；[M7](docs/work/M7-python-scripts.md) 之后是**全部**测试脚本的运行时 | 那三步报 SKIP；M7 完成后一个脚本都跑不了 |
 | **`pyserial`** | 唯一一个要 `pip install` 的东西。M7 之后所有碰串口的用例都靠它 | 碰串口的用例报 SKIP（**点名说缺它**，不静默） |
 | **原生 C 编译器** | selfcheck 的 H2：**直接编译 bootloader 的真实 C 源码**做主机侧单元测试 | H2 报 SKIP |
@@ -127,12 +127,12 @@ python3 open_plc_cube_ide/tools/bootstrap.py      # Windows 上是 python
 
 **可以重复跑** —— 已经对的它保留，只补缺的。
 
-⚠️ **`bootstrap.py` 破例放在本仓库的 `tools/`，不在 `IAPTranfer_Tool/TestTool/tools/`**（第八节的规矩）。理由是它必须在 `IAPTranfer_Tool` 存在**之前**就能跑，而这个仓库是你第一个 clone 的。它自己不实现任何逻辑：仓库表和目录布局**从第三节现读**，工具清单和安装命令**从 `init_machine.py` 的 `PREREQS` 现读**，一份都不抄。
+⚠️ **`bootstrap.py` 破例放在本仓库的 `tools/`，不在 `IAPTranfer_Tool/TestCase/tools/`**（第八节的规矩）。理由是它必须在 `IAPTranfer_Tool` 存在**之前**就能跑，而这个仓库是你第一个 clone 的。它自己不实现任何逻辑：仓库表和目录布局**从第三节现读**，工具清单和安装命令**从 `init_machine.py` 的 `PREREQS` 现读**，一份都不抄。
 
 ### 手工：只配路径
 
 ```bash
-cd <workspace>/IAPTranfer_Tool/TestTool
+cd <workspace>/IAPTranfer_Tool/TestCase
 python3 tools/init_machine.py       # Windows 上是 python
 ```
 
@@ -203,7 +203,7 @@ selfcheck 的 **ENV** 一步会把这台机器上每一项解析成什么全部�
 
 | 东西 | 为什么不在 git 里 | 换机器怎么办 |
 |---|---|---|
-| `TestTool/config/machine.{ps1,py}` | 每台机器都不一样 | **不用搬也不用抄**：`python3 tools/init_machine.py` 自己探测生成 |
+| `TestCase/config/machine.{ps1,py}` | 每台机器都不一样 | **不用搬也不用抄**：`python3 tools/init_machine.py` 自己探测生成 |
 | `$CORE_LIVE`（Arduino IDE 实际加载的板卡包目录） | 是 IDE 的安装目录，不是仓库 | 装 Arduino IDE → 装 OpenPLC_Alpha 板卡包 → 用 `open_plc_arduino` 的内容覆盖它。⚠️ 方向是**单向的**，细节见 [docs/design/ARCHITECTURE.md](docs/design/ARCHITECTURE.md) |
 | `IAPServer/keys/fw_signing_key.pem`（真签名私钥） | 私钥 | **2026-08-19 确认：目前没有真私钥，开发用仓库里的 `fw_signing_key.TEST_ONLY.pem`。** 将来产生真私钥后，它就是换机器时唯一必须手工搬运的文件 —— 到时候回来改这一行 |
 | `.claude/settings.local.json` | 里面全是本机绝对路径的一次性命令，换台机器一条都匹配不上 | **不用搬。** 跨平台通用的那部分已经提交在 `.claude/settings.json` 里（只读命令 + `AI-Skills` marketplace 声明），新机器开箱就有；本机的 `additionalDirectories` 由 `--write-claude-dirs` 生成 |
@@ -229,7 +229,7 @@ selfcheck 的 **ENV** 一步会把这台机器上每一项解析成什么全部�
 
 | 东西 | 去哪 |
 |---|---|
-| 测试脚本、自动化工具 | `IAPTranfer_Tool/TestTool/tools/` 或 `host/<主题>/`，判据写进 `TestTool/TEST-CASES.md` |
+| 测试脚本、自动化工具 | `IAPTranfer_Tool/TestCase/tools/` 或 `host/<主题>/`，判据写进 `TestCase/TEST-CASES.md` |
 | 一次性探查命令（看个尺寸、grep 一下） | 不落盘，直接跑 |
 
 **唯一的例外是 `open_plc_cube_ide/tools/bootstrap.py`**（连同它的 `test_bootstrap.py`）。它必须在 `IAPTranfer_Tool` 被 clone **之前**就能跑，所以只能放在你第一个 clone 的仓库里。除它之外不要往这个 `tools/` 目录加东西 —— 加了就是第二个脚本目录。

@@ -72,7 +72,7 @@ MAX3221 的 ±5.5V 线电平不是从 3V3 直接来的，是**电荷泵**（char
 
 ⚠️ **`Serial` 不是 `Serial4`。** 当前 FQBN 用 `usb=CDCgen`，`WSerial.h` 里的 `#if !defined(Serial)` 守卫让 `Serial` 保持为 USB CDC，**碰不到 UART4**。所以拿 `Serial` 写的测试在坏 core 上照样通过 —— 这个坑当天踩过一次。**要复现必须显式用 `Serial4`。**
 
-判据和跑法见 `$TOOL/TestTool/TEST-CASES.md` 的 **M5** 一节（`tools/run-m5.ps1`）。
+判据和跑法见 `$TOOL/TestCase/TEST-CASES.md` 的 **M5** 一节（`tools/run-m5.ps1`）。
 
 **机制**（修之前）：`HardwareSerial Serial_Test(PC_11, PC_10)` 解析到 **UART4**（AF8），而 `Serial4` / `Serial` 在 PH13/PH14 上**也是 UART4**。`uart_handlers[]` 每个外设只有一个槽位，**最后一次 `begin()` 赢**。
 

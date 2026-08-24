@@ -17,10 +17,10 @@
 | 想找 | 去哪 | 不在哪 |
 |---|---|---|
 | 产品要做到什么、做到没有 | **[../STATUS.md](../STATUS.md)** | — |
-| 怎么证明、跑什么、谁跑 | **[../STATUS.md](../STATUS.md)** 的覆盖矩阵 | 判据在 `$TOOL/TestTool/TEST-CASES.md` |
+| 怎么证明、跑什么、谁跑 | **[../STATUS.md](../STATUS.md)** 的覆盖矩阵 | 判据在 `$TOOL/TestCase/TEST-CASES.md` |
 | 还没做的模块 + 设计思路 | **[../work/BACKLOG.md](../work/BACKLOG.md)** | — |
 | 某条结论的实测证据 | [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md) | **数字的唯一出处**，不要抄进总表 |
-| 用例的判据、怎么跑 | `$TOOL/TestTool/TEST-CASES.md` | 判据贴着代码走，跨仓不搬 |
+| 用例的判据、怎么跑 | `$TOOL/TestCase/TEST-CASES.md` | 判据贴着代码走，跨仓不搬 |
 | 零散 bug 和代码债 | [../work/ISSUES.md](../work/ISSUES.md) | Todo/ 只放要立项的模块 |
 | 改动前的规矩 | [WORKING-AGREEMENTS.md](WORKING-AGREEMENTS.md) | — |
 | 密钥/信任模型的配图版 | [../archive/artifacts/RENDERED-SNAPSHOTS.md](../archive/artifacts/RENDERED-SNAPSHOTS.md) | ⚠️ **渲染快照，不是事实来源**，打架以 `docs/` 为准 |
@@ -83,7 +83,7 @@ Linux 上还有第三件：`sudo usermod -aG dialout $USER`，然后**登出再�
 手工版本（skill 不可用时）：
 
 ```bash
-cd $TOOL/TestTool
+cd $TOOL/TestCase
 python3 tools/init_machine.py --prereqs            # 缺什么、怎么装（平台差异见 CLAUDE.md 第四节）
 python3 tools/init_machine.py                      # 探测路径，不用手填
 python3 tools/init_machine.py --write-claude-dirs   # 让会话读得到兄弟仓库
@@ -100,7 +100,7 @@ selfcheck 全绿（或只剩它自己报出来的 SKIP）就说明这台机器�
 
 | 今天产生了 | 归到哪 |
 |---|---|
-| 测试脚本、自动化工具 | `$TOOL/TestTool/tools/` 或 `host/<主题>/`，判据写进 `$TOOL/TestTool/TEST-CASES.md` |
+| 测试脚本、自动化工具 | `$TOOL/TestCase/tools/` 或 `host/<主题>/`，判据写进 `$TOOL/TestCase/TEST-CASES.md` |
 | 一次性探查脚本，但值得留 | 同上，并补一份 README 说清"验证什么 / 前置 / 判据" |
 | 新的实测结论 | [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md)，带日期 |
 | 新的设计决策与否决理由 | [../design/DEFERRED-DESIGNS.md](../design/DEFERRED-DESIGNS.md) 或对应模块的 Todo 文件 |

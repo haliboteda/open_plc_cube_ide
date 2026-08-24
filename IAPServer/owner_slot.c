@@ -35,7 +35,7 @@
  * fails when they drift.
  *
  *   Regenerate:  parse IAPServer/keys/fw_pubkey.inc into 64 bytes, SHA-256 it.
- *                $TOOL/TestTool/tools/check-public-root.ps1 prints the value.
+ *                $TOOL/TestCase/tools/check-public-root.ps1 prints the value.
  */
 static const uint8_t k_published_root_sha256[32] = {
 	0xa3, 0xcb, 0xcb, 0xf7, 0x9f, 0xb6, 0x65, 0xdf,

@@ -6,14 +6,14 @@
 
 ## 命令行重编 app（不用开 Arduino IDE）
 
-IDE 自带的 CLI 在 `$IDE/resources/app/lib/backend/resources/arduino-cli`（Windows 上带 `.exe`）—— **不在 PATH 上**，配置在 `$TOOL/TestTool/config/machine.ps1` 的 `$ARDUINO_CLI`。
+IDE 自带的 CLI 在 `$IDE/resources/app/lib/backend/resources/arduino-cli`（Windows 上带 `.exe`）—— **不在 PATH 上**，配置在 `$TOOL/TestCase/config/machine.ps1` 的 `$ARDUINO_CLI`。
 
 ```powershell
 & $ARDUINO_CLI compile --warnings all `
   --config-file $ARDUINO_CLI_CONFIG `
   --fqbn "OpenPLC_Alpha:stm32:OPEN-PLC:pnum=PLC_H743,usb=CDCgen,xusb=FS,upload_method=cdcMethod,knxrole=dual_device,downgrade=refuse" `
   --build-path "<IDE 的 sketch 缓存目录>/<hash>" `
-  "$TOOL/TestTool/onboard/rs232/SerialPort"
+  "$TOOL/TestCase/onboard/rs232/SerialPort"
 ```
 
 `$ARDUINO_CLI_CONFIG` 默认是 `$HOME/.arduinoIDE/arduino-cli.yaml`，两个平台同名。
@@ -35,7 +35,7 @@ IDE 自带的 CLI 在 `$IDE/resources/app/lib/backend/resources/arduino-cli`（W
 | 目标 | 命令 |
 |---|---|
 | IAPTool（三平台） | `$TOOL/compile_tool.sh` —— 别手搓 `go build`，输出布局是约定好的 |
-| TestTool（本机） | `cd $TOOL && go build -o Output/<GOOS>/TestTool ./TestTool`。脚本里用 `_common.ps1` 的 `Get-GoBin "TestTool"` 找它，别自己拼路径 |
+| TestCase（本机） | `cd $TOOL && go build -o Output/<GOOS>/TestCase ./TestCase`。脚本里用 `_common.ps1` 的 `Get-GoBin "TestCase"` 找它，别自己拼路径 |
 | network_discovery（四平台） | `$CORE_LIVE/tools/discovery/build.sh`（或 `build.ps1`）—— **Arduino IDE 开着会因文件占用失败** |
 | bootloader | STM32CubeIDE。（cmake 路径存在，但 cmake/ninja 通常不在 PATH 上） |
 
@@ -48,7 +48,7 @@ IDE 自带的 CLI 在 `$IDE/resources/app/lib/backend/resources/arduino-cli`（W
 
 **`IAPTool` 只管上传烧写，不加任何测试专用功能。**
 
-所有为验证设备行为而存在的东西放 `$TOOL/TestTool/`（同一个 Go module 的子目录），按用例编号分文件，`README.md` 维护用例表 / 前置条件 / 判据 / 未覆盖清单。
+所有为验证设备行为而存在的东西放 `$TOOL/TestCase/`（同一个 Go module 的子目录），按用例编号分文件，`README.md` 维护用例表 / 前置条件 / 判据 / 未覆盖清单。
 
 **三条原则在 [CASE-DESIGNS.md](CASE-DESIGNS.md)**，不在这里重复。
 

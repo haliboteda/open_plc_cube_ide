@@ -104,7 +104,7 @@ app 侧三个硬要求：
 
 ## 验收 —— 2026-08-17，19/19 通过
 
-用例在 `$TOOL/TestTool/onboard/sdram/SDRAM_Acceptance/`，编排 `tools/run-sdram.ps1`。
+用例在 `$TOOL/TestCase/onboard/sdram/SDRAM_Acceptance/`，编排 `tools/run-sdram.ps1`。
 
 | 验什么 | 结果 |
 |---|---|

@@ -20,7 +20,7 @@
 | `$A15` | `C:\Users\WhoamIamwhO\AppData\Local\Arduino15` |
 | `$PKGIDX` | `E:\WorkSpace\Schaeffer-AG\package_index_json` |
 
-⚠️ **这张表是给读文档的人看的，脚本不读它。** 脚本只认 `$TOOL/TestTool/config/machine.ps1` 和 `machine.py`（都 gitignored，都由 `tools/init_machine.py` 探测生成）。两处的值应当一致，但**没有任何机制强制**——selfcheck 的 **ENV** 一步会把脚本实际解析到的路径全部打出来，对不上时以它为准。
+⚠️ **这张表是给读文档的人看的，脚本不读它。** 脚本只认 `$TOOL/TestCase/config/machine.ps1` 和 `machine.py`（都 gitignored，都由 `tools/init_machine.py` 探测生成）。两处的值应当一致，但**没有任何机制强制**——selfcheck 的 **ENV** 一步会把脚本实际解析到的路径全部打出来，对不上时以它为准。
 
 `$CORE_LIVE` 末尾的 `0.1.3-pre` 是板卡包版本号，**发版会变**；`$A15\packages\OpenPLC_Alpha\tools\STM32Tools\0.1.2` 里的 `0.1.2` 是随包分发的 IAPTool 版本，两个号互相独立。
 
@@ -30,7 +30,7 @@
 |---|---|---|
 | **App 侧** | `$CORE_LIVE`（干活的地方）<br>`$CORE_REPO`（git 仓库） | 定制板卡包。编译用户应用；同时拥有 `cores/arduino/main.cpp`、变体头文件 `variants/STM32H7xx/H743/variant_PLC_H743.h`、引脚与外设映射、`libraries/OpenPLC_IAP`、`libraries/OpenPLC_Net`、`tools/discovery/` |
 | **Bootloader 侧** | `$BOOT` | STM32CubeIDE 工程（`IAPServer/`、`Core/`、`LWIP/`） |
-| **PC 工具侧** | `$TOOL` | Go，产出 `IAPTool.exe` 和 `TestTool.exe` |
+| **PC 工具侧** | `$TOOL` | Go，产出 `IAPTool.exe` 和 `TestCase.exe` |
 
 ⚠️ **Arduino 板卡包是要分发给其他工程师的**，所以 core 层的改动是共享基础设施，不是本地小修小补。
 
@@ -68,7 +68,7 @@ Get-ChildItem $live -Recurse -File | ForEach-Object {
 |---|---|
 | **参考示例** | `$REF` —— 发明新写法之前先看这里是怎么做的 |
 | **硬件文档** | `$HW` —— 概览 `.txt` + `Production/UpperDeck/Schematics/OpenPLC_UpperDeck_R3.pdf` |
-| **测试与验收总入口** | `$TOOL\TestTool` —— 用例、主机侧单元测试、板上 sketch、自动化脚本、验收单全在这里。本机路径只写在 `TestTool\config\machine.ps1` |
+| **测试与验收总入口** | `$TOOL\TestCase` —— 用例、主机侧单元测试、板上 sketch、自动化脚本、验收单全在这里。本机路径只写在 `TestCase\config\machine.ps1` |
 | **板卡包索引** | `$PKGIDX` —— Arduino IDE 拉板卡包用的 package index json |
 
 **文档打架时以 KiCad 原理图为准**（确实打过架，见 [HARDWARE-FACTS.md](HARDWARE-FACTS.md)）。

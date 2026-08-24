@@ -2,7 +2,7 @@
 
 **这里放用例的完整设计骨架和落地时的决定。** 从原 TEST-PLAN.md 拆出来（2026-08-22，那份已不存在）—— 它的覆盖矩阵已经并进 [../STATUS.md](../STATUS.md)，覆盖缺口去了 [COVERAGE-GAPS.md](COVERAGE-GAPS.md)。
 
-**判据和怎么跑不在这里，在 `$TOOL/TestTool/TEST-CASES.md`** —— 那是明文定的规矩（"贴着代码走，跨仓不搬"），也是对的：判据要跟着实现走。
+**判据和怎么跑不在这里，在 `$TOOL/TestCase/TEST-CASES.md`** —— 那是明文定的规矩（"贴着代码走，跨仓不搬"），也是对的：判据要跟着实现走。
 
 **这份文件回答的是"这条用例为什么这么设计"** —— 那些不写下来就会在下次重构时被优化掉的决定。
 
@@ -25,13 +25,13 @@
 | **0 静态** | P1 P2 P3 P4 P6 | 否 | 秒 | `tools/selfcheck.py` 的一部分 |
 | **1 主机** | H1 H2 H3 K1–K6 X1 X2 DG1 | 否 | 约 3 分钟 | **`tools/selfcheck.py`** |
 | **2 构建烧写** | **BG1** + 尺寸门禁 | 是 | 分钟 | `tools/flash_bootloader.py` |
-| **3 设备行为** | T/N/S、OW2 | 是 | 十分钟量级 | `TestTool all --ip=… --bin=… --password-file=…` |
+| **3 设备行为** | T/N/S、OW2 | 是 | 十分钟量级 | `TestCase all --ip=… --bin=… --password-file=…` |
 | **4 人工** | AU1 OW1 OW3 S4a S4b M3 O1 | 是 + 人 | — | 见下面各条 |
 | **—** | **P5**（编译所有 example） | 否 | **约 10 分钟** | `host/examples_build/build.py`，**故意不在 selfcheck 里** |
 
 ⚠️ **第 3 层要带 `--bin` 和 `--password-file`**，否则 S1/S2/T3 会因为缺参数而失败 —— 那不是板子的问题。
 
-⚠️ **`TestTool all` 不含要人动手的用例**（AU1、OW1、OW3）。它们会被**点名跳过**而不是静默略过 —— 一个不吭声就消失的用例会被读成通过。
+⚠️ **`TestCase all` 不含要人动手的用例**（AU1、OW1、OW3）。它们会被**点名跳过**而不是静默略过 —— 一个不吭声就消失的用例会被读成通过。
 
 ⚠️ **`BG1` 原来叫 `T0`**（2026-08-22 改名）。它不属于 T1–T4 那一系列：在另一个仓库、另一个文件、另一种性质（启动门禁不是设备行为用例），`TEST-CASES.md` 里根本没有 T0 这一条。见 [../ID-MAP.md](../ID-MAP.md)。
 
@@ -48,7 +48,7 @@
 | **前置条件** | 板上有一个能启动的 app；镜像足够大，传输窗口有几秒可命中 |
 | **步骤** | 1. 起一次以太网升级<br>2. 日志出现 `Staging in SDRAM.` 之后、`Erasing application region` 之前**断电**<br>3. 重新上电 |
 | **预期** | `Reset cause: POR`；**旧 app 照常启动** |
-| **验证方式** | `$TOOL:TestTool/tools/run_s4.py --case a --pad-to 1200000` + 人工断电 |
+| **验证方式** | `$TOOL:TestCase/tools/run_s4.py --case a --pad-to 1200000` + 人工断电 |
 | **实际结果** | — |
 | **现在能跑吗** | 🔴 **不能** —— 卡在 BG1，SDRAM 坏着，任何上传都停在 checksum。见 [../work/investigations/sdram-d1.md](../work/investigations/sdram-d1.md) |
 
@@ -61,7 +61,7 @@
 | **前置条件** | 同 S4a |
 | **步骤** | 1. 起一次升级<br>2. 日志出现 `Erasing application region` **之后**断电<br>3. 重新上电，然后重新烧一次 |
 | **预期** | 上电报 app 无效（`App signature invalid or absent`）；**重传能恢复** |
-| **验证方式** | `$TOOL:TestTool/tools/run_s4.py --case b --retry 3` + 人工断电 |
+| **验证方式** | `$TOOL:TestCase/tools/run_s4.py --case b --retry 3` + 人工断电 |
 | **实际结果** | — |
 | **现在能跑吗** | 🔴 同 S4a |
 
@@ -84,7 +84,7 @@
 | **预期** | 两块板的 MAC 不同；同一块板的两侧相同 |
 | **验证方式** | 人工，两路串口 |
 | **实际结果** | — |
-| **配套** | 产线要留 MAC 记录，否则"不重复"无从判起（`$TOOL:TestTool/acceptance/checklist.md` 的 `CHK-C3`） |
+| **配套** | 产线要留 MAC 记录，否则"不重复"无从判起（`$TOOL:TestCase/acceptance/checklist.md` 的 `CHK-C3`） |
 
 **现在就能做的部分**：P2 已经自动比对了两侧派生算法的一致性。剩下的只有"算法本身会不会撞"，那需要真的两块板。
 
@@ -149,7 +149,7 @@
 
 ## 写新用例的骨架
 
-**新用例先在这里写全骨架，再去 `$TOOL/TestTool/` 实现。** 实现后把判据写进那边，这里只留「为什么这么设计」。
+**新用例先在这里写全骨架，再去 `$TOOL/TestCase/` 实现。** 实现后把判据写进那边，这里只留「为什么这么设计」。
 
 | 栏 | 要求 |
 |---|---|

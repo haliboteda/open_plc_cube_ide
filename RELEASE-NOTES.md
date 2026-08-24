@@ -178,7 +178,7 @@ image the board accepts. Run `IAPServer/keys/rotate_keys.sh`, then keep
 
 Everything here has burned someone at least once.
 
-The first three are now checked by `TestTool/tools/selfcheck.ps1`, which also
+The first three are now checked by `TestCase/tools/selfcheck.ps1`, which also
 runs the host-side tests. Run it before working through the rest by hand.
 
 - [ ] `OPENPLC_FW_VERSION` in `Core/Inc/IAP_config.h` matches

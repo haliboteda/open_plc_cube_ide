@@ -25,7 +25,7 @@ python3 open_plc_cube_ide/tools/bootstrap.py
 
 **substance 全在 `init_machine.py`** —— 探测什么、装什么、写哪些配置。两个外壳都不实现逻辑：`bootstrap.py` 连仓库表和目录布局都是**从 CLAUDE.md 第三节现读**，工具清单和安装命令**从 `PREREQS` 现读**。改行为改 `init_machine.py`，不是改外壳。
 
-⚠️ `bootstrap.py` 破例放在 `open_plc_cube_ide/tools/`，违反 [../../CLAUDE.md](../../CLAUDE.md) 第八节"脚本进 TestTool"的规矩。理由是硬的：**它必须在 `IAPTranfer_Tool` 被 clone 之前就能跑。** 这条例外写进第八节了。
+⚠️ `bootstrap.py` 破例放在 `open_plc_cube_ide/tools/`，违反 [../../CLAUDE.md](../../CLAUDE.md) 第八节"脚本进 TestCase"的规矩。理由是硬的：**它必须在 `IAPTranfer_Tool` 被 clone 之前就能跑。** 这条例外写进第八节了。
 
 ## 做什么用的
 
@@ -45,8 +45,8 @@ python3 open_plc_cube_ide/tools/bootstrap.py
 |---|---|
 | skill 正文 | `AI-Skills/OpenPLC/Software/skills/init/SKILL.md` |
 | plugin / marketplace 清单 | `AI-Skills/OpenPLC/Software/.claude-plugin/plugin.json`、`AI-Skills/.claude-plugin/marketplace.json` |
-| 三处扩展 | `$TOOL/TestTool/tools/init_machine.py` —— `PREREQS` 表与 `check_prereqs()`、`write_claude_dirs()` 与 `ignored_by_own_rules()`、`SETTINGS` 里的 `HW_REPO`/`REF_REPO` |
-| 单测 | `$TOOL/TestTool/tools/test_init_machine.py`（32 例） |
+| 三处扩展 | `$TOOL/TestCase/tools/init_machine.py` —— `PREREQS` 表与 `check_prereqs()`、`write_claude_dirs()` 与 `ignored_by_own_rules()`、`SETTINGS` 里的 `HW_REPO`/`REF_REPO` |
+| 单测 | `$TOOL/TestCase/tools/test_init_machine.py`（32 例） |
 | marketplace 声明 | 五个仓库各自的 `.claude/settings.json`（`extraKnownMarketplaces` + `enabledPlugins`） |
 
 ## 不做会怎样

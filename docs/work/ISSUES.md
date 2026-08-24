@@ -33,7 +33,7 @@
 
 ## ISS-B5 · ★ 某些 app 装上去之后板子对 IAPTool 不可达
 
-**是什么**：装上 `$TOOL:TestTool/onboard/sdram/SDRAM_Acceptance` 之后，板子**回 ICMP ping，但完全不回 UDP 发现**，`IAPTool ether` 报 `No response from <ip>, exiting`。换成 `SerialPort` 就好。
+**是什么**：装上 `$TOOL:TestCase/onboard/sdram/SDRAM_Acceptance` 之后，板子**回 ICMP ping，但完全不回 UDP 发现**，`IAPTool ether` 报 `No response from <ip>, exiting`。换成 `SerialPort` 就好。
 
 **A/B 实测（2026-08-22，同一块板、同一个 bootloader、同一个网络）**：
 
@@ -75,7 +75,7 @@
 |---|---|
 | **是什么** | bootloader 的 `takeown` / `setowner` / `getowner` 三个命令 |
 | **做什么用的** | 客户把板子绑到自己的签名密钥上（需求 C10） |
-| **在哪找** | 板子侧 `IAPServer/IAP_server.c` + `IAPServer/owner_slot.c`，**已完成并实测**<br>主机侧只有 `$TOOL:TestTool/tools/run-takeown.ps1` / `run-setowner.ps1`，**那是内部测试脚本** |
+| **在哪找** | 板子侧 `IAPServer/IAP_server.c` + `IAPServer/owner_slot.c`，**已完成并实测**<br>主机侧只有 `$TOOL:TestCase/tools/run-takeown.ps1` / `run-setowner.ps1`，**那是内部测试脚本** |
 | **可能的影响** | ⚠️ **客户拿不到这个功能。** 板子侧齐了，但出货工具 `IAPTool` 一个入口都没有 —— 客户没有受支持的办法认领自己的板子。[../../RELEASE-NOTES.md](../../RELEASE-NOTES.md) 已写明这一点，别让文档跑到实现前面 |
 
 **要做什么**：`IAPTool takeown <ip>`、`IAPTool setowner <ip> --current-key=... --new-key=...`。签名那半已经有了（`IAPTool signraw`，2026-08-18 加的），剩下的是命令面和把私钥管理讲清楚。
@@ -96,7 +96,7 @@
 
 ⚠️ **P2 已经自动比对了两侧派生算法的一致性**，剩下的只有"算法本身会不会撞"，那需要真的两块板。
 
-⚠️ **产线要留 MAC 记录**，否则"不重复"无从判起 —— `$TOOL:TestTool/acceptance/checklist.md` 的 `CHK-C3`。检查单本身现在就能写，不用等板子。
+⚠️ **产线要留 MAC 记录**，否则"不重复"无从判起 —— `$TOOL:TestCase/acceptance/checklist.md` 的 `CHK-C3`。检查单本身现在就能写，不用等板子。
 
 ---
 
@@ -121,7 +121,7 @@
 | | |
 |---|---|
 | **是什么** | `Stop-Process` 停掉假板子之后**不等它真的退出**，就开始下一个用例 |
-| **做什么用的** | `$TOOL:TestTool/host/fakeboard/run-cases.ps1`（K1–K6）和 `run-downgrade.ps1`（DG1） |
+| **做什么用的** | `$TOOL:TestCase/host/fakeboard/run-cases.ps1`（K1–K6）和 `run-downgrade.ps1`（DG1） |
 | **在哪找** | `run-cases.ps1:159`、`run-downgrade.ps1:171`；根因在 `host/fakeboard/fake_board.py:130` 的 `SO_REUSEADDR` |
 | **可能的影响** | 上一个进程的 socket 还占着，而 `SO_REUSEADDR` 让下一个用例**照样能 bind 同一个端口** → 两个进程同时监听，谁 accept 未定义。表现是某条用例报「board was never sent a flash command」而它的日志里只有启动那一行 —— 连接被上一个进程接走了。**偶发**，重跑就过。⚠️ **偶发的用例比没有用例更糟**：它训练人重跑一次就当过了 |
 | **怎么发现的** | 2026-08-22 移植 Python 版时撞出来的，详见 [M7-python-scripts.md](M7-python-scripts.md) 第 3 步。Python 版已修成确定的（`kill()` + `wait()`，读日志前先等日志停止增长） |

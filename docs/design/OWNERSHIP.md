@@ -4,7 +4,7 @@
 
 落地记录、每一步的实测结果、以及过程中改掉的两个设计缺陷，在 [../work/M1-owner-slot.md](../work/M1-owner-slot.md)。**本文件是设计推理的出处，那份是落地记录** —— 两边不要互抄。
 
-⚠️ **设备侧完整，出货工具侧还没有。** `takeown` / `setowner` 只有 TestTool 的内部脚本能发，`IAPTool` 一个入口都没有 —— 客户目前拿不到这个功能，见 [../work/ISSUES.md](../work/ISSUES.md) 的 `ISS-A4`。
+⚠️ **设备侧完整，出货工具侧还没有。** `takeown` / `setowner` 只有 TestCase 的内部脚本能发，`IAPTool` 一个入口都没有 —— 客户目前拿不到这个功能，见 [../work/ISSUES.md](../work/ISSUES.md) 的 `ISS-A4`。
 
 机制上和 [JOURNAL.md](JOURNAL.md) 独立，但两者都住在 bootloader 独占的 flash 区域里，改任何一边之前先读另一边。
 

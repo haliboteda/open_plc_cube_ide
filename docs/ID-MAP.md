@@ -13,16 +13,16 @@
 | 编号形态 | 是什么 | 定义在哪 | 谁实现 | 结果记在哪 |
 |---|---|---|---|---|
 | `A1`–`A7` `B1`–`B11` `C1`–`C14` `D1`–`D9` `E1`–`E8` `F1`–`F5` | **产品需求**（54 条，每条一句可判定的话） | [STATUS.md](STATUS.md) 第三节 | — 它们是主张，不是可执行的东西 | 同一张表的「状态」列 |
-| `T1` `T1b` `T2` `T3` `T4` | **TCP 会话用例** | `$TOOL:TestTool/TEST-CASES.md` | `$TOOL:TestTool/tcp_session.go`（`register(testCase{id:"T1"…})`—— **编号写死在 Go 代码里，不能改**） | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
-| `N1`–`N5` | **UDP 发现用例** | `$TOOL:TestTool/TEST-CASES.md` | `$TOOL:TestTool/udp_discovery.go` | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
-| `S1` `S2` `S3` `S4a` `S4b` `G1` | **签名 / 掉电 / staging 用例** | `$TOOL:TestTool/TEST-CASES.md`；S4a/S4b 的完整设计在 [test/CASE-DESIGNS.md](test/CASE-DESIGNS.md) | S1/S2 → `signature.go` + `signature_wrongkey.go`；S3 → `tools/run-s3.ps1`；**S4a/S4b → `tools/run_s4.py`**；G1 → `tools/run-case.ps1 -Case S1 -ThenReset` | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
-| `OW1` `OW1-neg` `OW2` `OW2-attack` `OW3` | **所有权用例** | `$TOOL:TestTool/TEST-CASES.md` | `tools/run-takeown.ps1`、`run-setowner.ps1`、`inject-owner-record.ps1` | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
-| `AU1` | **nonce 跨掉电不重复** | `$TOOL:TestTool/TEST-CASES.md` | `$TOOL:TestTool/nonce_replay.go`，由 `tools/run-au1.ps1` 编排 | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
-| `H1` `H2` `H3` `K1`–`K6` `X1` `X2` `DG1` | **主机侧用例**（不需要板子） | `$TOOL:TestTool/TEST-CASES.md`；DG1 的落地决定在 [test/CASE-DESIGNS.md](test/CASE-DESIGNS.md) | H1 → `go test ./TestTool/...`；**H3 → `go vet ./...`（2026-08-22 新建）**；H2 → `host/bootloader_unit/build.py`；K → `host/fakeboard/run_cases.py`；X → `host/crypto_ref/run_checks.py`；DG1 → `host/fakeboard/run_downgrade.py` | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
-| `P1`–`P10` | **静态检查**（P1–P6 看代码，P7–P9 看文档，**P10 看本机 `.claude/` 权限配置，纯建议性、不进 selfcheck 的 15 步**——那份文件本机专属不进 git，不能当发版门禁）| `$TOOL:TestTool/TEST-CASES.md` | `tools/check_version_sync.py`(P1)、`check_mirror_sync.py`(P2)、`check_core_sync.py`(P3)、`host/variant_check/build.py`(P4)、`host/examples_build/build.py`(P5)、`check_public_root.py`(P6)、`check_status_sync.py`(P7)、`check_doc_dupes.py`(P8)、`check_doc_paths.py`(P9)、`check_allow_hygiene.py`(P10) | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
-| `BG1` | **启动门禁**（SDRAM 自检 + 日志口通不通） | `$TOOL:TestTool/acceptance/checklist.md` 的「BG1 · 启动门禁」节 | `tools/flash_bootloader.py` 判读；日志文案在 `Core/Src/fmc.c` | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
-| `SD1` `SD2` `M3` `M5` `O1` `EV1` | **零散的板级用例** | `$TOOL:TestTool/TEST-CASES.md` | SD1 → `onboard/sdram/`；**SD2 不是用例，是仪器**（`Core/Src/sdram_diag.c`，命令 `sdramdiag`/`sdramlive`，没有 PASS/FAIL 判据）；M3 要第二块板；M5 → `onboard/`；O1 → `onboard/rs232/SerialPort`；EV1 ⛔ 难以构造 | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
-| `CHK-A1`–`A7` `CHK-B1`–`B7` `CHK-C1`–`C7` | **三张验收单**（改动后自检 / 发版 / 单板出厂） | `$TOOL:TestTool/acceptance/checklist.md` | 大部分是"跑某条命令"或人工 | ⬜ **没有去处** —— 逐板记录不存在，这就是 F2 为什么是 🟡 |
+| `T1` `T1b` `T2` `T3` `T4` | **TCP 会话用例** | `$TOOL:TestCase/TEST-CASES.md` | `$TOOL:TestCase/tcp_session.go`（`register(testCase{id:"T1"…})`—— **编号写死在 Go 代码里，不能改**） | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
+| `N1`–`N5` | **UDP 发现用例** | `$TOOL:TestCase/TEST-CASES.md` | `$TOOL:TestCase/udp_discovery.go` | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
+| `S1` `S2` `S3` `S4a` `S4b` `G1` | **签名 / 掉电 / staging 用例** | `$TOOL:TestCase/TEST-CASES.md`；S4a/S4b 的完整设计在 [test/CASE-DESIGNS.md](test/CASE-DESIGNS.md) | S1/S2 → `signature.go` + `signature_wrongkey.go`；S3 → `tools/run-s3.ps1`；**S4a/S4b → `tools/run_s4.py`**；G1 → `tools/run-case.ps1 -Case S1 -ThenReset` | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
+| `OW1` `OW1-neg` `OW2` `OW2-attack` `OW3` | **所有权用例** | `$TOOL:TestCase/TEST-CASES.md` | `tools/run-takeown.ps1`、`run-setowner.ps1`、`inject-owner-record.ps1` | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
+| `AU1` | **nonce 跨掉电不重复** | `$TOOL:TestCase/TEST-CASES.md` | `$TOOL:TestCase/nonce_replay.go`，由 `tools/run-au1.ps1` 编排 | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
+| `H1` `H2` `H3` `K1`–`K6` `X1` `X2` `DG1` | **主机侧用例**（不需要板子） | `$TOOL:TestCase/TEST-CASES.md`；DG1 的落地决定在 [test/CASE-DESIGNS.md](test/CASE-DESIGNS.md) | H1 → `go test ./TestCase/...`；**H3 → `go vet ./...`（2026-08-22 新建）**；H2 → `host/bootloader_unit/build.py`；K → `host/fakeboard/run_cases.py`；X → `host/crypto_ref/run_checks.py`；DG1 → `host/fakeboard/run_downgrade.py` | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
+| `P1`–`P10` | **静态检查**（P1–P6 看代码，P7–P9 看文档，**P10 看本机 `.claude/` 权限配置，纯建议性、不进 selfcheck 的 15 步**——那份文件本机专属不进 git，不能当发版门禁）| `$TOOL:TestCase/TEST-CASES.md` | `tools/check_version_sync.py`(P1)、`check_mirror_sync.py`(P2)、`check_core_sync.py`(P3)、`host/variant_check/build.py`(P4)、`host/examples_build/build.py`(P5)、`check_public_root.py`(P6)、`check_status_sync.py`(P7)、`check_doc_dupes.py`(P8)、`check_doc_paths.py`(P9)、`check_allow_hygiene.py`(P10) | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
+| `BG1` | **启动门禁**（SDRAM 自检 + 日志口通不通） | `$TOOL:TestCase/acceptance/checklist.md` 的「BG1 · 启动门禁」节 | `tools/flash_bootloader.py` 判读；日志文案在 `Core/Src/fmc.c` | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
+| `SD1` `SD2` `M3` `M5` `O1` `EV1` | **零散的板级用例** | `$TOOL:TestCase/TEST-CASES.md` | SD1 → `onboard/sdram/`；**SD2 不是用例，是仪器**（`Core/Src/sdram_diag.c`，命令 `sdramdiag`/`sdramlive`，没有 PASS/FAIL 判据）；M3 要第二块板；M5 → `onboard/`；O1 → `onboard/rs232/SerialPort`；EV1 ⛔ 难以构造 | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) |
+| `CHK-A1`–`A7` `CHK-B1`–`B7` `CHK-C1`–`C7` | **三张验收单**（改动后自检 / 发版 / 单板出厂） | `$TOOL:TestCase/acceptance/checklist.md` | 大部分是"跑某条命令"或人工 | ⬜ **没有去处** —— 逐板记录不存在，这就是 F2 为什么是 🟡 |
 | `ISS-A2` `ISS-A3` `ISS-A4` `ISS-B1` `ISS-B2` `ISS-B4` `ISS-B5` `ISS-C1` `ISS-C4` `ISS-D1` `ISS-E1` | **已知问题 / 技术债** | [work/ISSUES.md](work/ISSUES.md) | — 它们是问题，不是测试 | 同一个文件，做完就删 |
 | `M1`–`M8` | **设计模块**（要立项、分步做的） | [work/BACKLOG.md](work/BACKLOG.md)，一个模块一份 `work/M<n>-*.md` | 每份自己的「分步计划」 | 各自的「验收」节 + BACKLOG 的状态列 |
 
@@ -37,7 +37,7 @@
 | 旧步骤号 | 现在叫 | 跑的是什么 |
 |---|---|---|
 | `A0` | `ENV` | 这台机器有哪些工具链（不是用例，是探测） |
-| `A1` | **`H1`** | `go test ./TestTool/...` |
+| `A1` | **`H1`** | `go test ./TestCase/...` |
 | `A2` | **`H2`** | 主机侧 C 单测（真实 `sha256.c` / `iap_keyderive.c` / `iap_auth.c`） |
 | `A3` | **`H3`** ← **新建的编号** | `go vet ./...` |
 | `A7` | **`P1`** | 版本号三处一致 |

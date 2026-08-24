@@ -65,7 +65,7 @@ PC0 · PD0,1,8,9,10,14,15 · PE0,1,7-15 · PF0-5,11-15 · PG0,1,2,4,5,8,15 · PH
 - ✅ `tools/check-core-sync.ps1`（用例 P3）通过，live 与 repo 一致
 - ✅ [../design/HARDWARE-FACTS.md](../design/HARDWARE-FACTS.md) 里有这张表
 
-**验收是编译期断言，不是肉眼看。** sketch 在 `$TOOL/TestTool/host/variant_check/m4_fmc_pins/`，由 selfcheck 作为用例 **P4** 自动编译。三条 `static_assert`：
+**验收是编译期断言，不是肉眼看。** sketch 在 `$TOOL/TestCase/host/variant_check/m4_fmc_pins/`，由 selfcheck 作为用例 **P4** 自动编译。三条 `static_assert`：
 
 | 断言 | 挡住什么 |
 |---|---|
@@ -85,7 +85,7 @@ PC0 · PD0,1,8,9,10,14,15 · PE0,1,7-15 · PF0-5,11-15 · PG0,1,2,4,5,8,15 · PH
 
 `fmc.c` 的引脚表和变体头的 `FMC_RESERVED_*` 是**两份副本**，而变体头里的编译期断言**只保证它自己内部自洽** —— `fmc.c` 单方面改了它一无所知，那时变体头会开始对用户**撒谎**（还说 PE7 是数据线，而 PE7 已经不是了）。**一张会撒谎的表比没有这张表更糟**，而 E6 的全部价值就是这张表可信。
 
-已作为第 9 个锚点加进 `$TOOL/TestTool/tools/check-mirror-sync.ps1`（用例 **P2**）：两边都归一成 `功能=引脚` 的有序集合再比。
+已作为第 9 个锚点加进 `$TOOL/TestCase/tools/check-mirror-sync.ps1`（用例 **P2**）：两边都归一成 `功能=引脚` 的有序集合再比。
 
 ```
 OK    FMC pin map (39 SDRAM pins)

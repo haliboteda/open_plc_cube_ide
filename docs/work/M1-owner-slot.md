@@ -249,7 +249,7 @@ STM32_Programmer_CLI -c port=SWD -w record.bin 0x0801E000   # ← 会擦掉 boot
 
 owner 区在 **bootloader 自己那个扇区**的尾部，而编程器写之前会擦整个扇区。结果是 `0x08000000` 全变 `FF`，板子什么都不打，只能重烧。
 
-正确做法：**把 bootloader 和记录拼成一个镜像一次写进 `0x08000000`** —— 一次擦除，两者都活下来。已做成 `$TOOL/TestTool/tools/inject-owner-record.ps1`：
+正确做法：**把 bootloader 和记录拼成一个镜像一次写进 `0x08000000`** —— 一次擦除，两者都活下来。已做成 `$TOOL/TestCase/tools/inject-owner-record.ps1`：
 
 ```powershell
 .\inject-owner-record.ps1 -Generation 7   # 一条合法记录

@@ -43,8 +43,8 @@
 |---|---|
 | `Core/Src/sdram_diag.c` | 四项测量的实现，串口命令 `sdramdiag`（完整报告）和 `sdramlive [秒]`（每秒一行，给冷热喷剂测试用） |
 | `Core/Src/fmc.c` | 自检失败时自动打一行摘要 —— 坏板子自己说出是哪一位 |
-| `$TOOL/TestTool/tools/run-sdram-diag.ps1` | 发命令 + 抓串口 + 判读 |
-| `$TOOL/TestTool/host/sdram_diag/2026-08-21-bridge-run1.txt` | 第一次实测的原始 capture（**证据，不是结论**） |
+| `$TOOL/TestCase/tools/run-sdram-diag.ps1` | 发命令 + 抓串口 + 判读 |
+| `$TOOL/TestCase/host/sdram_diag/2026-08-21-bridge-run1.txt` | 第一次实测的原始 capture（**证据，不是结论**） |
 
 实测结果（32768 个 16 位字，先全部写完再全部读回）：
 

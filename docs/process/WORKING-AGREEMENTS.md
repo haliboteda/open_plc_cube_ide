@@ -45,13 +45,13 @@
 | 编号 | 去哪查 |
 |---|---|
 | 需求 A1–A7 B1–B11 C1–C14 D1–D9 E1–E8 F1–F5 | [../STATUS.md](../STATUS.md) —— 连同用例、状态、最近结果 |
-| 用例的判据和怎么跑 | `$TOOL/TestTool/TEST-CASES.md`（跨仓，贴着代码走） |
+| 用例的判据和怎么跑 | `$TOOL/TestCase/TEST-CASES.md`（跨仓，贴着代码走） |
 | 已知问题 `ISS-*` | [../work/ISSUES.md](../work/ISSUES.md) |
 | 模块 M1–M8 | [../work/BACKLOG.md](../work/BACKLOG.md) 及同目录各自一份 |
 
 ⚠️ **2026-08-22 之前这里还有一行「selfcheck 的 A0–A14」。那套编号已经整个删掉了** —— 它每一步都只是某个用例的别名（A12 就是 DG1，A13 就是 P4），而 `A1`/`A2`/`A3`/`A7` 又和需求号撞车，"A7 过了"字面上有四个意思。selfcheck 现在直接用用例号，`selfcheck.py --list` 会打出它跑哪 15 步、各证明哪条需求。
 
-实现在哪：T/N/S/AU1 → `TestTool/*.go`；K/DG1 → `TestTool/host/fakeboard/`；H2 → `TestTool/host/bootloader_unit/`；X → `TestTool/host/crypto_ref/`；P → `TestTool/tools/check_*`。
+实现在哪：T/N/S/AU1 → `TestCase/*.go`；K/DG1 → `TestCase/host/fakeboard/`；H2 → `TestCase/host/bootloader_unit/`；X → `TestCase/host/crypto_ref/`；P → `TestCase/tools/check_*`。
 
 ## 陈述任何问题都按这个骨架
 
@@ -79,7 +79,7 @@
 | 相对路径 | `/` | `\` | Windows 的 .NET 路径 API 接受 `/`，Linux 不接受 `\` —— `/` 是唯一两边都对的 |
 | 平台目录名 | `$GOOS_DIR` / `$A15_DIR` / `$CUBE_PLUG` | 硬写 `windows` / `win` / `win32` | 同样三个平台，三套工具用三种叫法，集中在一处映射 |
 
-**机器相关的路径一律进 `$TOOL/TestTool/config/machine.{ps1,py}`，而那两份是 `tools/init_machine.py` 生成的** —— 不手写，也没有模板可抄。
+**机器相关的路径一律进 `$TOOL/TestCase/config/machine.{ps1,py}`，而那两份是 `tools/init_machine.py` 生成的** —— 不手写，也没有模板可抄。
 
 ⚠️ **判断一个值该不该进配置：另一台同样系统的机器会不会有不同的值？** 不会就不属于那里 —— 那是平台派生量，归 `_common.ps1` / `common.py`。
 
@@ -87,7 +87,7 @@
 
 > **2026-08-20 删掉了 `machine.example.{ps1,py}`。** 它们和 `SETTINGS` 表是同一份清单的两个出处。而且模板那套"两个平台的值都给、删掉不用的那套"的用法，**忘记删是最常见的错误** —— 第一次在 Debian 上就踩了，表现是一堆互不相关的 MISSING，加上一句让人去查串口线的错误建议。
 
-⚠️ **这条不止管脚本内部，还管 AI 会话怎么打命令。** 从一个仓库的会话里调另一个仓库的脚本（例如在 `open_plc_cube_ide` 里跑 `IAPTranfer_Tool/TestTool/tools/selfcheck.ps1`），**用相对路径 `../IAPTranfer_Tool/TestTool`，不要绝对路径**。第三节那张兄弟目录表已经把布局钉死了，相对路径换机器天然成立；绝对路径（`E:\WorkSpace\...`）只在这台机器上对，写进 `.claude/settings.local.json` 的 allow 列表里，换机器就是一条永远不会再命中的死记录。
+⚠️ **这条不止管脚本内部，还管 AI 会话怎么打命令。** 从一个仓库的会话里调另一个仓库的脚本（例如在 `open_plc_cube_ide` 里跑 `IAPTranfer_Tool/TestCase/tools/selfcheck.ps1`），**用相对路径 `../IAPTranfer_Tool/TestCase`，不要绝对路径**。第三节那张兄弟目录表已经把布局钉死了，相对路径换机器天然成立；绝对路径（`E:\WorkSpace\...`）只在这台机器上对，写进 `.claude/settings.local.json` 的 allow 列表里，换机器就是一条永远不会再命中的死记录。
 
 **2026-08-23 实测：allow 列表不支持在字符串中间用 `*` 匹配任意前缀**，只有结尾通配符是文档确认支持的（`Bash(git *)` 这种）。所以"允许这条命令、不管前面的绝对路径是什么"这件事做不到，唯一可移植的办法就是从一开始就不在命令里写绝对路径。
 
@@ -101,7 +101,7 @@
 
 | 东西 | 去哪 |
 |---|---|
-| 测试脚本、自动化工具（烧写、抓串口……） | `$TOOL/TestTool/tools/` |
+| 测试脚本、自动化工具（烧写、抓串口……） | `$TOOL/TestCase/tools/` |
 | 一次性的探查命令（`grep` 一下、看个尺寸） | 不落盘，直接跑 |
 
 > 2026-08-16 犯过：把自动烧写脚本写进 scratchpad，还硬编码了 `D:\ST\STM32CubeIDE_1.10.0` 和工作区绝对路径 —— 换电脑双重报废。**机器相关的路径一律进 `config/machine.ps1`。**
