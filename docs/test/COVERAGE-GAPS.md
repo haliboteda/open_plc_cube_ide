@@ -95,6 +95,6 @@ iap_auth.c:139: error: 'RTC_BKP_DR3' undeclared
 
 ## 维护
 
-- **收尾时必须人工过一遍 `RELEASE-NOTES.md` 的 known-issues 和 not-verified 两节**，逐条问"今天这条还成立吗"。这一步在 SESSION-START 的收尾流程里。
+- **收尾时必须人工过一遍 `RELEASE-NOTES.md` 的 known-issues 和 not-verified 两节**，逐条问"今天这条还成立吗"。这一步在 `$PROD/docs/process/WRAP-UP-TARGETS.md` 的收尾表里。
 - **补上一个缺口时，把这一行删掉**，别改成"✅ 已补"留着 —— `$PROD/docs/STATUS.md` 里那条需求转 ✅ 就是记录。
 - **新发现的缺口要写"影响"，不只写"没测"。** 没有影响的缺口不值得记，写了只会让这张表变噪音。

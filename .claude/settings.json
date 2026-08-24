@@ -25,8 +25,6 @@
       "PowerShell(git remote -v)",
       "Bash(python tools/init_machine.py --check)",
       "Bash(python3 tools/init_machine.py --check)",
-      "Bash(python tools/init_machine.py --prereqs)",
-      "Bash(python3 tools/init_machine.py --prereqs)",
       "Bash(python tools/common.py --probe)",
       "Bash(python3 tools/common.py --probe)",
       "Bash(python tools/test_init_machine.py)",
@@ -37,7 +35,6 @@
 
       "Bash(cd ../IAPTranfer_Tool/TestCase && NO_COLOR=1 python tools/selfcheck.py*)",
       "Bash(cd ../IAPTranfer_Tool/TestCase && NO_COLOR=1 python tools/init_machine.py --check*)",
-      "Bash(cd ../IAPTranfer_Tool/TestCase && NO_COLOR=1 python tools/init_machine.py --prereqs*)",
       "Bash(cd ../IAPTranfer_Tool/TestCase && python tools/m7_compare_board.py*)",
       "Bash(cd ../IAPTranfer_Tool/TestCase && python tools/check_status_sync.py*)",
       "Bash(cd ../IAPTranfer_Tool/TestCase && python tools/check_doc_dupes.py*)",
