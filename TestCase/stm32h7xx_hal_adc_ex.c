@@ -30,9 +30,9 @@
   */
 
 /* Vendor file copied in for the standalone ADC bring-up test in this same
-   TestInterface folder - see stm32h7xx_hal_adc.c in this same folder for
+   TestCase folder - see stm32h7xx_hal_adc.c in this same folder for
    why HAL_ADC_MODULE_ENABLED is defined here instead of project-wide. */
-#include "testinterface_hal_guard.h"   /* fires if this peripheral becomes real -- read it */
+#include "testcase_hal_guard.h"   /* fires if this peripheral becomes real -- read it */
 #define HAL_ADC_MODULE_ENABLED
 
 /* Includes ------------------------------------------------------------------*/

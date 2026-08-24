@@ -48,11 +48,11 @@
   */
 
 /* Vendor file copied in for the standalone SD-card bring-up test in this
-   same TestInterface folder (this project's Core/stm32h7xx_hal_conf.h never
+   same TestCase folder (this project's Core/stm32h7xx_hal_conf.h never
    enabled HAL_SD_MODULE_ENABLED, and we don't want to touch CubeMX-owned
    files) - define it here, before stm32h7xx_hal.h is pulled in, so this
    file compiles without any project-wide (-D) or Core/ change. */
-#include "testinterface_hal_guard.h"   /* fires if this peripheral becomes real -- read it */
+#include "testcase_hal_guard.h"   /* fires if this peripheral becomes real -- read it */
 #define HAL_SD_MODULE_ENABLED
 
 /* Includes ------------------------------------------------------------------*/

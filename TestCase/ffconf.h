@@ -22,7 +22,7 @@
 /*-----------------------------------------------------------------------------/
 / Additional user header to be used
 /-----------------------------------------------------------------------------*/
-/* This is the standalone TestInterface/ copy for sd_test.c - the reference
+/* This is the standalone TestCase/ copy for sd_test.c - the reference
    project's bsp_driver_sd.h shim was not copied in, sd_test.c talks to
    HAL_SD_* directly instead (see its own disk_* glue functions). */
 #include "main.h"
