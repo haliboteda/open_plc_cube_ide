@@ -2,7 +2,7 @@
 
 **完整生命周期已实测**：认领（G1）→ 换 owner（G2，现任签名）→ 恢复出厂（cleared）→ 重新认领。每一步都有反向用例，包括**夺取攻击**（无签名的高 generation 记录夺不走已认领的板子）。
 
-**覆盖需求：[C10](../STATUS.md)** —— 板子有办法脱离"出厂公开根"，且不需要 ST-Link。
+**覆盖需求：`$PROD/docs/STATUS.md`** —— 板子有办法脱离"出厂公开根"，且不需要 ST-Link。
 
 > ⚠️ **完整设计在 [../design/OWNERSHIP.md](../design/OWNERSHIP.md)，不在这里。** 这份只写**落地计划**：分几步、每步验什么、还有哪几个口子没堵。设计推理不重复一遍。
 
@@ -289,7 +289,7 @@ owner 区在 **bootloader 自己那个扇区**的尾部，而编程器写之前�
 
 ## 验收 ✅ 2026-08-18 全部完成
 
-用例是 **OW1 / OW2 / OW3 / P6**，状态和结果在 [../STATUS.md](../STATUS.md) 的 C10，实测数字在 [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md)。
+用例是 **OW1 / OW2 / OW3 / P6**，状态和结果在 `$PROD/docs/STATUS.md` 的 C10，实测数字在 [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md)。
 
 原计划要求的五条，逐条落到了哪：
 
@@ -309,6 +309,6 @@ owner 区在 **bootloader 自己那个扇区**的尾部，而编程器写之前�
 |---|---|
 | 记录放现有 state 扇区 | `journal_reclaim()` 整扇区擦。搬运再写回的话掉电窗口 = 擦除耗时，丢了就**静默**退回默认根 |
 | 新开一个专用扇区 | 白付 128K，还要绕开 `RESERVED_TAIL_SECTORS` 那个陷阱 |
-| 撤销状态放 RTC 备份域 | 备份域是三仓共享、无人统一分配的资源，**已经撞过一次车**（DR2，2026-08-17）。见 [../design/ARCHITECTURE.md](../design/ARCHITECTURE.md) 的分配表 |
+| 撤销状态放 RTC 备份域 | 备份域是三仓共享、无人统一分配的资源，**已经撞过一次车**（DR2，2026-08-17）。见 `$PROD/docs/design/ARCHITECTURE.md` 的分配表 |
 | 学 Android"追加一把根"（OEM 根 + 用户根并存） | Android 的 OEM 根私钥保密，多信任一把不掉安全性。**我们的默认根私钥是公开的，只能覆盖不能追加** |
 | 学 ESP32 的 aggressive revoke | 会永久变砖，理由见 [../design/OWNERSHIP.md](../design/OWNERSHIP.md) 的 R4 |

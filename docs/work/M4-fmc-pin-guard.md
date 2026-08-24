@@ -1,6 +1,6 @@
 # M4 · FMC 引脚防护 ✅ 2026-08-17 已完成
 
-**覆盖需求：[E6](../STATUS.md)** —— FMC 占用的 39 个脚在变体头里有名字、看得见。
+**覆盖需求：`$PROD/docs/STATUS.md`** —— FMC 占用的 39 个脚在变体头里有名字、看得见。
 
 > ⚠️ **E6 的原文是"用户 `digitalWrite` 碰不到"，落地时改写了。** 采用的方案是可发现性，不是拦截 —— 拦截在本文件「已否决」里就砍掉了。`digitalWrite(PE7, ...)` **现在仍然编得过**，那是刻意的。需求原文和实现不符时改需求，不要让实现假装满足了它。
 
@@ -54,13 +54,13 @@ PC0 · PD0,1,8,9,10,14,15 · PE0,1,7-15 · PF0-5,11-15 · PG0,1,2,4,5,8,15 · PH
 | 3 | 同步写进 [../design/HARDWARE-FACTS.md](../design/HARDWARE-FACTS.md) |
 | 4 | ⚠️ 同步到 `$CORE_REPO` 并提交 —— `tools/check-core-sync.ps1` 会盯着 |
 
-⚠️ **这是改共享 core**，按 [../design/ARCHITECTURE.md](../design/ARCHITECTURE.md) 属于分发给其他工程师的基础设施。改动本身很小，但要走 live → 验证 → repo 的流程。
+⚠️ **这是改共享 core**，按 `$PROD/docs/design/ARCHITECTURE.md` 属于分发给其他工程师的基础设施。改动本身很小，但要走 live → 验证 → repo 的流程。
 
 ## 验收 —— 2026-08-17 全部通过
 
 - ✅ 39 个脚在头文件里都有名字和注释（16 数据 + 13 地址 + 10 控制）
 - ✅ 编译一个用到 `digitalWrite(PE7, ...)` 的 sketch，**仍然能编译**
-- ✅ 这个 sketch **进了仓库**（`host/variant_check/`）并接进 selfcheck（用例 **P4**）。⚠️ 它一开始只写在 `%TEMP%` 里 —— 那等于没有，见 [../process/WORKING-AGREEMENTS.md](../process/WORKING-AGREEMENTS.md)。**同一个错误当天犯了第二次**
+- ✅ 这个 sketch **进了仓库**（`host/variant_check/`）并接进 selfcheck（用例 **P4**）。⚠️ 它一开始只写在 `%TEMP%` 里 —— 那等于没有，见 `$PROD/docs/CONVENTIONS.md`。**同一个错误当天犯了第二次**
 - ✅ 负向对照：把 `FMC_RESERVED_PIN_COUNT` 改成 38，P4 报 `static assertion failed` 并退 1
 - ✅ `tools/check-core-sync.ps1`（用例 P3）通过，live 与 repo 一致
 - ✅ [../design/HARDWARE-FACTS.md](../design/HARDWARE-FACTS.md) 里有这张表
@@ -73,7 +73,7 @@ PC0 · PD0,1,8,9,10,14,15 · PE0,1,7-15 · PF0-5,11-15 · PG0,1,2,4,5,8,15 · PH
 | `FMC_RESERVED_D4 == PE7` | 抄错某一个脚的映射 |
 | 每个名字都能求值成引脚号 | 名字拼错、宏没定义 |
 
-**为什么加 `FMC_RESERVED_PIN_COUNT`**：这份清单是 `fmc.c` 的第二份副本，按 [../design/ARCHITECTURE.md](../design/ARCHITECTURE.md) 的规律，第二份副本必然漂移。这个常量让"表内部抄漏了一行"在编译期就被抓住。
+**为什么加 `FMC_RESERVED_PIN_COUNT`**：这份清单是 `fmc.c` 的第二份副本，按 `$PROD/docs/design/ARCHITECTURE.md` 的规律，第二份副本必然漂移。这个常量让"表内部抄漏了一行"在编译期就被抓住。
 
 ⚠️ 但它**挡不住 `fmc.c` 单方面改脚** —— 那边改了、这边没改，`FMC_RESERVED_PIN_COUNT` 仍然自洽。那一层由 P2 的新锚点管，见下。
 

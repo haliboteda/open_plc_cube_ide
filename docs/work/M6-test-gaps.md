@@ -1,14 +1,14 @@
 # M6 · 补齐没测到的东西
 
-**覆盖需求：[C5](../STATUS.md) [C6](../STATUS.md) [E1](../STATUS.md) [E8](../STATUS.md)**
+**覆盖需求：`$PROD/docs/STATUS.md` `$PROD/docs/STATUS.md` `$PROD/docs/STATUS.md` `$PROD/docs/STATUS.md`**
 
-**这是性价比最高的一项。** 它不加任何功能，只把 [../STATUS.md](../STATUS.md) 里的 🟡 变成 ✅ 或者变成红字。
+**这是性价比最高的一项。** 它不加任何功能，只把 `$PROD/docs/STATUS.md` 里的 🟡 变成 ✅ 或者变成红字。
 
 ## 为什么排第一
 
 🟡 的意思是"功能在跑，但没有任何东西能证明它还在跑"。这比 ⬜（没做）**更危险** —— 没做的东西没人依赖，🟡 的东西所有人都当它是好的。
 
-2026-08-17 刚有一个现成的例子：那次 `DR2` 跨仓撞车（见 [../design/ARCHITECTURE.md](../design/ARCHITECTURE.md) 的寄存器分配表）让 app 重复发放同一批 nonce，**缺陷存在了两天，是靠肉眼看串口日志发现的** —— 而 **AU1 那个用例能直接抓到它**。这就是 🟡 的代价。
+2026-08-17 刚有一个现成的例子：那次 `DR2` 跨仓撞车（见 `$PROD/docs/design/ARCHITECTURE.md` 的寄存器分配表）让 app 重复发放同一批 nonce，**缺陷存在了两天，是靠肉眼看串口日志发现的** —— 而 **AU1 那个用例能直接抓到它**。这就是 🟡 的代价。
 
 ## 清单
 
@@ -20,7 +20,7 @@
 | **S4b** 擦写阶段拔电 | E8 | ✅ + 人工断电 | 高 | ⬜ ⚠️ 窗口只剩几秒，但 IAPTool 一退出就动手即可。**同上** |
 | **M3** 两块板 MAC 不同 | E1 | ⛔ **第二块板** | — | ⬜ 阻塞。拿到板子的第一件事 |
 
-**已经做完的四条**（DG1、AU1、S2、S3）不再列在这里 —— 结果在 [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md)，状态在 [../STATUS.md](../STATUS.md)。
+**已经做完的四条**（DG1、AU1、S2、S3）不再列在这里 —— 结果在 [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md)，状态在 `$PROD/docs/STATUS.md`。
 
 ## 做完的那四条留下的东西
 
@@ -30,7 +30,7 @@
 
 **S3 同一天也做完了。** 起初卡在"这台机器上没有任何已签名的 app 镜像"，解法是现编译一个：
 
-1. 编译 `$TOOL/TestCase/onboard/rs232/SerialPort/`，按 [../test/BUILD-AND-TEST.md](../test/BUILD-AND-TEST.md) 的 FQBN（arduino-cli 的路径已进 `config/machine.ps1` 的 `$ARDUINO_CLI`）
+1. 编译 `$TOOL/TestCase/onboard/rs232/SerialPort/`，按 `$PROD/docs/test/BUILD-AND-TEST.md` 的 FQBN（arduino-cli 的路径已进 `config/machine.ps1` 的 `$ARDUINO_CLI`）
 2. `<sketch>.ino.bin` 和 `.version` 都由编译自动产出（版本 66304 = 0.1.3）
 3. **先用它正常烧一次并确认板子起得来**，再动 ST-Link —— `run-s3.ps1` 把这一步做成了脚本的第 1/4 步，恢复路径不通就拒绝往下走
 
@@ -44,12 +44,12 @@
 
 **装上 gcc 之后 H2 第一次真跑，发现它早就编不过了** —— stub 缺 `RTC_BKP_DR3`，SKIP 把这事盖了两天。**一个长期 SKIP 的检查要当成"状态未知"**，不能当成"缺一个环境就能补上"。完整经过在 [../test/COVERAGE-GAPS.md](../test/COVERAGE-GAPS.md)。
 
-**`RELEASE-NOTES.md` 那条过期的版本号**是"过期结论"这类缺陷的又一个例子。⚠️ **stale 的 known-issue 比没有 known-issue 更糟** —— 下一个人会照着它去查一个已经不存在的问题。这一类缺陷 2026-08-22 才第一次有东西管：[../STATUS.md](../STATUS.md) 的「证据还成立吗」列。
+**`RELEASE-NOTES.md` 那条过期的版本号**是"过期结论"这类缺陷的又一个例子。⚠️ **stale 的 known-issue 比没有 known-issue 更糟** —— 下一个人会照着它去查一个已经不存在的问题。这一类缺陷 2026-08-22 才第一次有东西管：`$PROD/docs/STATUS.md` 的「证据还成立吗」列。
 
 ## 验收
 
 - ✅ selfcheck 里 DG1 出现并通过（2026-08-17）
-- ✅ [../STATUS.md](../STATUS.md) 的 **C5 和 C6 都已从 🟡 变成 ✅**，分别指向 AU1 和 DG1；C2 另外多了 S2
+- ✅ `$PROD/docs/STATUS.md` 的 **C5 和 C6 都已从 🟡 变成 ✅**，分别指向 AU1 和 DG1；C2 另外多了 S2
 - ✅ [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md) 里 DG1 / S2 / AU1 的结果都填了日期和数字
 
 **这份还剩什么：** S4a/S4b（要人工卡时机断电，**现在能测了**）、M3（⛔ 等第二块板）。

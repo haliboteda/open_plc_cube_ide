@@ -21,7 +21,7 @@ Debian 上没有 PowerShell。三条路比过（见下），选了 Python，因�
 
 ## 覆盖哪条需求
 
-**[F5](../STATUS.md)**（换台电脑能接着干）。当前状态是 ✅，但那个 ✅ 的前提是"换的是另一台 Windows"。
+**`$PROD/docs/STATUS.md`**（换台电脑能接着干）。当前状态是 ✅，但那个 ✅ 的前提是"换的是另一台 Windows"。
 
 ## 在哪找
 
@@ -107,11 +107,11 @@ Debian 机器只能读代码、改代码，**跑不了任何一个用例、烧�
 | 在哪 | 现在写的 | 第 6 步之后 |
 |---|---|---|
 | [../../CLAUDE.md](../../CLAUDE.md) 第四节 | 「这一步不能用 selfcheck 的 ENV 代替，它要 PowerShell」 | **半假** —— `selfcheck.py` 和 `common.py --probe` 都不需要 PowerShell。⚠️ 但 `--prereqs` 仍有独立存在理由（它查 PATH 上的运行时，ENV 查本机路径解析），别把整段删掉。**2026-08-22 已改成只说 PowerShell 版** |
-| [../process/SESSION-START.md](../process/SESSION-START.md):83、:86 | `pwsh ./tools/selfcheck.ps1`，以及同一条 A0 断言 | 同上 |
+| SESSION-START:83、:86 | `pwsh ./tools/selfcheck.ps1`，以及同一条 A0 断言 | 同上 |
 | [../test/CASE-DESIGNS.md](../test/CASE-DESIGNS.md) 的「四层」表 | 层 0 / 层 1 的入口写的是 `tools\selfcheck.ps1` | 改成 `selfcheck.py`；那时应该已经是 `run_all.py` 的一层 |
-| [../STATUS.md](../STATUS.md) 的 F1 | F1 的证据是 `tools/selfcheck.ps1` | 改成 Python 那一版 |
-| ~~WORKING-AGREEMENTS.md 的 A0–A14 一行~~ | — | ✅ **2026-08-22 已删** —— 那套编号整个退役了，登记表搬到 [../ID-MAP.md](../ID-MAP.md) |
-| [../design/ARCHITECTURE.md](../design/ARCHITECTURE.md) 的路径变量一节 | 「对不上时以 ENV 为准」 | ✅ **2026-08-22 已改成不点名脚本** |
+| `$PROD/docs/STATUS.md` 的 F1 | F1 的证据是 `tools/selfcheck.ps1` | 改成 Python 那一版 |
+| ~~WORKING-AGREEMENTS.md 的 A0–A14 一行~~ | — | ✅ **2026-08-22 已删** —— 那套编号整个退役了，登记表搬到 `$PROD/docs/ID-MAP.md` |
+| `$PROD/docs/design/ARCHITECTURE.md` 的路径变量一节 | 「对不上时以 ENV 为准」 | ✅ **2026-08-22 已改成不点名脚本** |
 | `$PORT/docs/M8-onboard-skill.md`:122、:152 | 同一条「A0 要 PowerShell」，以及 `pwsh ./tools/selfcheck.ps1` | 同上 |
 | `$TOOL:TestCase/acceptance/checklist.md`:27、:29 | A1–A3 / A7 一条命令 = `tools/selfcheck.ps1` | 同上 |
 | `$TOOL:TestCase/TEST-CASES.md`:21、:58 | 目录树里的 `selfcheck.ps1`；以及那条 A0 断言 | 同上 |
@@ -300,6 +300,6 @@ $pyArgs = @(if ($p.PyArgs) { $p.PyArgs } else { @() }) # ✅
 
 **不是"写不出来"，是"写出来了、跑通了、但测的东西变了"。**
 
-> 同一条教训 M5 那次已经付过一次学费，记在 [../process/WORKING-AGREEMENTS.md](../process/WORKING-AGREEMENTS.md)。
+> 同一条教训 M5 那次已经付过一次学费，记在 `$PROD/docs/CONVENTIONS.md`。
 
 一套"跑得通但测的东西变了"的脚本，比跑不了更危险。**所以每一步的验收都是"和旧版比对"，不是"新版能跑"。**

@@ -1,12 +1,16 @@
 # open-plc
 
-> **Setting up a machine to work on this project?** Read [CLAUDE.md](CLAUDE.md)
-> instead: which repositories to clone, what to install, what to configure, and
-> what is deliberately not in git. This README covers flashing the bootloader
-> onto a board and the Arduino-side installation only.
+> **Setting up a machine to work on this project?** Not here, and not in
+> CLAUDE.md either — which repositories to clone, what to install, what to
+> configure and what is deliberately not in git all live in the `portable`
+> Claude Code plugin (`/portable:init`, or run its `bootstrap.py` directly).
+> This README covers flashing the bootloader onto a board and the Arduino-side
+> installation only.
 >
-> Behaviour, security model and verification status are documented in `docs/`,
-> which is the single source for all three. Do not restate them here.
+> This repository's own behaviour and security model are documented in `docs/`,
+> which is the single source for both. Requirement and verification status is
+> product-level and lives in the `openplc` plugin (`/openplc:overview`). Do not
+> restate any of it here.
 
 # Prerequisities (Win or Linux)
 a- Download and install STM32-Cube IDE lastest [Link](https://www.st.com/en/development-tools/stm32cubeide.html)  

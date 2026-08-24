@@ -21,7 +21,7 @@
 > ⚠️ **2026-08-16：这条可能整个不需要做了。** [OWNERSHIP.md](OWNERSHIP.md) 的证书方案里 `caps` 含 `session` —— 会话认证改成非对称（板子发 nonce、工具用叶私钥签、板子用证书里的叶公钥验）之后，**板子里一个秘密都没有**，不需要预配、不需要 RNG、不需要 PC 侧密钥库，固定密码那套三边同步也一起消失。
 > **决定证书方案之前不要动手做这条**，否则会做出两套互不认识的密钥机制。
 
-相关：[ARCHITECTURE.md](ARCHITECTURE.md) 里的固定密码单一来源机制 —— 产线方案落地后整套机制就不需要了。
+相关：`$PROD/docs/design/ARCHITECTURE.md` 里的固定密码单一来源机制 —— 产线方案落地后整套机制就不需要了。
 
 ## 故障自愈
 
@@ -42,7 +42,7 @@
 
 ### IWDG 兜底这条路是堵的
 
-H7 的 IWDG 一旦启动**只有上电复位能停**，会跟着跳进用户 app，要求每个 sketch 都喂狗 —— 违反[「设计不能限制用户的 app」](../process/WORKING-AGREEMENTS.md)。
+H7 的 IWDG 一旦启动**只有上电复位能停**，会跟着跳进用户 app，要求每个 sketch 都喂狗 —— 违反`$PROD/docs/CONVENTIONS.md`。
 
 相关：[HARDWARE-FACTS.md](HARDWARE-FACTS.md) 的 SRAM4 no-init 机制。
 

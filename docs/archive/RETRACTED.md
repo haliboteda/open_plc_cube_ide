@@ -39,7 +39,7 @@
 | **什么否定了它** | SDRAM staging 落地。那两个时刻**flash 压根没被碰过**，所以观测虽然真实，描述的已经是一个不存在的失败语义 |
 | **现在的结论** | 原来那个 S4 拆成 S4a（传输中拔电，预期旧 app 照常启动）和 S4b（擦写阶段拔电，唯一真会留下半写 app 区的窗口）。[../test/CASE-DESIGNS.md](../test/CASE-DESIGNS.md) |
 
-★ **这一条是这个文件最值得读的一条**：一个正确的实测结论可以因为**系统变了**而失效，而它看起来和其他 ✅ 一模一样。这就是 [../STATUS.md](../STATUS.md) 加「证据还成立吗」那一列的直接原因。
+★ **这一条是这个文件最值得读的一条**：一个正确的实测结论可以因为**系统变了**而失效，而它看起来和其他 ✅ 一模一样。这就是 `$PROD/docs/STATUS.md` 加「证据还成立吗」那一列的直接原因。
 
 ## 4 · "备份域误报的根因是 witness 寄存器读到错值，未查明"
 
@@ -48,7 +48,7 @@
 | **当初的结论** | `iap_auth_report_backup_domain()` 报"备份域丢失"，根因是 witness 读到错值，机理不明 |
 | **什么时候推的** | 2026-08-15 ~ 08-16 |
 | **什么否定了它** | 2026-08-17 加了一行写回读 —— `Witness write-back: 56424154 (want 56424154) - stuck, so it is lost later`。**写得进去，是事后被抹掉的**。顺着这条线找到 app 侧占了同一个寄存器 |
-| **现在的结论** | **跨仓备份寄存器撞车**：bootloader 的 witness 和 app 的 nonce 计数器都占 `DR2`。witness 已挪到 `DR3`。[../design/ARCHITECTURE.md](../design/ARCHITECTURE.md) 的寄存器分配表 |
+| **现在的结论** | **跨仓备份寄存器撞车**：bootloader 的 witness 和 app 的 nonce 计数器都占 `DR2`。witness 已挪到 `DR3`。`$PROD/docs/design/ARCHITECTURE.md` 的寄存器分配表 |
 
 ★ **真正的缺陷比表象严重得多。** 表象是"误报备份域丢失"；实际是**每次经过 bootloader，`DR2` 被写成 `0x56424154`，app 随后重复发放同一批 nonce 编号** —— 重放保护只剩 `tick` 在撑。
 
@@ -145,7 +145,7 @@
 | **什么否定了它** | 2026-08-17 实测（修之前）：sketch 一调 `Serial4.begin(115200)`，`[BOOT]` 打到一半就断（`[?[B`），然后什么都没有 —— **app 直接挂死、UDP 发现不应答、以太网够不着，只能 ST-Link 擦掉 app 区才救回来** |
 | **现在的结论** | **发送也死，而且板子失联。** E7 的严重性因此从"排查体验问题"升级为"用户一行普通代码就能让板子变砖（需 ST-Link）"。[../design/HARDWARE-FACTS.md](../design/HARDWARE-FACTS.md) |
 
-★ **这一条差点让一个用例白跑**（`Serial` 不是 `Serial4`，拿 `Serial` 写的用例在未修的 core 上也会绿）。为什么会这样见 [../design/HARDWARE-FACTS.md](../design/HARDWARE-FACTS.md)；由此定下的规矩见 [../process/WORKING-AGREEMENTS.md](../process/WORKING-AGREEMENTS.md)。
+★ **这一条差点让一个用例白跑**（`Serial` 不是 `Serial4`，拿 `Serial` 写的用例在未修的 core 上也会绿）。为什么会这样见 [../design/HARDWARE-FACTS.md](../design/HARDWARE-FACTS.md)；由此定下的规矩见 `$PROD/docs/CONVENTIONS.md`。
 
 ---
 
@@ -159,6 +159,6 @@
 | **小样本推出的结论** | 第 1 条（6 个字 → "开路"） | 说结论时带样本量 |
 | **一次改动动了两个变量** | 第 10 条（PG9 + `SystemClock_Config`） | 受控实验，一次一个变量 |
 | **从机制正确地推出了错误的后果** | 第 13 条（槽位会被抢 ✅ → 所以只丢接收 ❌） | 严重性靠实测定，不靠推理 |
-| **正确的结论因为系统变了而失效** | 第 3 条（SDRAM staging 改了失败语义） | [../STATUS.md](../STATUS.md) 的「证据还成立吗」列 |
+| **正确的结论因为系统变了而失效** | 第 3 条（SDRAM staging 改了失败语义） | `$PROD/docs/STATUS.md` 的「证据还成立吗」列 |
 
 ⚠️ **还有一个跨条目的规律**：第 5 条和第 8 条都是"我标了最高把握的那个"被否定的。**把握程度和正确率在这批数据里没有相关性。**

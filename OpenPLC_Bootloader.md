@@ -8,9 +8,9 @@
 |---|---|
 | 启动怎么决策、签名怎么验、journal 怎么记 | [docs/design/JOURNAL.md](docs/design/JOURNAL.md)、[docs/design/OWNERSHIP.md](docs/design/OWNERSHIP.md) |
 | 哪条路径验过、实测数字 | [docs/test/MEASUREMENTS.md](docs/test/MEASUREMENTS.md) |
-| 三个仓库在哪、哪些代码是跨仓镜像 | [docs/design/ARCHITECTURE.md](docs/design/ARCHITECTURE.md) |
+| 三个仓库在哪、哪些代码是跨仓镜像 | `$PROD/docs/design/ARCHITECTURE.md` |
 | 引脚、串口、启动模式的实测事实 | [docs/design/HARDWARE-FACTS.md](docs/design/HARDWARE-FACTS.md) |
-| 需求清单和测试矩阵 | [docs/STATUS.md](docs/STATUS.md)、[docs/STATUS.md](docs/STATUS.md) |
+| 需求清单和测试矩阵 | `$PROD/docs/STATUS.md`、`$PROD/docs/STATUS.md` |
 
 ## 1. 项目定位
 
