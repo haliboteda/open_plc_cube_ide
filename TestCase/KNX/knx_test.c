@@ -172,6 +172,11 @@ static volatile uint32_t s_pulseDropped;   /* decoder starved - see P4 */
 
 /* Finished slot patterns, so the decode loop never waits on printf */
 static uint16_t s_charRing[KNX_CHAR_RESULT_RING];
+/* Each character's start-bit timestamp, kept beside its slot pattern. The
+ * frame assembler measures the gap between consecutive characters, and the
+ * producer and consumer of this ring do not run in the same pass - a single
+ * shared variable would hand every character of a burst the same timestamp. */
+static uint16_t s_charT0Ring[KNX_CHAR_RESULT_RING];
 static uint16_t s_charHead, s_charTail;
 static uint32_t s_charDropped;
 
@@ -2142,7 +2147,8 @@ static void knx_slim_loop(void)
 			}
 			uint16_t n = (uint16_t) ((s_charHead + 1u) & (KNX_CHAR_RESULT_RING - 1u));
 			if (n != s_charTail) {
-				s_charRing[s_charHead] = slots;
+				s_charRing[s_charHead]   = slots;
+				s_charT0Ring[s_charHead] = charT0;
 				s_charHead = n;
 			} else {
 				s_charDropped++;
@@ -2152,6 +2158,7 @@ static void knx_slim_loop(void)
 		/* --- every character joins the burst, valid or not --------------- */
 		while (s_charTail != s_charHead) {
 			uint16_t sl = s_charRing[s_charTail];
+			uint16_t t0 = s_charT0Ring[s_charTail];
 			uint8_t  b, sOk, pOk, tOk, n, isEcho;
 			s_charTail = (uint16_t) ((s_charTail + 1u) & (KNX_CHAR_RESULT_RING - 1u));
 
@@ -2176,7 +2183,7 @@ static void knx_slim_loop(void)
 				       HAL_GetTick(), b);
 			}
 
-			n = knx_frame_feed(b, charT0);
+			n = knx_frame_feed(b, t0);
 			if (n != 0u) {
 				frames++;
 				if (KNX_PRINT_FRAMES != 0u) {

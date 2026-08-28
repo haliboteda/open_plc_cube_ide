@@ -2,7 +2,7 @@
 
 **状态：✅ 已实现并实测（2026-08-18）。** 配图版是 [../archive/artifacts/owner-slot.html](../archive/artifacts/owner-slot.html)（⚠️ 快照，和本文打架时以本文为准）。
 
-落地记录、每一步的实测结果、以及过程中改掉的两个设计缺陷，在 [../work/M1-owner-slot.md](../work/M1-owner-slot.md)。**本文件是设计推理的出处，那份是落地记录** —— 两边不要互抄。
+实测结果在 [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md)。**本文件是设计推理的出处**。
 
 ⚠️ **设备侧完整，出货工具侧还没有。** `takeown` / `setowner` 只有 TestCase 的内部脚本能发，`IAPTool` 一个入口都没有 —— 客户目前拿不到这个功能，见 [../work/ISSUES.md](../work/ISSUES.md) 的 `ISS-A4`。
 
@@ -64,7 +64,7 @@ H743 的擦除粒度是**整个 128K 扇区**，没有更小的。所以任何"�
 
 ### ⚠️ 这条路恰好绕开了 `RESERVED_TAIL_SECTORS` 那个地雷
 
-owner 区寄生在 bootloader 已占的扇区里，**根本不加尾部扇区**，所以碰不到它。但地雷还在，下一个想真加一个尾部扇区的人会踩 —— 三处对照表和为什么一处都不会编译报错，在 [../work/ISSUES.md](../work/ISSUES.md) 的 `ISS-C1`。
+owner 区寄生在 bootloader 已占的扇区里，**根本不加尾部扇区**，所以碰不到它。⚠️ 但真要加尾部扇区的人得知道：**三处地址守卫全锚在 `IAP_STATE_SECTOR_ADDR` 上，一个都不看 `RESERVED_TAIL_SECTORS`** —— 改那个常量保护不了任何东西，只会静默弄坏 reclaim，而且不会编译报错。
 
 ## 状态机
 

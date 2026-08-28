@@ -122,7 +122,7 @@ protecting anything from the moment it is claimed.
   written, and whatever is installed keeps running), but no upgrade completes.
 
   If a board shows this, the external SDRAM is the first thing to suspect: the
-  diagnostic in `TestCase/sdram_test.c` walks the data bus from inside the MCU
+  diagnostic in `TestCase/SDRAM/sdram_test.c` walks the data bus from inside the MCU
   and names the failing line.
 - **The application's `[BOOT] millis=` banner reaches the RS232 terminals only
   by accident of timing.** The core prints it before anything drives the
@@ -176,20 +176,20 @@ image the board accepts. Run `IAPServer/keys/rotate_keys.sh`, then keep
 
 Everything here has burned someone at least once.
 
-The first three are now checked by `TestCase/tools/selfcheck.ps1`, which also
-runs the host-side tests. Run it before working through the rest by hand.
+The first three are now checked by `$TOOL/TestCase/tools/selfcheck.py`, which
+also runs the host-side tests. Run it before working through the rest by hand.
 
 - [ ] `OPENPLC_FW_VERSION` in `Core/Inc/IAP_config.h` matches
       `OPEN-PLC.build.fw_version` in the core package's `boards.txt`. Nothing
       enforces this — the two live in different repositories with no shared
-      build. → `tools/check-version-sync.ps1`
+      build. → `$TOOL/TestCase/tools/check_version_sync.py`
 - [ ] Every mirrored file is in sync across the three repositories (see
       `$PROD/docs/design/ARCHITECTURE.md`, "跨仓镜像的代码"). A divergence does not fail the
       build; it shows up at runtime as something unrelated.
-      → `tools/check-mirror-sync.ps1`
+      → `$TOOL/TestCase/tools/check_mirror_sync.py`
 - [ ] Everything verified in the live Arduino15 package has been copied back
       into the core package's git repository and committed.
-      → `tools/check-core-sync.ps1`
+      → `$TOOL/TestCase/tools/check_core_sync.py`
 - [ ] Secrets rotated, and the private signing key stored off-machine.
 - [ ] Bootloader flashed over ST-Link/DFU and the application uploaded over
       IAP, in that order, on a board that previously ran the older release.

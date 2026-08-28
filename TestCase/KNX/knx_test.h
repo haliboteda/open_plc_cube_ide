@@ -67,10 +67,8 @@
 //   bus powered, idle   PH12 HIGH   PD7 HIGH   PA10 LOW
 //   no bus power        PH12 LOW    PD7 LOW    PA10 HIGH
 //
-// MEASURED 2026-08-26: PA10 sits HIGH while the bus is idle, i.e. the opposite
-// of the first line. That is a board fault, not a firmware one, and it is with
-// the hardware engineer. Nothing in this file works until PA10 idles LOW, so
-// KNX bring-up is PARKED - leave the code as it is and do not re-test.
+// Read those three pins first: they tell bus-power problems apart from anything
+// this file could be doing wrong.
 //
 // ---------------------------------------------------------------------------
 // Known deviations from the STKNX / TLP2362 datasheets
@@ -104,12 +102,15 @@
 // P1..P5 plus the diagnosis loop forever.
 //
 // ---------------------------------------------------------------------------
-// Receive-only bring-up (KNX_TX_ENABLE = 0, the current default)
+// Receive-only mode (KNX_TX_ENABLE = 0, the current default)
 // ---------------------------------------------------------------------------
-// While the hardware is being debugged the slim loop transmits nothing at all,
-// so the bus carries only foreign traffic. The bit engine still runs with CCR1
-// held at 0, which keeps PB14 driven low - the one thing that must not change,
-// see the TX chain note above.
+// Both directions have been brought up on this board. Receive-only is a
+// selectable mode, not a workaround: with it the slim loop transmits nothing at
+// all, so the bus carries only foreign traffic and nothing this board prints
+// can be its own echo. Set KNX_TX_ENABLE to 1 to transmit as well.
+//
+// The bit engine still runs with CCR1 held at 0, which keeps PB14 driven low -
+// the one thing that must not change, see the TX chain note above.
 //
 // Printing is deliberately not gated on anything being valid. Octets collect
 // in a burst buffer until the line has been quiet for KNX_RX_FLUSH_MS, then

@@ -2,7 +2,7 @@
 
 **这份只讲"工程长什么样"**：怎么构建、有哪些文件、编出来多大、lwIP 怎么配的。
 
-⚠️ **行为、安全模型、验证状态一律不写在这里，看 [docs/INDEX.md](docs/INDEX.md)。** 这份文档 2026-08-12 建立时把行为也写了一遍，四个月不到就错了四处（见文末），原因很简单：**同一件事写两遍，第二遍必然漂移**。2026-08-17 同步时把那些内容删掉改成指路。
+⚠️ **行为、安全模型、验证状态一律不写在这里，看 [docs/INDEX.md](docs/INDEX.md)** —— 同一件事写两遍，第二遍必然漂移。
 
 | 想知道 | 去哪 |
 |---|---|
@@ -10,7 +10,7 @@
 | 哪条路径验过、实测数字 | [docs/test/MEASUREMENTS.md](docs/test/MEASUREMENTS.md) |
 | 三个仓库在哪、哪些代码是跨仓镜像 | `$PROD/docs/design/ARCHITECTURE.md` |
 | 引脚、串口、启动模式的实测事实 | [docs/design/HARDWARE-FACTS.md](docs/design/HARDWARE-FACTS.md) |
-| 需求清单和测试矩阵 | `$PROD/docs/STATUS.md`、`$PROD/docs/STATUS.md` |
+| 需求清单和测试矩阵 | `$PROD/docs/STATUS.md` |
 
 ## 1. 项目定位
 
@@ -36,13 +36,13 @@
 | application | `0x08020000` 起，上限 `0x081E0000` | 1,835,008 B |
 | bootloader 状态 | `0x081E0000`（bank2 sector 7，128K） | metadata + 事件 journal |
 
-⚠️ `RESERVED_TAIL_SECTORS` 这个常量被当成两个意思用，改它会静默弄坏 reclaim。**当前值 1 是对的，别动** —— 完整分析见 [docs/work/ISSUES.md](docs/work/ISSUES.md) 的 C1。
+⚠️ **`RESERVED_TAIL_SECTORS`（`Core/Inc/usbd_cdc_flash.h`）当前值 1 是对的，别动。** 三处地址守卫都锚在 `IAP_STATE_SECTOR_ADDR` 上，一个都不看这个常量 —— 改它保护不了任何东西，只会静默弄坏 reclaim，而且不会编译报错。
 
 ## 3. 编译产物
 
 **必须装进单个 128K 扇区的前 120K**（122,880 B —— 尾部 8K 给 owner 记录）。这是需求 **E3**，构建时的尺寸门禁。
 
-**当前大小和余量在 `docs/test/MEASUREMENTS.md`**（唯一出处）。⚠️ 别在这里拄一份数字 —— 08-17 那个值就在这里挂到了 08-22。
+**当前大小和余量在 `docs/test/MEASUREMENTS.md`**（唯一出处）。⚠️ **别在这里拄一份数字。**
 
 > 本节数字会随每次构建变，**别把它当承诺**。要当前值就自己看 `Debug/` 下那个 `.bin` 的大小。
 
@@ -80,18 +80,3 @@
 只保留一个 Debug 配置（`-O0`）；Debug 图标和"直接烧录"图标都用它的产物，不再需要 Release。
 
 ---
-
-## 2026-08-17 这次同步改了什么
-
-原文四处已经不成立，照着它排查会从一开始就找错方向：
-
-| 原文 | 实际 |
-|---|---|
-| `.bin` = 140,100 字节（超 128K 预算） | 远比那个小，当前值见 `docs/test/MEASUREMENTS.md` |
-| "CRC32 校验后复位跳转 App" | CRC32 **+ SHA-256 + ECDSA 验签**，且每次启动都重验 |
-| 停留依据是 "RTC 备份寄存器 magic flag" | 现在是 **SRAM4 的 `boot_handoff_t`**；RTC 备份寄存器改用于 nonce 计数器和 VBAT 见证 |
-| `IAP_CDC_reboot_trigger()` 当前未被调用 | 1200bps touch 路径**已实测通过** |
-
-一处经核实**仍然成立**：`md5.c` 确实还在、确实没人调用。
-
-**同时把"行为怎么运作"整节删了**，改成上面那张指路表 —— 那些内容在 `docs/` 下有唯一出处，这里再写一遍就是又一份会漂的副本。

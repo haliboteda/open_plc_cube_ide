@@ -1,6 +1,6 @@
 # 本仓库的项目笔记 —— 去哪查什么
 
-**这里只有 bootloader 自己的东西。** 产品级的（仓库之间怎么分工、跨仓镜像清单、需求与用例总表、写文档的约定）在 `$PROD/docs/` —— 2026-08-24 搬走的，路径写法见 `$PROD/docs/CONVENTIONS.md`。
+**这里只有 bootloader 自己的东西。** 产品级的（仓库之间怎么分工、跨仓镜像清单、需求与用例总表、写文档的约定）在 `$PROD/docs/`，路径写法见 `$PROD/docs/CONVENTIONS.md`。
 
 ## 碰到什么，查哪份
 
@@ -11,48 +11,40 @@
 | 三个仓库怎么分工、哪些代码跨仓镜像、RTC 备份寄存器谁占了哪个 | `$PROD/docs/design/ARCHITECTURE.md` |
 | 用例的判据、怎么跑 | `$TOOL/TestCase/TEST-CASES.md` |
 
-## 五个目录，按「多久变一次」分
+## 四个目录，按「多久变一次」分
 
-### `design/` —— 为什么这么设计（很少变）
+### `design/` —— 硬件事实与设计决策（很少变）
 
 | 文件 | 装什么 |
 |---|---|
-| [design/OWNERSHIP.md](design/OWNERSHIP.md) | owner 槽与信任根：出厂公钥、A+/B 两种模式、状态机、三个操作、记录格式、诚实的限制 |
+| [design/HARDWARE-FACTS.md](design/HARDWARE-FACTS.md) | **核实过的硬件事实**，每条带出处。RS232 路径、UART4 与 USART3、PG9 就是 BOOT0、39 根 FMC 引脚、SRAM4 不初始化、Digital In 上拉、模拟量与 VREFBUF、模拟前端九个跳线、**CAN**、**KNX** |
+| [design/OWNERSHIP.md](design/OWNERSHIP.md) | owner 槽与信任根：出厂公钥、A+/B 两种模式、状态机、三个操作、记录格式、限制 |
 | [design/JOURNAL.md](design/JOURNAL.md) | journal 机制：扇区布局、启动扫描、`server_decide()` 的判定链、为什么验签而不是存哈希、擦除规则 |
-| [design/HARDWARE-FACTS.md](design/HARDWARE-FACTS.md) | **核实过的硬件事实**，每条带日期和核实方式。RS232 走 PC10/PC11/PB10、UART4 双用、PG9 就是 BOOT0、39 根 FMC 引脚、SRAM4 不初始化 |
 | [design/DECISIONS.md](design/DECISIONS.md) | 已定的设计决策，每条带理由 + **什么情况下值得重新讨论** |
 | [design/DEFERRED-DESIGNS.md](design/DEFERRED-DESIGNS.md) | 刻意推后的设计：每板生产密钥、故障自愈（含为什么 IWDG 是死路）、Arduino 发现声明 |
 | [design/KEYS.md](design/KEYS.md) | `IAPServer/keys/` 那五个文件、没有生成器这件事、`rotate_keys.sh`、两个坑 |
 | [design/CUBEMX-RULES.md](design/CUBEMX-RULES.md) | ⚠️ **改这个 CubeIDE 工程的硬规矩**：生成区不能手工改、重新生成后必查两项、`.ld` 的 FLASH LENGTH 必须是 120K |
 
-### `test/` —— 怎么证明（每次跑用例都可能变）
+### `test/` —— 怎么测、测出什么
 
 | 文件 | 装什么 |
 |---|---|
+| [test/BOARD-BRINGUP-CASES.md](test/BOARD-BRINGUP-CASES.md) | **板级各项：接哪几个端子、固件做什么、判据是什么。** 含 CAN / KNX、固件入口宏一览、引脚与端子速查附录 |
 | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) | **每一个实测数字的唯一出处**。别处引用，不要抄第二份 |
-| [test/CASE-DESIGNS.md](test/CASE-DESIGNS.md) | 每条用例为什么这么设计：三条原则、四层速度、还没跑的那几条、落点决定 |
-| [test/COVERAGE-GAPS.md](test/COVERAGE-GAPS.md) | 诚实列出**没测到**的东西。「陈旧结论是一类没被测出来的缺陷」 |
-| [test/BOARD-BRINGUP-CASES.md](test/BOARD-BRINGUP-CASES.md) | **板级测试 11 项：怎么测、接哪几个端子、要什么仪器、缺什么。** 拿去和硬件工程师逐项对表的那份。含缺件汇总表、端子编号冲突、六处硬件文档错误 |
+| [test/CASE-DESIGNS.md](test/CASE-DESIGNS.md) | 每条用例为什么这么设计：三条原则、四层速度、落点决定 |
+| [test/COVERAGE-GAPS.md](test/COVERAGE-GAPS.md) | 诚实列出**没测到**的东西 |
 
-### `work/` —— 手头在干什么（经常变）
+### `work/` —— 手头还没完的
 
 | 文件 | 装什么 |
 |---|---|
 | [work/ISSUES.md](work/ISSUES.md) | 已知问题按优先级排，每条：症状 + 已核实的事实 + 下一步 |
-| [work/BACKLOG.md](work/BACKLOG.md) | M1–M8 各是什么、怎么写一份模块文件、建议顺序 |
-| [work/M1-owner-slot.md](work/M1-owner-slot.md) | owner 槽实现记录，六步全部实测。含「出厂复位＝永久变砖」那次近失事故 |
-| [work/M2-cert-chain.md](work/M2-cert-chain.md) | 证书链（C11/C12），依赖 M1 |
-| [work/M3-app-sdram.md](work/M3-app-sdram.md) | app 侧 SDRAM 库 ✅ 19/19 验收 |
-| [work/M4-fmc-pin-guard.md](work/M4-fmc-pin-guard.md) | FMC 39 引脚守卫 ✅ —— 选了「可发现」而不是「拦截」 |
-| [work/M5-serial-conflict.md](work/M5-serial-conflict.md) | `Serial_Test` 与 `Serial4` 抢 UART4 ✅ |
-| [work/M6-test-gaps.md](work/M6-test-gaps.md) | 补没测到的那几项 —— 单位投入产出最高 |
-| [work/M7-python-scripts.md](work/M7-python-scripts.md) | 把全套 PowerShell 测试脚本改写成 Python 3 |
+| [work/BACKLOG.md](work/BACKLOG.md) | 还需要立项的模块，以及每份模块文档怎么写 |
 
 ### `archive/` —— 只增不改
 
 | 文件 | 装什么 |
 |---|---|
-| [archive/RETRACTED.md](archive/RETRACTED.md) | **13 条被推翻的结论**（「我们以为 X，实测说不是」）。SDRAM D1 断路、可续传、备份域虚警、PG9/RESET…… |
 | [archive/artifacts/RENDERED-SNAPSHOTS.md](archive/artifacts/RENDERED-SNAPSHOTS.md) | 六份 HTML 配图页的索引。⚠️ **渲染快照，不是事实来源**，打架以 `docs/` 为准 |
 
 ## 本仓库根目录的四份
