@@ -158,9 +158,147 @@ MAX3221 的 ±5.5V 线电平不是从 3V3 直接来的，是**电荷泵**（char
 
 > 曾经有三个链接脚本、其中两个没做这个保留，导致 cmake 路径会静默踩掉 handoff 记录。**已解决**：那两个已删除，`CMakeLists.txt` 和 `cmake/gcc-arm-none-eabi.cmake` 现在都指向唯一的那个。
 
+## Digital In 八路：MCU 侧有外部 10k 上拉，固件不要再开内部上拉
+
+2026-08-27 逐条追 `Hardware/Production/UpperDeck/netlist.ipc` + `bom.csv` 得到，为写板级用例 1 而查。
+
+每一路都是同一个形状，从比较器到 MCU 一共三个元件：
+
+```
+LM339LV 开集输出（U3/U4）──┬── 10k 上拉到 +3V3
+                          └── 50R 串阻 ── UpperDeck J7 ── MCU 引脚
+```
+
+| Digital In | MCU 引脚 | 10k 上拉 | 50R 串阻 | J7 管脚 |
+|---|---|---|---|---|
+| 1 | PC6 | R60 | R76 | J7-9 |
+| 2 | PB5 | R61 | R77 | J7-10 |
+| 3 | PB6 | R66 | R78 | J7-11 |
+| 4 | PB7 | R59 | R75 | J7-12 |
+| 5 | PH10 | R43 | R71 | J7-13 |
+| 6 | PH11 | R44 | R72 | J7-14 |
+| 7 | PI5 | R45 | R73 | J7-15 |
+| 8 | PI6 | R46 | R74 | J7-16 |
+
+**对固件的意义**：DIN 引脚配 `GPIO_MODE_INPUT` + `GPIO_NOPULL` 就够了。开集输出遇到"读不到高"的第一反应通常是打开 MCU 内部上拉 —— 这里**不要**：内部约 40k 并上外部 10k 会拖慢上升沿，而且一旦哪块板漏贴了上拉电阻，内部上拉会把这个缺陷盖住，测不出来。
+
+**比较器有供电**时，空载（端子上没有电压）比较器「+」节点被 1k1 拉到 0 V，低于 0.400 V 基准，输出管导通主动灌地 —— 所以未接线的通道恒读 0。
+
+⚠️ **没有 24 V 的时候恰好相反，八路全部恒读 1。** 2026-08-27 实测：只靠 ST-Link 的 3.3 V 供电时 LM339 没有电源，输出管根本导不通，10k 上拉独占这条线。**「恒读 0」和「恒读 1」是两个不同的故障**：恒 0 = 有电但没接线，恒 1 = 整个模拟/24 V 供电没上来。用例 1 现在把两者分开报。
+
+## 模拟量：没有外部基准，必须使能片内 VREFBUF
+
+2026-08-27 实测 + 核实。**这一条决定 ADC 和 DAC 能不能用**。
+
+Bridge 的 BOM 里**没有任何基准电压芯片**，VREF+ 只挂了退耦。不使能片内 VREFBUF，VREF+ 就悬空在 1.2 V 以下 —— 现象是 ADC 读数变成 `0x8000`/`0x4000` 这类精确的 2 的幂（SAR 不收敛，停在中点猜测），DAC 输出接近 0。
+
+**两个必做动作，缺一不可：**
+
+```c
+__HAL_RCC_VREF_CLK_ENABLE();        /* VREFBUF 在 APB4 上有独立时钟位 */
+HAL_SYSCFG_VREFBUF_VoltageScalingConfig(SYSCFG_VREFBUF_VOLTAGE_SCALE0);
+HAL_SYSCFG_VREFBUF_HighImpedanceConfig(SYSCFG_VREFBUF_HIGH_IMPEDANCE_DISABLE);
+SET_BIT(VREFBUF->CSR, VREFBUF_CSR_ENVR);
+while ((VREFBUF->CSR & VREFBUF_CSR_VRR) == 0U) { }
+```
+
+⚠️ **只开 SYSCFG 时钟是不够的。** 漏掉 `__HAL_RCC_VREF_CLK_ENABLE()` 时，对 `VREFBUF->CSR` 的写入会被静默丢弃，寄存器读回来是 `0x00000000`，固件只会报"没 ready"，看不出原因。2026-08-27 踩过。
+
+**实测 SCALE0 = 2493 mV**（标称 2.5 V，VREFINT 原始值 32235）。选 2.5 V 不是随便挑的 —— 模拟前端两条路径都正好配这个满量程，见下。
+
+⚠️ 使能 VREFBUF 的前提是 VREF+ 没有被外部驱动。本板成立：VREFINT 读到满量程 → VREF+ < 1.216 V → 引脚是悬空的，不是被接到 3V3。
+
+### PC3_C 的 SYSCFG 模拟开关：模拟用途要「开」
+
+`SYSCFG_PMCR.PC3SO` 复位默认是**关**（PC3_C 与数字 PC3 单元相连）。2026-08-27 同一个节点两种状态各读一次：**开路 raw ≈ 10200，闭合 raw ≈ 8600，差约 16%** —— 闭合时数字单元会加载这个节点。**模拟采样一律置 1（开路）。**
+
+## 模拟输入前端：九个焊接跳线出厂全开路
+
+2026-08-27 从 `Hardware/Production/UpperDeck/` 的网表 + BOM + 贴片坐标核实。
+
+**JP1–JP9 九个跳线全部是裸铜焊盘，出厂一律开路。** 判据和当初定 JP7（CAN 终端电阻）完全一样：`designators.csv` 里九个都在（PCB 上有焊盘），但 `positions.csv` 和 `bom.csv` **一条都没有**（无贴片坐标、无物料）。对照组：确实贴了的 R69 在三份文件里都有。
+
+**后果：JP5/JP6 开着的时候，MCU 的 PC3_C 和 PA6 两个引脚是彻底悬空的** —— 和端子之间、和地之间都没有通路。此时读到的一切（实测约 380 mV，抖动 200–650 LSB）都只是悬空脚，不是端子信号。
+
+### 每个通道两条路，结构相同
+
+```
+端子 ──┬─ JPx 脚2-3 ── 68k ──┬── 22k6 ── GND          电压档
+       │                     └── JPy 脚1-2 ── MCU
+       └─ JPx 脚1-2 ── 374R ─┬── 124R ── GND          电流档
+                             └── JPy 脚2-3 ── MCU
+```
+
+| 通道 | 端子 | 端子侧跳线 | MCU 侧跳线 | 68k / 22k6 | 374R / 124R | MCU 引脚 |
+|---|---|---|---|---|---|---|
+| AIN1 | UpperDeck J3-4 | **JP9** | **JP5** | R19 / R20 | R23 / R24 | PC3_C |
+| AIN2 | UpperDeck J4-1 | **JP8** | **JP6** | R21 / R22 | R25 / R26 | PA6 |
+
+电阻都是 0.1%，ESD 保护是 `PESD5Z2.5`（D5/D7/D9/D11）。
+
+**换算（两档都正好配 2.5 V 满量程，这就是选 VREFBUF SCALE0 的理由）：**
+
+| 档 | 换算 | 满量程对应 |
+|---|---|---|
+| 电压 | 端子 mV = 引脚 mV × **4.0089**（比例 22.6/90.6 = 0.2494） | 10.0 V ↔ 引脚 2.494 V |
+| 电流 | 端子 µA = 引脚 mV × 1000 / **124** | 20 mA ↔ 引脚 2.48 V；4 mA ↔ 0.496 V |
+
+⚠️ 电流档那个 **374R 是保护电阻**：总阻 498 Ω，误把 10 V 电压源接到电流档时限流到 20 mA，引脚只到 2.48 V，烧不掉。它不参与换算 —— MCU 只跨在 124R 两端。
+
+### 档位决定（用户 2026-08-27 定）
+
+**AIN1 = 电压档，AIN2 = 电流档。** 要让它们通，得用锡桥这四处：
+
+| 通道 | 档 | 桥哪里 |
+|---|---|---|
+| AIN1 | 电压 | **JP9 脚 2–3** + **JP5 脚 1–2** |
+| AIN2 | 电流 | **JP8 脚 1–2** + **JP6 脚 2–3** |
+
+⚠️ **焊上去不可逆。桥之前先对着上面那张网表图确认焊盘编号。**
+
+## CAN 接口（PB9 / PI9，Upper Deck）
+
+2026-08-26 从原理图 / 网表 / BOM 核实，为写 `TestCase/CAN/` 而查。**bootloader 不用 CAN**，这一节纯粹是硬件事实登记。
+
+| 项 | 事实 | 出处 |
+|---|---|---|
+| MCU 引脚 | **PB9 = FDCAN1_TX**（ball B4）、**PI9 = FDCAN1_RX**（ball D3），**AF9** | `Hardware/STM32H743IIK6_GPIO_ASSIGNMENT_Schaeffer_Bridge_20260822.xlsx` sheet GPIO_ASSIGNMENT 行 95-97；`Hardware/Production/UpperDeck/netlist.ipc:260-261` |
+| 为什么只能是这一对 | FDCAN2 全部引脚被占（PB12=RMII_TXD0、PB5/PB6=DIN2/DIN3、PB13=HSFET_1）；FDCAN1 其余复用脚也被占（PD0/PD1=FMC、PA11/PA12=USB FS、PH13/PH14=UART4） | 同 xlsx 行 8/27/28/53/54/65/68/69/83/84/99 |
+| 收发器 | **U8 = TI ISO1044BDR**，SOIC-8，**隔离**型 CAN FD 收发器。**没有 STB/EN/silent 脚** —— 8 个脚全占满，listen-only 只能靠外设的 `FDCAN_MODE_BUS_MONITORING` | `Production/UpperDeck/BOM/1435_00_SCHAE_UD_PCB_Project.csv:51`；`netlist.ipc:259-266` |
+| 隔离侧电源 | **U7 = PDS1-S5-S5-M / MPB1205**，5V→5V 隔离 DC/DC 1 W，**装在板子底面**，输入经 L1（6.8 µH）从 +5V 来。⚠️ U7 不出电 = 收发器驱动不了总线 | 同 BOM `:50`；`positions.csv:192` |
+| 隔离侧地 | `CAN_GND`，与数字地 `GNDD` 分开。`R83`/`R84` 是 **0R DNP**，贴上就破坏隔离 —— **不要贴** | `netlist.ipc:426-427, 445-446`；BOM `:42` |
+| 测试点 | `TP_CAN_VDD1`（隔离 5V）、`TP_CAN_GND1`。⚠️ **CAN_H / CAN_L 上没有测试点**，示波器只能夹 J10 螺丝端子 | `netlist.ipc:599, 593` |
+| LED | **没有。** 网表里 CAN 相关网络上没有任何 D 器件 | 网表全扫 |
+| 内核时钟 | 本工程从未配过 `FDCANSEL`。⚠️ **复位默认是 `FDCANSEL=00` = HSE，不是 PLL1Q** —— 这里 2026-08-28 前写反了。2026-08-28 在目标上核实：`D2CCIP1R` 读 `0x00000000`，而 `RCC_FDCANCLKSOURCE_HSE` 就是 0（`Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_rcc_ex.h:1442`）。`TestCase/CAN/can_test.c` 仍显式选 HSE = 25 MHz（125k/250k/500k/1M 四档 prescaler=1 整除） | 在线读寄存器；HAL 头文件 |
+
+### 端子号：两套叫法，而且有一处**文档是错的**
+
+|  | 功能 | 连接器 | 网络 |
+|---|---|---|---|
+| **C08 / A08** | **CAN H** | J10 pin 1 | `CAN_H` |
+| **C07 / A07** | **CAN L** | J10 pin 2 | `CAN_L` |
+| **A09** | **CAN_GND** | J11 pin 4 | `CAN_GND` |
+
+⚠️ **`Hardware/Klemmblockzuordnung.pdf` 第 4 页和 `Hardware/UpperDeck_overview.txt:87-90` 从端子 09 起是错的** —— 它们把 C09 当 RS485 A，**完全漏掉 CAN_GND**，RS485 整体往后挪了一位。原理图（`OpenPLC_UpperDeck_R3.pdf` p1）和网表（`netlist.ipc:245-256`）互相一致：A09=CAN_GND、A10=RS485 A、A11=RS485 B。**照那张表接地会接错螺丝。以网表为准。**
+
+⚠️ 端子字母 **C / A 两套并存**：`Klemmblockzuordnung.pdf` 叫 C01–C12，KiCad 原理图 p1 叫 A01–A12，指同一批端子。
+
+### 终端电阻出厂是断开的
+
+**R69 = 120R 1% 已贴**，但串在 **JP7** 上 —— 一个 `SolderJumper_2_Open`，出厂**开路**（`designators.csv:86` 有它，但 BOM 和 `positions.csv` 都没有条目，就是一块裸铜）。所以**整板未端接**。要端接只能用锡把 JP7 桥上，不可逆。短线（<1 m）500 kbit/s 用不着；需要的时候优先打开对端设备自带的终端电阻。
+
+出处：BOM `:40`；`Schematics/OpenPLC_UpperDeck_R3.pdf` p5；`netlist.ipc:420-421`。
+
+### 另外两处 Upper Deck 文档不一致（未修，只登记）
+
+- `UpperDeck_overview.txt:20,22` 说 "J8 ↔ Bridge J3"，但网表里 Upper Deck **J8** 装的是 CAN+KNX+RS232+AOUT_EF+DEBUG_TRIGGER+SPI_2_NSS（`netlist.ipc:390-419`），正好是 Bridge **J2** 的信号表；而 Upper Deck **J6** 装的是 HSFET/RELAIS/JTAG/SPI6/I2C2/UART4（`netlist.ipc:522-551`），是 Bridge **J3** 的。**J6/J8 看起来写反了。**
+- CAN 两根信号跨板走 Upper Deck **J8 pin2（CAN_TXD_PB9）/ pin3（CAN_RXD_PI9）**（`netlist.ipc:391-392`）。
+
 ## 文档错误
 
 `Hardware/UpperDeck_overview.txt` 第 77 行（端子表 C05 那行）把 PB10 和 PC10 写反了。同文件第 60 行是对的。**以 KiCad 为准。**
+
+⚠️ 上面 CAN 一节里还有两条更严重的：**端子 09–12 整段错位**（漏掉 CAN_GND）和 **J6/J8 写反**。
 
 ## 蓝牙 COM 口会冻住串口工具（主机侧问题，与固件无关）
 

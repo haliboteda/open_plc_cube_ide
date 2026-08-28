@@ -35,6 +35,62 @@
 #include "IAP_boot_handoff.h"
 #include "iap_auth.h"
 #include "owner_slot.h"
+
+/* Board bring-up tests, v0.1.3-testcase branch. Set one of these to 1 to boot
+ * straight into it instead of the bootloader; each *_Test_Run never returns, so
+ * only one may be enabled at a time. */
+
+/* KNX is PARKED: KNX_RX (PA10) idles HIGH on this board instead of LOW, so the
+ * receive chain produces nothing. See ISS-F1 in docs/work/ISSUES.md - it is
+ * with the hardware engineer. Do not re-enable until PA10 idles LOW. */
+#ifndef KNX_TEST_ENABLE
+#define KNX_TEST_ENABLE 0
+#endif
+#if KNX_TEST_ENABLE
+#include "KNX/knx_test.h"
+#endif
+
+/* The phase cycle: P0 report, P1/P2 loopback, P3 listen, P4 normal. */
+#ifndef CAN_TEST_ENABLE
+#define CAN_TEST_ENABLE 0
+#endif
+
+/* One normal-mode session that never changes phase: transmit every 3 s, print
+ * every frame received, recover from bus-off. Use this against a second node. */
+#ifndef CAN_SOAK_TEST_ENABLE
+#define CAN_SOAK_TEST_ENABLE 0
+#endif
+
+/* Three steps on a loop for an oscilloscope on PB9: GPIO square wave, then
+ * loopback frames back to back, then normal-mode frames back to back. */
+#ifndef CAN_SCOPE_TEST_ENABLE
+#define CAN_SCOPE_TEST_ENABLE 0
+#endif
+
+/* Reply to every frame with its payload incremented by one, same identifier.
+ * Transmits nothing on its own. Host side: $TOOL/TestCase/tools/can_send.py */
+#ifndef CAN_ECHO_TEST_ENABLE
+#define CAN_ECHO_TEST_ENABLE 1
+#endif
+
+#if CAN_TEST_ENABLE || CAN_SOAK_TEST_ENABLE || CAN_SCOPE_TEST_ENABLE || CAN_ECHO_TEST_ENABLE
+#include "CAN/can_test.h"
+#endif
+
+/* Board bring-up cases 1, 2, 3, 4 and 11 together in one flash. They share no
+ * pin and no peripheral instance except ADC1, which one file owns - the
+ * reasoning is in TestCase/common/bringup_test.h. */
+#ifndef BRINGUP_TEST_ENABLE
+#define BRINGUP_TEST_ENABLE 0
+#endif
+#if BRINGUP_TEST_ENABLE
+#include "bringup_test.h"
+#endif
+
+#if (KNX_TEST_ENABLE + CAN_TEST_ENABLE + CAN_SOAK_TEST_ENABLE \
+     + CAN_SCOPE_TEST_ENABLE + CAN_ECHO_TEST_ENABLE + BRINGUP_TEST_ENABLE) > 1
+#error "Only one bring-up test can run: none of them return. Pick one."
+#endif
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -251,6 +307,25 @@ int main(void)
   BOOT0_ConfigureAsInput();  /* undo the generated output config on PG9 */
   Enable_RX_RS232();   /* the MAX3221 stays in shutdown until this pin is high */
   MX_UART4_Init();
+
+#if KNX_TEST_ENABLE
+  KNX_Test_Run();   /* v0.1.3-testcase branch only; never returns */
+#endif
+#if CAN_TEST_ENABLE
+  CAN_Test_Run();   /* v0.1.3-testcase branch only; never returns */
+#endif
+#if CAN_SOAK_TEST_ENABLE
+  CAN_Test_Soak_Run();   /* v0.1.3-testcase branch only; never returns */
+#endif
+#if CAN_SCOPE_TEST_ENABLE
+  CAN_Test_Scope_Run();   /* v0.1.3-testcase branch only; never returns */
+#endif
+#if CAN_ECHO_TEST_ENABLE
+  CAN_Test_Echo_Run();   /* v0.1.3-testcase branch only; never returns */
+#endif
+#if BRINGUP_TEST_ENABLE
+  BringUp_Test_Run();   /* v0.1.3-testcase branch only; never returns */
+#endif
 
   printf("** Checking Starting Mod ...\r\n"
 		  "** (IF You want OpenPLC to stay in upload mode, please hold down the BOOT0 button for 3-5 seconds while clicking)\r\n");

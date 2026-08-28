@@ -32,6 +32,7 @@
 | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) | **每一个实测数字的唯一出处**。别处引用，不要抄第二份 |
 | [test/CASE-DESIGNS.md](test/CASE-DESIGNS.md) | 每条用例为什么这么设计：三条原则、四层速度、还没跑的那几条、落点决定 |
 | [test/COVERAGE-GAPS.md](test/COVERAGE-GAPS.md) | 诚实列出**没测到**的东西。「陈旧结论是一类没被测出来的缺陷」 |
+| [test/BOARD-BRINGUP-CASES.md](test/BOARD-BRINGUP-CASES.md) | **板级测试 11 项：怎么测、接哪几个端子、要什么仪器、缺什么。** 拿去和硬件工程师逐项对表的那份。含缺件汇总表、端子编号冲突、六处硬件文档错误 |
 
 ### `work/` —— 手头在干什么（经常变）
 
