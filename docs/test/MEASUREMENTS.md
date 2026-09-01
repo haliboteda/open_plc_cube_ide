@@ -93,6 +93,8 @@ IAPTool 送完最后一个字节就打 `File transfer complete.` 并退出，**�
 | 2026-08-17 | **SD1** `OpenPLC_SDRAM` 库 | 19/19 通过。清零 **91 MB/s**（64MB ≈ **701 ms**），故有 `allocUninitialized()` |
 | 2026-08-18 | **BG1** 启动门禁 | 通过，`SDRAM staging buffer OK` |
 | **2026-08-23** | **BG1** 启动门禁 | 通过。早前一块 Upper Deck 上的自检失败是那块板的硬件问题，**换新 Upper Deck 后 SDRAM 正常** |
+| **2026-08-31** | **BG1** 启动门禁 | 通过，`SDRAM staging buffer OK (2 MiB at C0000000)` |
+| **2026-08-31** | **SD1** `OpenPLC_SDRAM` 库 | **19/19 通过**，含 `write_readback_1MB` / `alloc_is_zeroed` / `first_buffer_survives_second_alloc`。`begin()` 1.435 ms，清零 **91 MB/s**（16 MB / 175.1 ms，64 MB 外推 700 ms），`allocUninitialized()` 0 µs —— 和 2026-08-17 逐项一致。由 `$TOOL:TestCase/tools/run_sdram.py` 跑出 |
 
 
 ⚠️ SDRAM 自检在 `MX_FMC_Init()` 里，属于 **Phase 2** —— **只有停在 bootloader 时才会跑**，正常跳 app 的启动看不到这行，那不是失败。
@@ -125,6 +127,45 @@ IAPTool 送完最后一个字节就打 `File transfer complete.` 并退出，**�
 （101,340 是当前产品镜像的大小。）
 
 **P2 的跨仓镜像锚点数是 9**，含 FMC 39 脚映射。
+
+## 掉电中断（S4a / S4b，需求 E8）
+
+由 `$TOOL:TestCase/tools/run_s4.py` 驱动，人工拔电。⚠️ **判据是 ST-Link 量到的目标电压**，不是串口安静 —— 板子正在擦写的时候本来就又安静又不应答 UDP。
+
+| 日期 | 项 | 结果 |
+|---|---|---|
+| **2026-09-01** | **S4a** 传输中断电 | **通过（首次跑完）**。断电瞬间目标电压 **0.00 V**，重新上电 `Reset cause: POR`，`** APP Mod ...` —— **旧 app 照常启动，app 区一个字节没动** |
+| **2026-09-01** | **S4b** 擦写中断电 | **通过（首次跑完）**。`App signature invalid or absent - staying in bootloader`，随后同一镜像重传成功救回 |
+
+**两个窗口的实测宽度**（1.8 MB 补零镜像，以太网，从 IAPTool 启动算起）：
+
+| 窗口 | 起止 | 宽度 |
+|---|---|---|
+| 传输（S4a 可拔电区间） | +9.9 s → +43.5 s | **33.7 s** |
+| 擦写+写回（S4b 可拔电区间） | +43.5 s → +63.7 s | **20.2 s** |
+
+`run_s4.py` 自身还有约 5 秒准备（开串口、量电压），所以从脚本启动算起要各加 5 秒。**镜像越大两个窗口越宽**，`--pad-to` 的上限是 `IAP_APP_MAX_SIZE` = 1835008。
+
+**这两条合起来才说明 SDRAM 暂存的价值**：风险窗口从「整个上传过程约 64 秒」压缩到「最后擦写那 20 秒」。
+
+## 2026-09-01 板级回归（PowerShell → Python 迁移的实机验证）
+
+27 个 `.ps1` 归档前后跑的一整轮。**被验证的是脚本，板子行为是量具。**
+
+| 项 | 结果 |
+|---|---|
+| `selfcheck.py` | **15/15 通过**（ENV / H1 / H3 / P1 / P2 / P3 / P6 / P7 / P8 / P9 / H2 / K1–K6 / X1–X2 / DG1 / P4） |
+| **N1** UDP 发现 | 四个关键词全应答，`BOOTLD_0.1.3` |
+| **S1 + G1** | 签名无效镜像被拒；复位后 `** APP Mod ...`，已装 app 未被破坏 |
+| **S3** 启动期验签 | 通过。破坏第 41860 字节（0x04→0xFB）后 `App signature invalid or absent`，自动恢复成功 |
+| **OW1** 认领 | 负向：没按 BOOT0 回 `Refused`，`getpubkey` 一字节未变。正向：按住 BOOT0 后回 `OK`，root 换成新密钥 |
+| **OW2** 移交 | 负向：签名翻一位后 `Refused`，generation 和 root 都没动。正向：generation **1 → 2**，板子报告新 root |
+| owner 记录注入 | 四个分支全过。⭐ **无签名的 generation 9 记录被正确拒绝** —— 板子报 `2 record(s), latest generation 9` 但 `claimed at generation 1` |
+| **M5 / E7** | 5/5 回显，`Serial4.begin()` 之后 `Serial_Test` 仍能收 |
+| **AU1** | 通过。掉电前最后一个 nonce counter = **140**，重新上电后备份寄存器报 `nonce counter = 140`，两条独立路径一致；phase 2 从 142 续上，从未重启 |
+| **SD1** | 19/19，`begin()` 1.435 ms，清零 91 MB/s（16 MB / 175.1 ms） |
+
+⚠️ **板级脚本的等价性没有逐字节比对，也不可能有** —— 它们要烧写、读串口、动 owner 槽，两版各跑一遍结果本来就不同。判据是「同一块板子上得到同一个结论」。免板部分的逐字节基线在 `$TOOL:TestCase/archive/ps1/`。
 
 ## 语言与单位约定
 

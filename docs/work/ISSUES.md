@@ -12,7 +12,6 @@
 | **P2** | [ISS-A4](#iss-a4--所有权命令还没进出货工具-iaptool) | `takeown`/`setowner` 没进 IAPTool | **客户拿不到 C10 这个功能** | 我们 |
 | **P3** | [ISS-B2](#iss-b2--两块板的-mac-是否互不相同) | 两块板 MAC 是否不同 | 需求 **E1**、逐板检查单 **F2** | 等第二块板 |
 | P4 | [ISS-A3](#iss-a3--pg9-改输入应该挪到-ioc-里) | PG9 改输入应挪进 `.ioc` | 无（整洁问题） | 我们 |
-| P4 | [ISS-C4](#iss-c4--两个-fakeboard-的-powershell-版有一个偶发竞态) | fakeboard PS 版偶发竞态 | 无（M7 第 6 步会删掉那些文件） | 我们 |
 | P5 | [ISS-D1](#iss-d1--发现限流是固定窗口实测能超标-20) | 限流是固定窗口，能超标 20% | 无（合法用量差 25 倍） | 我们，要对外承诺数字时再做 |
 | — | [ISS-A2](#iss-a2--boot-行前有个乱码字节) | `[BOOT]` 前一个乱码字节 | 无。**根因已查清，建议接受** | **要你定**（曾被误记成已决策，已更正） |
 | — | [ISS-B1](#iss-b1--boot-millis-靠电荷泵余电才出得来) | `[BOOT] millis=` 靠电荷泵余电 | 无。**等一个设计决策** | 要你定 |
@@ -42,6 +41,7 @@
 | 端口不对 | app 侧和 bootloader 侧都用 `getPort()` = 56865（`$TOOL:IAP_Ether.go:441-445`） |
 | sketch 没启动应答器 | `core:cores/arduino/main.cpp:184` **无条件**调用 `openplc_udp_server_start(NULL)`，而且在 `setup()` **之前** |
 | sketch 的 `loop()` 堵住了主循环 | `SDRAM_Acceptance.ino:129` 是 `void loop() {}`，且核心循环每轮都调 `openplc_net_process()` |
+| **SDRAM 用法本身（2026-08-31 新增）** | 板上那个 `PROBE B5v2` sketch = `SerialPort` + `OpenPLC_SDRAM::begin()` + 16 MB alloc/zero，**UDP 发现照常应答** —— `python tools/enter_bootloader.py` 走以太网把它请进了 bootloader，那条路径非应答不可。所以锅不在「用了 SDRAM」，在 `SDRAM_Acceptance` 的其它部分 |
 
 **由此支持的解释（推断，不是实测）**：ICMP 通而绑在 56865 的 UDP pcb 不应答，正是 **`udp_bind` 失败**的形状 —— 那个 pcb 是独立的，绑不上不影响 lwIP 其余部分。
 
@@ -65,7 +65,7 @@
 |---|---|
 | **是什么** | bootloader 的 `takeown` / `setowner` / `getowner` 三个命令 |
 | **做什么用的** | 客户把板子绑到自己的签名密钥上（需求 C10） |
-| **在哪找** | 板子侧 `IAPServer/IAP_server.c` + `IAPServer/owner_slot.c`，**已完成并实测**<br>主机侧只有 `$TOOL:TestCase/tools/run-takeown.ps1` / `run-setowner.ps1`，**那是内部测试脚本** |
+| **在哪找** | 板子侧 `IAPServer/IAP_server.c` + `IAPServer/owner_slot.c`，**已完成并实测**<br>主机侧只有 `$TOOL:TestCase/tools/run_takeown.py` / `run_setowner.py`，**那是内部测试脚本** |
 | **可能的影响** | ⚠️ **客户拿不到这个功能。** 板子侧齐了，但出货工具 `IAPTool` 一个入口都没有 —— 客户没有受支持的办法认领自己的板子。[../../RELEASE-NOTES.md](../../RELEASE-NOTES.md) 已写明这一点，别让文档跑到实现前面 |
 
 **要做什么**：`IAPTool takeown <ip>`、`IAPTool setowner <ip> --current-key=... --new-key=...`。签名那半已经有了（`IAPTool signraw`，2026-08-18 加的），剩下的是命令面和把私钥管理讲清楚。
@@ -105,25 +105,6 @@
 | **不做会怎样** | 🟢 功能上没影响 —— 它只是把已经配好的引脚再配一遍。但会变成"没人敢动的重复代码"，而且下一个人看到生成段仍写着 `OUTPUT_PP` 会困惑 |
 
 ⚠️ **`.ioc` 改完必须重新验一次 RESET 按钮和 BOOT0 长按** —— 重新生成会动整个 `MX_GPIO_Init()`，不只是这一个脚。
-
-## ISS-C4 · 两个 fakeboard 的 PowerShell 版有一个偶发竞态
-
-| | |
-|---|---|
-| **是什么** | `Stop-Process` 停掉假板子之后**不等它真的退出**，就开始下一个用例 |
-| **做什么用的** | `$TOOL:TestCase/host/fakeboard/run-cases.ps1`（K1–K6）和 `run-downgrade.ps1`（DG1） |
-| **在哪找** | `run-cases.ps1:159`、`run-downgrade.ps1:171`；根因在 `host/fakeboard/fake_board.py:130` 的 `SO_REUSEADDR` |
-| **可能的影响** | 上一个进程的 socket 还占着，而 `SO_REUSEADDR` 让下一个用例**照样能 bind 同一个端口** → 两个进程同时监听，谁 accept 未定义。表现是某条用例报「board was never sent a flash command」而它的日志里只有启动那一行 —— 连接被上一个进程接走了。**偶发**，重跑就过。⚠️ **偶发的用例比没有用例更糟**：它训练人重跑一次就当过了 |
-| **Python 版** | 已修成确定的：`kill()` + `wait()`，读日志前先等日志停止增长 |
-
-**解决方案：**
-
-| 方案 | 代价 | 风险 |
-|---|---|---|
-| **不改 `.ps1`** | 0 | ✅ **推荐**。PS 版在 M7 第 6 步之前是 Python 版的**对照基准** —— 改基准就等于在验收过程中动标尺。而 M7 第 6 步会把它删掉，那时这条自动消失 |
-| 一并修 `.ps1` | 小（`Stop-Process` 后加 `Wait-Process`） | 两版都改就要重跑一次 10 对比对；而且这是给一个即将删除的文件付利息 |
-
-⚠️ **在 M7 第 6 步删掉 `.ps1` 之前，K1–K6 和 DG1 仍然会走 PowerShell 版**，所以这个偶发仍然会遇到。遇到了就是这一条，不用重新排查。
 
 ## ISS-D1 · 发现限流是固定窗口，实测能超标 20%
 

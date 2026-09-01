@@ -130,8 +130,6 @@
 
 ⚠️ **`nonce counter = N` 这行只在 bootloader 停下来的时候才打。** 板上有有效 app 时，上电那次会直接交权给 app，**根本走不到那句**。首次跑的时候脚本只翻上电日志，于是报"cross-check not available"，而那个数字其实就在紧接着的 `enter-bootloader` 日志里。已修：两份日志一起翻。
 
-⚠️ **PowerShell 5.1 的坑，同一处**：`enter-bootloader.ps1` 全部用 `Write-Host` 输出，那是**信息流（6）不是成功流**。`2>&1 | Out-String` 抓到的是**空字符串**，而文字照样出现在控制台上 —— 看起来像板子没打印。必须用 `6>&1`。
-
 ### DG1 · 降级被拦下
 
 **落地时比原设计多做的三件事**（都不是凑数）：

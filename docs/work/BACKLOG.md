@@ -5,7 +5,6 @@
 | 模块 | 覆盖需求 | 成本 | 依赖 | 状态 |
 |---|---|---|---|---|
 | **证书链** | C11 C12 | 大 | owner 槽（已完成） | 🔨 方向已定，未实现 |
-| **测试脚本改写成 Python** | F5 | 大 | 无 | 🔨 进行中。**自动化测试工具必须用 Python 写**，两版脚本并存期间每加一个用例都要写两遍 |
 
 ⚠️ **证书链要碰 bootloader 扇区布局**，动之前先读 [../design/OWNERSHIP.md](../design/OWNERSHIP.md) 和 [../design/JOURNAL.md](../design/JOURNAL.md)。
 
