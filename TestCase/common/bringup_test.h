@@ -3,7 +3,7 @@
 // Runs board bring-up cases 1, 2, 3, 4 and 11 at the same time, from one
 // flash. The five were checked against each other before being combined:
 //
-//   case 1  Pin-pair loopback           GPIO only
+//   case 1  Digital In, read only       GPIO only
 //   case 2  Relay                       GPIO only, reuses Core/Src/relay.c
 //   case 3  Analog In                   ADC3 (PC3_C) + ADC1 (PA6)
 //   case 4  Analog Out                  DAC1 both channels
@@ -25,9 +25,8 @@
 //   a           all on
 //   ?           help
 //
-// Case 1 does not need the 24 V supply: it drives the loopback wires the
-// hardware engineer fitted between each pair's two MCU pins, and open drain
-// keeps it safe even if a comparator sinks the same line. See din_test.h.
+// Case 1 drives nothing - the eight pins are high-impedance inputs and it
+// only prints what the board puts on them. See din_test.h.
 
 #ifndef TESTCASE_BRINGUP_TEST_H_
 #define TESTCASE_BRINGUP_TEST_H_

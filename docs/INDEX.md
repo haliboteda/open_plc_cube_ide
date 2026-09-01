@@ -17,7 +17,7 @@
 
 | 文件 | 装什么 |
 |---|---|
-| [design/HARDWARE-FACTS.md](design/HARDWARE-FACTS.md) | **核实过的硬件事实**，每条带出处。RS232 路径、UART4 与 USART3、PG9 就是 BOOT0、39 根 FMC 引脚、SRAM4 不初始化、Digital In 上拉、模拟量与 VREFBUF、模拟前端九个跳线、**CAN**、**KNX** |
+| [design/HARDWARE-FACTS.md](design/HARDWARE-FACTS.md) | **核实过的硬件事实**，每条带出处。RS232 路径、UART4 与 USART3、PG9 就是 BOOT0、39 根 FMC 引脚、SRAM4 不初始化、Digital In 上拉、模拟量与 VREFBUF、模拟前端九个跳线、**CAN**、**KNX**、**引脚分配 xlsx 管什么不管什么** |
 | [design/OWNERSHIP.md](design/OWNERSHIP.md) | owner 槽与信任根：出厂公钥、A+/B 两种模式、状态机、三个操作、记录格式、限制 |
 | [design/JOURNAL.md](design/JOURNAL.md) | journal 机制：扇区布局、启动扫描、`server_decide()` 的判定链、为什么验签而不是存哈希、擦除规则 |
 | [design/DECISIONS.md](design/DECISIONS.md) | 已定的设计决策，每条带理由 + **什么情况下值得重新讨论** |

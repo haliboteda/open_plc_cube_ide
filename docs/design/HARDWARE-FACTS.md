@@ -299,3 +299,35 @@ CAN 两根信号跨板走 Upper Deck **J8 pin2（CAN_TXD_PB9）/ pin3（CAN_RXD_
 | b | `/KNX_RX` 没有板上上拉 | 能 |
 | c | C27（CVDDHV）是 220 µF / **10 V**，Table 2 要求 ≥ 35 V | ❌ 只能手工量 |
 | d | C20（CREF）是 470 nF / **10 V**，同样要求 ≥ 35 V。VREF 自己的 KNX_OK 门限在 9.7 V…13.5 V | ❌ 只能手工量 |
+
+## 引脚分配表：硬件工程师的 xlsx
+
+`Hardware/STM32H743IIK6_GPIO_ASSIGNMENT_Schaeffer_Bridge_20260822.xlsx`，单张 sheet `GPIO_ASSIGNMENT`，138 行覆盖 UFBGA176 上用到的每一个脚。列是：序号、引脚名、**BGA 球号**、备用功能全表、附加功能（ADC/DAC/WKUP）、**信号名**、电源域、中英文说明。取自原理图 Sheet05-MPU。
+
+**这份表管什么、不管什么**（2026-09-01 逐条核对过）：
+
+| 事实 | 谁说了算 | 为什么 |
+|---|---|---|
+| **信号名、BGA 球号、备用功能** | **这份 xlsx** | 全仓库文档里的球号已和它逐条比对，**没有一处不一致** |
+| 外设怎么配（时钟、AF、模式） | `open_plc_cube_ide.ioc` | CubeMX 工程定义，见 [CUBEMX-RULES.md](CUBEMX-RULES.md) |
+| 端子号、跨板连接器、板上是否真的布了线 | `Hardware/Production/*/netlist.ipc` + 原理图 | **xlsx 只说 MCU 这一侧**，它列出一个信号不等于板子上接了 |
+
+### 已知的三处出入
+
+1. **xlsx 漏了 `PE15 = FMC_D12`。** 第 42 行是空的，`FMC_D12` 整条不在表里。`.ioc` 有（`PE15.Signal=FMC_D12_DA12`），本文件上面那张 FMC 表也有。**是表缺行，不是工程错** —— 该反馈给硬件。
+2. **`PI2 = RS485_EN` 在这块板上不存在。** 表里有，Bridge 板布到了 J2，但 UpperDeck 一根没接。细节写在 [../test/BOARD-BRINGUP-CASES.md](../test/BOARD-BRINGUP-CASES.md) 的引脚速查附录里。**这是「xlsx 只说 MCU 侧」的典型例子。**
+3. **RS485 两根信号有两套标签。** xlsx 叫 `RS485_TX`（PD5）/ `RS485_RX`（PD6）；网表叫 `RS485_DI_PD5` / `RS485_RO_PD6`。同一条网，看哪份文件用哪个名。
+
+### xlsx 有、本仓库以前没记过的脚
+
+多数是以太网 / FMC / 晶体 / NC，不必单独记。有实际功能的这几个记一下：
+
+| 引脚 | 球 | 信号名 | 说明 |
+|---|---|---|---|
+| **PE2** | A2 | `LED_DRIVER` | 系统指示灯驱动，**高亮低灭**。xlsx 把它归在「未使用引脚」一节下，但它有功能 |
+| **PE6** | B3 | `SDIO1_CD` | SD 卡检测，**低 = 已插入** |
+| PC9 | F14 | `DAC1_EXTI9` | 预留 |
+| PB1 / PF9 | R4 / L2 | `C-ADC2_HSPEED` / `C-ADC4_HSPEED` | 预留，ADC 高速通道 |
+| PG10 / PB2 | B10 / M6 | `SPI1_NSS` / `SPI3_MOSI` | 预留 |
+
+`DIN1`–`DIN8` 在表里的信号名带编码器后缀（`DIN1_PC6-Enc1a` … `DIN8_PI6-Enc4b`），八路兼作四组编码器 A/B 相。

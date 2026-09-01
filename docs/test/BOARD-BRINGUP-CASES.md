@@ -25,7 +25,11 @@
 
 ## 1. 各项的接法与判据
 
-### 1 · Digital In 回环
+### 1 · Digital In
+
+⚠️ **代码现在只读，不发。** [`TestCase/DIN/din_test.c`](../../TestCase/DIN/din_test.c) 把八个脚全配成高阻输入（`GPIO_NOPULL`），每 3 秒打一行电平，**没有任何驱动动作**。下面「固件」那一段描述的回环判据**没有实现**。
+
+**2026-08-31 定：DIN 保持现状不动，Digital Out 不做用例。** 回环那套设计留在这里是硬件事实，不是待办。
 
 **接法**：硬件把每组两个 MCU 引脚直接短接 —— `PB5+PC6`、`PB6+PB7`、`PH10+PH11`、`PI5+PI6`。**不需要 24 V。**
 
@@ -160,15 +164,13 @@
 
 五项没有一个引脚重叠，也没有一个碰到 SDRAM 那 39 根 FMC 引脚（PG3 = FMC_A13、PD3 = FMC_CLK 的复用本工程没用，SDRAM 时钟走 PG8、地址只到 A12）。唯一的共享资源是 **ADC1**，被项 3 和项 11 同时需要 —— 两项写在同一个文件里、共用一个句柄；两次 `HAL_ADC_Init()` 打同一个实例会把前一次的配置静默覆盖。
 
-每一项都是**非阻塞 tick**。项 2 要给示波器看 2 s 方波，所以任何一项都不许长时间阻塞 —— 项 1 的八通道扫描因此写成状态机而不是 `HAL_Delay` 循环。
+每一项都是**非阻塞 tick**。项 2 要给示波器看 2 s 方波，所以任何一项都不许长时间阻塞。
 
 **串口按键**（RS232 端子 C05/C06，115200 8N1）：`1` `2` `3` `4` `b` 单独开关某一项（`b` = 项 11），`a` 全开，`?` 看帮助。
 
-⚠️ **一处物理耦合不是故障**：项 1 在切 Digital Out 的负载，而那份热量正是项 11 的 T-HS 传感器测的东西。跑起来 T-HS 缓慢上升是板子在正常工作。
-
 | 项 | 代码 | 用什么外设 |
 |---|---|---|
-| 1 Digital IN 回环 | `TestCase/DIN/din_test.c` | 纯 GPIO |
+| 1 Digital In（只读） | `TestCase/DIN/din_test.c` | 纯 GPIO |
 | 2 继电器 | `bringup_test.c` 复用 `Core/Src/relay.c` | 纯 GPIO |
 | 3 AI | `TestCase/ADC/adc_test.c` | ADC3（PC3_C）+ ADC1（PA6） |
 | 4 AO | `TestCase/DAC/dac_test.c` | DAC1 两个通道 |
@@ -191,7 +193,7 @@
 
 **BGA ball 号只在这一节出现**，供硬件量球时用；正文一律用 MCU 引脚号。
 
-**项 1 · Digital Out → Digital In 回环对照**
+**Digital Out / Digital In 引脚对照**（⚠️ **Digital Out 没有用例** —— 2026-08-31 定不做。这张表只是引脚事实）
 
 | 通道 | 外接端口（发） | 端子 | MCU 引脚 | BGA | 外接端口（收） | 端子 | MCU 引脚 | BGA |
 |---|---|---|---|---|---|---|---|---|
@@ -227,7 +229,7 @@ GPIO 表里 Digital Out 的信号名是 `HSFET_1`–`HSFET_8`（高端驱动 FET
 | Analog In 2 | UpperDeck J4-1 | PA6 | P3 | ADC12_INP3 |
 | Analog Out 1 | UpperDeck J4-2 | PA4 | N4 | DAC1_OUT1 |
 | Analog Out 2 | UpperDeck J4-3 | PA5 | P4 | DAC1_OUT2 |
-| （AOUT1 故障标志，读不出来） | 板内 | PI4 | D4 / D14 冲突 | — |
+| （AOUT1 故障标志，读不出来） | 板内 | PI4 | D4 | — |
 | （AOUT2 故障标志，读不出来） | 板内 | PE3 | A1 | — |
 | （板载温度，防反接侧 T-PS） | 测试点 TP3 / TP4 | PA0 | N3 | ADC1_INP16 |
 | （板载温度，高端开关侧 T-HS） | 测试点 TP9 / TP10 | PA3 | R2 | ADC12_INP15 |
@@ -236,7 +238,10 @@ GPIO 表里 Digital Out 的信号名是 `HSFET_1`–`HSFET_8`（高端驱动 FET
 | （RS232 收发器使能，必须先拉高） | 板内 | PB10 | R12 | — |
 | CAN H / CAN L | 端子 C08 / C07，UpperDeck J10-1 / J10-2 | PB9（TX）/ PI9（RX） | B4 / D3 | — |
 | RS485 A / B | 端子 A10 / A11，UpperDeck J11-3 / J11-2 | PD5（TX）/ PD6（RX） | C11 / B11 | — |
-| （RS485 使能 / 方向） | 板内 | PI2 / PD4 | C14 / D10 | — |
+| （RS485 方向，`/RE` 与 `DE` 同一条网） | 板内 | PD4 | D10 | — |
+| ~~（RS485 使能）~~ | ⚠️ **这块板上不存在**，见下 | ~~PI2~~ | ~~C14~~ | — |
+
+⚠️ **`PI2 = RS485_EN` 不要当成需要配置的脚。** 引脚分配表里有它，Bridge 板也把它布到了 J2，但 **UpperDeck 整块板一根都没接** —— 全板唯一的使能网是 `RS232_EN_PB10`（`Hardware/Production/UpperDeck/netlist.ipc:408`），收发器 U6 的 pin 8 直接接 `+3V3`（`:503`）。跨板连接器只过 `RS485_RO_PD6` / `RS485_DI_PD5` / `RS485_DIR_PD4` 三根（`:583-585`）。方向控制只有 PD4 一个。
 
 **项 5–7 · 扩展口 JunctionLink J4**（`SAMTEC ERF8-010-01-L-D-EM2-TR`，0.8 mm 20 pin）
 
