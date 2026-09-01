@@ -70,11 +70,20 @@
 /* Reply to every frame with its payload incremented by one, same identifier.
  * Transmits nothing on its own. Host side: $TOOL/TestCase/tools/can_send.py */
 #ifndef CAN_ECHO_TEST_ENABLE
-#define CAN_ECHO_TEST_ENABLE 1
+#define CAN_ECHO_TEST_ENABLE 0
 #endif
 
 #if CAN_TEST_ENABLE || CAN_SOAK_TEST_ENABLE || CAN_SCOPE_TEST_ENABLE || CAN_ECHO_TEST_ENABLE
 #include "CAN/can_test.h"
+#endif
+
+/* RS485 on USART2 through the SP3485EN: pin-level check, a periodic banner,
+ * and an echo of whatever arrives. Host side: $TOOL/TestCase/tools/rs485_echo.py */
+#ifndef RS485_TEST_ENABLE
+#define RS485_TEST_ENABLE 0
+#endif
+#if RS485_TEST_ENABLE
+#include "RS485/rs485_test.h"
 #endif
 
 /* Board bring-up cases 1, 2, 3, 4 and 11 together in one flash. They share no
@@ -88,7 +97,7 @@
 #endif
 
 #if (KNX_TEST_ENABLE + CAN_TEST_ENABLE + CAN_SOAK_TEST_ENABLE \
-     + CAN_SCOPE_TEST_ENABLE + CAN_ECHO_TEST_ENABLE + BRINGUP_TEST_ENABLE) > 1
+     + CAN_SCOPE_TEST_ENABLE + CAN_ECHO_TEST_ENABLE + RS485_TEST_ENABLE + BRINGUP_TEST_ENABLE) > 1
 #error "Only one bring-up test can run: none of them return. Pick one."
 #endif
 /* USER CODE END Includes */
@@ -322,6 +331,9 @@ int main(void)
 #endif
 #if CAN_ECHO_TEST_ENABLE
   CAN_Test_Echo_Run();   /* v0.1.3-testcase branch only; never returns */
+#endif
+#if RS485_TEST_ENABLE
+  RS485_Test_Run();   /* v0.1.3-testcase branch only; never returns */
 #endif
 #if BRINGUP_TEST_ENABLE
   BringUp_Test_Run();   /* v0.1.3-testcase branch only; never returns */
