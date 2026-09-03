@@ -30,7 +30,6 @@
 | 文件 | 装什么 |
 |---|---|
 | [test/BOARD-BRINGUP-CASES.md](test/BOARD-BRINGUP-CASES.md) | **板级 10 项测试用例：接哪几个端子、判据是什么、结果** |
-| [test/MEASUREMENTS.md](test/MEASUREMENTS.md) | **每一个实测数字的唯一出处**。别处引用，不要抄第二份 |
 
 ### `work/` —— 手头还没完的
 

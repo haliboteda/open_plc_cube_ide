@@ -2,7 +2,7 @@
 
 **状态：✅ 已实现并实测（2026-08-18）。** 配图版是 [../archive/artifacts/owner-slot.html](../archive/artifacts/owner-slot.html)（⚠️ 快照，和本文打架时以本文为准）。
 
-实测结果在 [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md)。**本文件是设计推理的出处**。
+**本文件是设计推理的出处**。
 
 ⚠️ **设备侧完整，出货工具侧还没有。** `takeown` / `setowner` 只有 TestCase 的内部脚本能发，`IAPTool` 一个入口都没有 —— 客户目前拿不到这个功能，见 [../work/ISSUES.md](../work/ISSUES.md) 的 `ISS-A4`。
 
@@ -52,7 +52,7 @@ H743 的擦除粒度是**整个 128K 扇区**，没有更小的。所以任何"�
 
 ### 尺寸
 
-扇区 131,072 B，链接器只拿到 120K（122,880 B），尾部 8K 留给 owner 记录。**镜像当前多大、余量多少 → [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md)**（唯一出处，这里不拄一份 —— 以前拄过，就漂了）。
+扇区 131,072 B，链接器只拿到 120K（122,880 B），尾部 8K 留给 owner 记录。**镜像当前多大、余量多少 → `$PROD/docs/STATUS.md` 的 E3 行**（唯一出处，这里不拄一份）。
 
 | 保留 | `FLASH LENGTH` | owner 区起点 | 镜像余量 | 可存记录 |
 |---|---|---|---|---|
@@ -218,7 +218,7 @@ R3 挡不住的那条**必须接受** —— `keys/README.md` 已把"防不住�
 
 ### ⚠️ ST-Link 重烧 bootloader = 所有权重置
 
-owner 记录和 bootloader 同扇区，重烧会一起擦掉。**语义上是对的**（能 ST-Link 的人本来就能恢复出厂），但它和 [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md) 里「bootloader 与 app 必须捆绑升级」那条风险**叠加**：换 bootloader 的人要同时重传 app **和**重新认领。**发布说明里这两条要写在一起。**
+owner 记录和 bootloader 同扇区，重烧会一起擦掉。**语义上是对的**（能 ST-Link 的人本来就能恢复出厂），但它和「bootloader 与 app 必须捆绑升级」那条风险**叠加**：换 bootloader 的人要同时重传 app **和**重新认领。**发布说明里这两条要写在一起。**
 
 ## 借鉴与避坑（市面上的做法）
 
@@ -238,7 +238,7 @@ owner 记录和 bootloader 同扇区，重烧会一起擦掉。**语义上是对
 
 | | 影响 |
 |---|---|
-| 保留 4K / 8K / 16K | ✅ **定了 8K**（2026-08-17 落地，实测镜像余量 **21%**，见 [../test/MEASUREMENTS.md](../test/MEASUREMENTS.md)） |
+| 保留 4K / 8K / 16K | ✅ **定了 8K**（2026-08-17 落地） |
 | 恢复出厂怎么触发 | ✅ **复位后按住 BOOT0 满 10 秒，三下继电器咔哒后松手**（2026-08-18）。不是另起一个手势，是现有 1.5 秒那次按压的自然延长 |
 | 要不要上 WRP | 唯一能真正禁止 app 写这片区域的手段。H7 选项字节改动需解锁并复位。**未做** |
 | 认领时要不要绑 UID | 防止把一块板的记录整段搬到另一块板。**未做** —— 记录现在可以整段复制到另一块板并生效 |

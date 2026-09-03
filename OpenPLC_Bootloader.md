@@ -7,7 +7,6 @@
 | 想知道 | 去哪 |
 |---|---|
 | 启动怎么决策、签名怎么验、journal 怎么记 | [docs/design/JOURNAL.md](docs/design/JOURNAL.md)、[docs/design/OWNERSHIP.md](docs/design/OWNERSHIP.md) |
-| 哪条路径验过、实测数字 | [docs/test/MEASUREMENTS.md](docs/test/MEASUREMENTS.md) |
 | 三个仓库在哪、哪些代码是跨仓镜像 | `$PROD/docs/design/ARCHITECTURE.md` |
 | 引脚、串口、启动模式的实测事实 | [docs/design/HARDWARE-FACTS.md](docs/design/HARDWARE-FACTS.md) |
 | 需求清单和测试矩阵 | `$PROD/docs/STATUS.md` |
@@ -42,7 +41,7 @@
 
 **必须装进单个 128K 扇区的前 120K**（122,880 B —— 尾部 8K 给 owner 记录）。这是需求 **E3**，构建时的尺寸门禁。
 
-**当前大小和余量在 `docs/test/MEASUREMENTS.md`**（唯一出处）。⚠️ **别在这里拄一份数字。**
+**当前大小和余量在 `$PROD/docs/STATUS.md` 的 E3 行**（唯一出处）。⚠️ **别在这里拄一份数字。**
 
 > 本节数字会随每次构建变，**别把它当承诺**。要当前值就自己看 `Debug/` 下那个 `.bin` 的大小。
 

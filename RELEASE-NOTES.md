@@ -148,7 +148,7 @@ protecting anything from the moment it is claimed.
   power during the erase/write window leaves the board reporting `metadata
   present` with `App signature invalid or absent`, and re-uploading recovers
   it. Measured pull-safe windows: **33.7 s** during transfer, **20.2 s** during
-  erase/write. See `docs/test/MEASUREMENTS.md`.
+  erase/write.
 
   **That erase/write window is wider and easier to hit than assumed** — the
   upload tool exits as soon as it has sent the last byte, while the board is
