@@ -91,6 +91,8 @@ static void udp_server_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p,
   (void)arg;
 
   if ((p == NULL) || (p->payload == NULL) || (p->len == 0)) {
+    printf("[UDP] dropped a malformed/empty datagram from %s:%u\r\n",
+           ipaddr_ntoa(addr), (unsigned)port);
     if (p != NULL) {
       pbuf_free(p);
     }
@@ -119,6 +121,9 @@ static void udp_server_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p,
 //    } else {
 //      openplc_set_eth_flag_and_reset();
 //    }
+  } else {
+    printf("[UDP] unrecognized command from %s:%u: \"%s\"\r\n",
+           ipaddr_ntoa(addr), (unsigned)port, recv_buf);
   }
 }
 
@@ -133,10 +138,12 @@ void openplc_udp_server_start()
 
   udp_server_pcb = udp_new();
   if (udp_server_pcb == NULL) {
+    printf("[UDP] Failed to create PCB\r\n");
     return;
   }
 
   if (udp_bind(udp_server_pcb, IP_ADDR_ANY, OPENPLC_SERVER_PORT) != ERR_OK) {
+    printf("[UDP] Bind failed\r\n");
     udp_remove(udp_server_pcb);
     udp_server_pcb = NULL;
     return;

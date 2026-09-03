@@ -132,12 +132,6 @@ protecting anything from the moment it is claimed.
   `millis=12`. **Nothing guarantees that window.** An application that starts
   more slowly will lose the line entirely, so do not build anything on it and do
   not add further start-up printing at that point in the core.
-- **A stray byte appears on the serial console immediately before `[BOOT]`.**
-  Cause identified: when the bootloader disables the transceiver on its way out,
-  the charge pump collapses and the line slides from mark toward 0 V, which the
-  receiver reads as a start bit. That is the inherent cost of handing the
-  application a board whose transceiver is in a known-off state, which is
-  deliberate. Display only, with no functional effect.
 - **Discovery rate limiting is a fixed window, not a token bucket.** Nominally
   50 replies/sec; a burst straddling a window boundary has been measured at 60.
   Treat 50 as approximate, not as a guarantee.
@@ -148,16 +142,16 @@ protecting anything from the moment it is claimed.
   derive and use its own address consistently in both the bootloader and the
   application. Only one board was available, so uniqueness *between* boards has
   never been observed. Put it on the production checklist.
-- **Behaviour when power is lost mid-upgrade.** Staging changed what the risky
-  window is: losing power during the transfer should now be harmless, and only
-  the few seconds spent erasing and writing can leave the application region
-  half-written. Neither half has been reproduced by *removing power*.
+- ~~Behaviour when power is lost mid-upgrade.~~ **Verified 2026-09-01** (test
+  cases S4a/S4b): losing power during the transfer is harmless — the old
+  application starts normally and the application region is untouched. Losing
+  power during the erase/write window leaves the board reporting `metadata
+  present` with `App signature invalid or absent`, and re-uploading recovers
+  it. Measured pull-safe windows: **33.7 s** during transfer, **20.2 s** during
+  erase/write. See `docs/test/MEASUREMENTS.md`.
 
-  The erase/write window has, however, been hit by accident with a reset, and it
-  behaved as predicted: the application became invalid, the board reported
-  `metadata present` with `App signature invalid or absent`, and re-uploading
-  restored it. **That window is also wider and easier to hit than assumed** —
-  the upload tool exits as soon as it has sent the last byte, while the board is
+  **That erase/write window is wider and easier to hit than assumed** — the
+  upload tool exits as soon as it has sent the last byte, while the board is
   still verifying, erasing and copying out of SDRAM. Anything automating an
   upgrade should wait for the board's own `Checksum and signature OK` rather
   than for the tool to exit.

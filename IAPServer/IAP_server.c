@@ -115,9 +115,14 @@ void reset_buf(void) {
 // 接口特定的发送响应
 void send_response(char *msg) {
 	switch (current_method) {
-	case IAP_CDC:
-		CDC_Transmit_FS((uint8_t*) msg, strlen(msg));
+	case IAP_CDC: {
+		uint8_t st = CDC_Transmit_FS((uint8_t*) msg, strlen(msg));
+		if (st != USBD_OK) {
+			printf("CDC_Transmit_FS failed (%u), response \"%s\" not sent\r\n",
+					(unsigned)st, msg);
+		}
 		break;
+	}
 	case IAP_ETHERNET:
 		tcp_server_send((uint8_t*) msg, strlen(msg));
 		break;
@@ -354,7 +359,9 @@ void process_command() {
 					send_response("OK");
 				}
 			} else {
-				printf("Invalid flash command");
+				printf("Invalid flash command: only %d of the required size+checksum fields parsed\r\n",
+						nParsed);
+				send_response("ERR");
 			}
 		} else {
 			send_response("Unknown command");
@@ -627,8 +634,7 @@ void server_jump_to_app(void) {
 	 * Order matters: shut the transceiver down BEFORE releasing the pins.
 	 * MspDeInit leaves PC10 -- the MAX3221's data input -- floating, and a
 	 * floating input on a still-powered transceiver drives whatever it picks up
-	 * onto the line. Doing it the other way round put a garbage byte in front of
-	 * the application's first log line (docs/work/ISSUES.md ISS-A2). */
+	 * onto the line. */
 	Disable_RX_RS232();
 	HAL_UART_DeInit(&huart4);
 

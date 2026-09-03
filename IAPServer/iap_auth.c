@@ -104,10 +104,12 @@ bool iap_auth_verify_and_consume(const uint8_t *msg, uint32_t msg_len, const uin
 	 * applies to the boot-time signature check, rather than computing an
 	 * HMAC with a known-unreliable primitive and trusting the answer. */
 	if (!bootloader_state_crypto_selftest_passed()) {
+		printf("Auth rejected: crypto self-test failed at boot, not trusting HMAC\r\n");
 		return false;
 	}
 
 	if (!s_nonce_pending) {
+		printf("Auth rejected: no nonce pending, call authchallenge first\r\n");
 		return false;
 	}
 	s_nonce_pending = false; /* one-shot: consumed whether this check passes or not */
@@ -117,6 +119,7 @@ bool iap_auth_verify_and_consume(const uint8_t *msg, uint32_t msg_len, const uin
 		return false;
 	}
 	if (msg_len > sizeof(buf) - IAP_AUTH_NONCE_SIZE) {
+		printf("Auth rejected: message too long (%" PRIu32 " bytes)\r\n", msg_len);
 		return false;
 	}
 
