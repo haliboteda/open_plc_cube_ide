@@ -4,7 +4,7 @@
 
 **本文件是设计推理的出处**。
 
-⚠️ **设备侧完整，出货工具侧还没有。** `takeown` / `setowner` 只有 TestCase 的内部脚本能发，`IAPTool` 一个入口都没有 —— 客户目前拿不到这个功能，见 [../work/ISSUES.md](../work/ISSUES.md) 的 `ISS-A4`。
+出货工具的入口：`IAPTool getowner / takeown / setowner`，用法见 `$TOOL/README.md`。TestCase 的 `run_takeown.py` / `run_setowner.py` 仍然是用例侧的驱动。
 
 机制上和 [JOURNAL.md](JOURNAL.md) 独立，但两者都住在 bootloader 独占的 flash 区域里，改任何一边之前先读另一边。
 

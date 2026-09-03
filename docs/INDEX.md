@@ -7,7 +7,7 @@
 | 想知道 | 去哪 |
 |---|---|
 | 需求做到哪一步、用例覆盖了没有 | `$PROD/docs/STATUS.md` |
-| 某个编号（`T1`、`OW2`、`P7`、`ISS-A4`……）是什么 | `$PROD/docs/ID-MAP.md` |
+| 某个编号（`T1`、`OW2`、`P7`、`ISS-B2`……）是什么 | `$PROD/docs/ID-MAP.md` |
 | 三个仓库怎么分工、哪些代码跨仓镜像、RTC 备份寄存器谁占了哪个 | `$PROD/docs/design/ARCHITECTURE.md` |
 | 用例的判据、怎么跑 | `$TOOL/TestCase/TEST-CASES.md` |
 

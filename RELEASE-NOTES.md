@@ -107,10 +107,19 @@ what it buys is that nobody can do it remotely.
 **Claim a board before putting it into service.** Everything above only starts
 protecting anything from the moment it is claimed.
 
-> ⚠️ **The device side is complete and tested; the operator-facing tooling is
-> not.** `takeown` and `setowner` are bootloader commands, and today they are
-> driven only by internal test scripts — `IAPTool` does not expose them yet.
-> Until it does, claiming a board is not a supported customer operation.
+`IAPTool` drives all three:
+
+```
+IAPTool genkey owner                 writes owner.pem
+IAPTool getowner <ip>                which key the board trusts, at which generation
+IAPTool takeown  <ip> --key=owner.pem
+IAPTool setowner <ip> --current-key=owner.pem --new-key=next.pem
+```
+
+`takeown` needs BOOT0 held through the board's current boot; `setowner` needs
+only the current owner's key, so a handover can be done remotely. `takeown`
+refuses to fall back to the signing key from `local_config.json` — claiming a
+board with the wrong key can only be undone with an ST-Link.
 
 ### Known issues
 
