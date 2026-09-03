@@ -20,8 +20,7 @@
 // Case 3 prints raw counts and both terminal-voltage interpretations, and
 // deliberately does NOT declare PASS/FAIL: the input divider ratio depends on
 // four solder jumpers (JP5/JP6/JP8/JP9) whose factory state is not documented
-// anywhere - see the missing-information table in
-// docs/test/BOARD-BRINGUP-CASES.md. Case 11 does declare PASS/FAIL, because
+// anywhere. Case 11 does declare PASS/FAIL, because
 // the sensor and the formula are both confirmed.
 //
 // ADC is not a CubeMX peripheral in this project - the vendor HAL files live

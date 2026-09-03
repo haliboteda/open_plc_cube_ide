@@ -7,7 +7,7 @@
 | 想知道 | 去哪 |
 |---|---|
 | 需求做到哪一步、用例覆盖了没有 | `$PROD/docs/STATUS.md` |
-| 某个编号（`T1`、`OW2`、`P7`、`ISS-B5`……）是什么 | `$PROD/docs/ID-MAP.md` |
+| 某个编号（`T1`、`OW2`、`P7`、`ISS-A4`……）是什么 | `$PROD/docs/ID-MAP.md` |
 | 三个仓库怎么分工、哪些代码跨仓镜像、RTC 备份寄存器谁占了哪个 | `$PROD/docs/design/ARCHITECTURE.md` |
 | 用例的判据、怎么跑 | `$TOOL/TestCase/TEST-CASES.md` |
 
@@ -29,10 +29,8 @@
 
 | 文件 | 装什么 |
 |---|---|
-| [test/BOARD-BRINGUP-CASES.md](test/BOARD-BRINGUP-CASES.md) | **板级各项：接哪几个端子、固件做什么、判据是什么。** 含 CAN / KNX、固件入口宏一览、引脚与端子速查附录 |
+| [test/BOARD-BRINGUP-CASES.md](test/BOARD-BRINGUP-CASES.md) | **板级 10 项测试用例：接哪几个端子、判据是什么、结果** |
 | [test/MEASUREMENTS.md](test/MEASUREMENTS.md) | **每一个实测数字的唯一出处**。别处引用，不要抄第二份 |
-| [test/CASE-DESIGNS.md](test/CASE-DESIGNS.md) | 每条用例为什么这么设计：三条原则、四层速度、落点决定 |
-| [test/COVERAGE-GAPS.md](test/COVERAGE-GAPS.md) | 诚实列出**没测到**的东西 |
 
 ### `work/` —— 手头还没完的
 

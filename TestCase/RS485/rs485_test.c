@@ -16,7 +16,7 @@
 #define RS485_BANNER_MS     3000U
 /* 0x55 bytes ahead of the banner: alternating bits give the scope a clean
  * square wave to trigger on. Set to 0 to send the text alone. */
-#define RS485_SCOPE_PREAMBLE 16
+#define RS485_SCOPE_PREAMBLE 0
 #define RS485_IDLE_GAP_MS   20U      /* silence that ends an inbound frame */
 #define RS485_RX_MAX        64U
 #define RS485_PROBE_MS      5000U   /* one D1 window */
@@ -247,8 +247,8 @@ void RS485_Test_Run(void)
     RS485_Phase_MeterSquare();   /* never returns */
 #endif
 
-    printf("[R2 ] sending a banner every %lu ms (%d x 0x55 preamble first)\r\n"
-           "[R4 ] anything received is echoed back and printed here\r\n\r\n",
+    printf("[R2 ] sending a banner every %lu ms (0x55 preamble: %d bytes)\r\n"
+           "[R4 ] anything received is printed here (ASCII + hex) and echoed back\r\n\r\n",
            (unsigned long)RS485_BANNER_MS, RS485_SCOPE_PREAMBLE);
 
     uint8_t  rx[RS485_RX_MAX];
@@ -271,9 +271,13 @@ void RS485_Test_Run(void)
         /* A gap in the traffic marks the end of a frame - echo it whole rather
          * than one byte at a time, which would flip the driver on every byte. */
         if (rx_len > 0 && (now - rx_last) >= RS485_IDLE_GAP_MS) {
-            printf("[R4 ] got %u bytes: ", (unsigned)rx_len);
+            printf("[R4 ] got %u bytes: \"", (unsigned)rx_len);
             for (uint16_t i = 0; i < rx_len; i++) {
                 printf("%c", (rx[i] >= 32 && rx[i] < 127) ? rx[i] : '.');
+            }
+            printf("\"  hex:");
+            for (uint16_t i = 0; i < rx_len; i++) {
+                printf(" %02X", rx[i]);
             }
             printf("\r\n");
             RS485_Send(rx, rx_len);

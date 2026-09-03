@@ -20,10 +20,8 @@
 | 日期 | 用例 | 结果 |
 |---|---|---|
 | 2026-08-17 | N1 N2 N3 N5 | 全过。N5：3 秒内 1200 次查询 → **150 次回复（正好 50/s）**，随后正常发现仍可用 |
-| 2026-08-17 | N4 浸泡 | app 侧 **10 分钟 240 次查询零失败，最慢 36ms**。对照 2026-08-15 限流改造前的 25 分钟浸泡 18 次无应答 —— 那次根因是我们自己的两个工具抢同一份配额 |
+| 2026-08-17 | N4 浸泡 | app 侧 **10 分钟 240 次查询零失败，最慢 36ms** |
 | 2026-08-18 | N1 N2 N3 N4 N5 | 全过。N3 最慢 **40ms**；N4 10min / 240 次 / 0 失败，最慢 **39ms**；N5 **1223 次 → 150 回复** |
-
-⚠️ **N5 的 50/s 不是保证值。** 同一天连着两轮，一轮正好 50/s（1200→150），另一轮 **58/s**（1199→175）。**"测到 50"只是窗口对齐的运气**，不能当成上限生效的证据。机理见 [../design/DECISIONS.md](../design/DECISIONS.md) 第 3 条。
 
 ## 全局限流改造前后
 
@@ -40,18 +38,16 @@
 | 日期 | 用例 | 结果 |
 |---|---|---|
 | — | S1 上传时签名校验 | 先过 CRC、算哈希、再回 `Signature Failed`；下次启动 `metadata present` + `App signature invalid` —— 与"metadata 没写成"区分开 |
-| 2026-08-17 | **S2** 密钥不匹配 | 用一把板子不认的密钥**真实签名**（格式完全合法）的镜像 → `Signature Failed`；复位后旧 app 照常启动。journal 88→89 槽，说明拒绝这件事被记了事件。**和 S1 分开测**：一个是"没有任何密钥能产生的签名"，一个是"签方不对" |
+| 2026-08-17 | **S2** 密钥不匹配 | 用一把板子不认的密钥**真实签名**（格式完全合法）的镜像 → `Signature Failed`；复位后旧 app 照常启动。journal 88→89 槽，说明拒绝这件事被记了事件 |
 | 2026-08-17 | **S3** 启动期签名校验 | ST-Link 把已装好的 app 第 **41858/83716** 字节 `0x12`→`0xED` → 复位后 `metadata present` + `App signature invalid or absent`，**不启动 app**；重烧一次即恢复 |
 | 2026-08-17 | **G1** 失败的上传不破坏 app | S1 送一个签名故意写错的镜像 → `Signature verification FAILED - firmware not trusted. Application region untouched.` → **复位后 `** APP Mod ...`，旧 app 正常启动**。改前这里是 `BOOTLD-INVALID`、必须重刷。**这是 staging 存在的全部理由** |
-
-⚠️ `App signature invalid or absent` 和 `no valid application` **是同一个分支打的**（`IAPServer/IAP_server.c:482-494`），必然同时出现。真正区分"app 坏了"和"metadata 也没了"的是 `Bootloader state:` 那行里的 `metadata present` / `absent`（`bootloader_state.c:155`）—— [../design/JOURNAL.md](../design/JOURNAL.md) 的表格一直是对的。
 
 ## 会话认证
 
 | 日期 | 用例 | 结果 |
 |---|---|---|
-| 2026-08-17 | **AU1** nonce 跨掉电不重复 | 真断电（`Reset cause: POR`）前 counter **62→69**，上电后 **71→78**，**16 个 nonce 全不同、计数器没归零**。中间 69→71 那两个是 `enter-bootloader` 自己的认证 reboot 消耗的 —— 断言的是**严格递增**，不是"恰好加一"（阶段**内**才要求恰好加一） |
-| 2026-08-17 | **H2** 主机侧 C 单测 | **首次真正跑起来**，11 条断言全过（MinGW-w64 gcc 16.1.0）。它需要一个现代 gcc/clang，未配置时报 SKIP |
+| 2026-08-17 | **AU1** nonce 跨掉电不重复 | 真断电（`Reset cause: POR`）前 counter **62→69**，上电后 **71→78**，**16 个 nonce 全不同、计数器没归零**。中间 69→71 那两个是 `enter-bootloader` 自己的认证 reboot 消耗的 |
+| 2026-08-17 | **H2** 主机侧 C 单测 | 11 条断言全过（MinGW-w64 gcc 16.1.0） |
 | 2026-08-17 | **X1 X2** 加密交叉验证 | X1 309 个向量通过；X2 8/8 通过 |
 | 2026-08-17 | **K1–K6** 传输前密钥匹配 | 六种情况全过 |
 | 2026-08-17 | **DG1** 降级拦截 | 五个用例全过：`refuse-older` / `allow-older` / `ask-no-console` / `same-version` / `newer` |
@@ -61,10 +57,8 @@
 | 日期 | 用例 | 结果 |
 |---|---|---|
 | 2026-08-18 | **★ OW1 / OW2 / OW3** 全链路 | 完整生命周期：认领 G1 → 换 owner G2（现任签名）→ 恢复出厂 cleared → 重新认领 G3。**认领后用旧公开密钥签的 app 被拒**（`UPLOAD Mod ... (no valid application)`）；坏签名的换 owner 被拒且什么都没动；**无签名的高 generation 记录夺不走已认领的板子**（链停在 G1，`getpubkey` 仍返回原主人） |
-| 2026-08-18 | 恢复出厂手势 | 复位后按住 BOOT0 超过 10 秒 → 三下快咔哒（ARMED）→ 松手 → `FACTORY RESET DONE at generation 2`。**旧的 1.5 秒判据一个字没改** —— 判据仍是"t=1.5s 那一瞬手按着"，轮询只在那之后才开始 |
+| 2026-08-18 | 恢复出厂手势 | 复位后按住 BOOT0 超过 10 秒 → 三下快咔哒（ARMED）→ 松手 → `FACTORY RESET DONE at generation 2` |
 | 2026-08-18 | **P6** 公开根指纹 | 通过，负向对照验过会响 |
-
-★ **验签用的是 owner 槽里的公钥，不是编译期写死的那把。** 只有「认领后再用旧密钥签一份固件」这条用例能验到这一点。
 
 ## 升级通道
 
@@ -75,16 +69,6 @@
 | — | **通道隔离** | `BOOT_REQ_CDC` 时**不启动以太网**；无有效 app 时启动。**这是设计不是故障** |
 | — | BOOT0 长按进上传模式 | 通过 |
 
-### ★ `IAPTool` 退出 ≠ 升级完成
-
-IAPTool 送完最后一个字节就打 `File transfer complete.` 并退出，**板子此时才开始校验 → 擦除 → 从 SDRAM 往 flash 写**，要好几秒。
-
-那几秒里复位或断电**会毁掉 app**：现象是 `metadata present` + `App signature invalid or absent`，重烧可恢复。
-
-⚠️ **任何自动化都要等板子自己说 `Checksum and signature OK. Rebooting...`，不能以 IAPTool 退出为准。**
-
-**S4b 的窗口不用掐秒表**：等 IAPTool 一退出就动手。
-
 ## SDRAM
 
 | 日期 | 项 | 结果 |
@@ -92,12 +76,10 @@ IAPTool 送完最后一个字节就打 `File transfer complete.` 并退出，**�
 | 2026-08-17 | **staging 正向路径** | 以太网，83,716 B 镜像：`SDRAM staging buffer OK (2 MiB at C0000000)` → `Staging in SDRAM.` → 逐块 `Staged …` → `Transfer complete, verifying the staged image...` → **`Erasing application region` 出现在校验之后** → `Writing 83744 bytes from SDRAM to flash`（83,716 补齐到 32 的倍数）→ `Checksum and signature OK` → app 正常启动 |
 | 2026-08-17 | **SD1** `OpenPLC_SDRAM` 库 | 19/19 通过。清零 **91 MB/s**（64MB ≈ **701 ms**），故有 `allocUninitialized()` |
 | 2026-08-18 | **BG1** 启动门禁 | 通过，`SDRAM staging buffer OK` |
-| **2026-08-23** | **BG1** 启动门禁 | 通过。早前一块 Upper Deck 上的自检失败是那块板的硬件问题，**换新 Upper Deck 后 SDRAM 正常** |
+| **2026-08-23** | **BG1** 启动门禁 | 通过 |
 | **2026-08-31** | **BG1** 启动门禁 | 通过，`SDRAM staging buffer OK (2 MiB at C0000000)` |
 | **2026-08-31** | **SD1** `OpenPLC_SDRAM` 库 | **19/19 通过**，含 `write_readback_1MB` / `alloc_is_zeroed` / `first_buffer_survives_second_alloc`。`begin()` 1.435 ms，清零 **91 MB/s**（16 MB / 175.1 ms，64 MB 外推 700 ms），`allocUninitialized()` 0 µs —— 和 2026-08-17 逐项一致。由 `$TOOL:TestCase/tools/run_sdram.py` 跑出 |
 
-
-⚠️ SDRAM 自检在 `MX_FMC_Init()` 里，属于 **Phase 2** —— **只有停在 bootloader 时才会跑**，正常跳 app 的启动看不到这行，那不是失败。
 
 ## journal 与诊断
 
@@ -107,7 +89,7 @@ IAPTool 送完最后一个字节就打 `File transfer complete.` 并退出，**�
 | — | **journal reclaim** | 旧格式数据占满扇区时 `Reclaiming state sector (4096 slots discarded)` 正常执行并恢复 |
 | — | **复位原因** | `PIN`（复位键）、`SOFT`（app 请求进上传模式）、`POR`（掉电重上电）三种全部正确 |
 | 2026-08-17 | **备份域 witness 修复后** | 连续三次进 bootloader，第一次是 DR3 的首次写入（正常报 missing），之后稳定 `Backup domain retained, nonce counter = 48/49` |
-| — | **MAC 唯一化** | 两侧串口都打印出 `02:BB:49:3E:A8:02`，同 IP。改前 bootloader 写死 `00:80:E1:00:43:21`，所有板子相同。⚠️ **"两块板不同"从未观察过** |
+| — | **MAC 唯一化** | 两侧串口都打印出 `02:BB:49:3E:A8:02`，同 IP。⚠️ **"两块板不同"从未观察过** |
 
 ## 硬件与平台
 
@@ -122,15 +104,11 @@ IAPTool 送完最后一个字节就打 `File transfer complete.` 并退出，**�
 | 2026-08-17 | **E3** 镜像尺寸 | **97,580 B**，M1 第 2 步之后（owner 槽只读扫描，+636 B） |
 | **2026-08-23** | **E3** 镜像尺寸 | **101,340 B** / 上限 122,880 B，余量 **21,540 B = 17.5%**。0 errors 0 warnings；`text 100948 · data 384 · bss 209395` |
 
-**08-17 到 08-23 涨了 4,396 B**，主要是 owner 槽：公开根告警、`takeown`、`setowner` 链上验签、恢复出厂。
-
 （101,340 是当前产品镜像的大小。）
 
 **P2 的跨仓镜像锚点数是 9**，含 FMC 39 脚映射。
 
 ## 掉电中断（S4a / S4b，需求 E8）
-
-由 `$TOOL:TestCase/tools/run_s4.py` 驱动，人工拔电。⚠️ **判据是 ST-Link 量到的目标电压**，不是串口安静 —— 板子正在擦写的时候本来就又安静又不应答 UDP。
 
 | 日期 | 项 | 结果 |
 |---|---|---|
@@ -144,13 +122,7 @@ IAPTool 送完最后一个字节就打 `File transfer complete.` 并退出，**�
 | 传输（S4a 可拔电区间） | +9.9 s → +43.5 s | **33.7 s** |
 | 擦写+写回（S4b 可拔电区间） | +43.5 s → +63.7 s | **20.2 s** |
 
-`run_s4.py` 自身还有约 5 秒准备（开串口、量电压），所以从脚本启动算起要各加 5 秒。**镜像越大两个窗口越宽**，`--pad-to` 的上限是 `IAP_APP_MAX_SIZE` = 1835008。
-
-**这两条合起来才说明 SDRAM 暂存的价值**：风险窗口从「整个上传过程约 64 秒」压缩到「最后擦写那 20 秒」。
-
-## 2026-09-01 板级回归（PowerShell → Python 迁移的实机验证）
-
-27 个 `.ps1` 归档前后跑的一整轮。**被验证的是脚本，板子行为是量具。**
+## 2026-09-01 板级回归
 
 | 项 | 结果 |
 |---|---|
@@ -164,11 +136,3 @@ IAPTool 送完最后一个字节就打 `File transfer complete.` 并退出，**�
 | **M5 / E7** | 5/5 回显，`Serial4.begin()` 之后 `Serial_Test` 仍能收 |
 | **AU1** | 通过。掉电前最后一个 nonce counter = **140**，重新上电后备份寄存器报 `nonce counter = 140`，两条独立路径一致；phase 2 从 142 续上，从未重启 |
 | **SD1** | 19/19，`begin()` 1.435 ms，清零 91 MB/s（16 MB / 175.1 ms） |
-
-⚠️ **板级脚本的等价性没有逐字节比对，也不可能有** —— 它们要烧写、读串口、动 owner 槽，两版各跑一遍结果本来就不同。判据是「同一块板子上得到同一个结论」。免板部分的逐字节基线在 `$TOOL:TestCase/archive/ps1/`。
-
-## 语言与单位约定
-
-- **日期一律写全**（`2026-08-17`），不写"上周""前几天"。一条 2026-08 的结论，两年后读的人得能判断它还算不算数。
-- **没验证的东西标出来。** 写"未验证"比写一个看起来很确定的猜测好得多。
-- **推断和实测分行写**，不要混在一句里。

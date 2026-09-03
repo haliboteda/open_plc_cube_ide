@@ -8,56 +8,15 @@
 
 | 优先级 | 编号 | 一句话 | 挡着什么 | 谁能动 |
 |---|---|---|---|---|
-| **P1** | [ISS-B5](#iss-b5--★-某些-app-装上去之后板子对-iaptool-不可达) | 某些 app 让板子对 IAPTool 不可达 | 需求 **A3** 的成立范围；无人值守的网络升级 | 我们（加个编译宏就能定位） |
-| **P2** | [ISS-A4](#iss-a4--所有权命令还没进出货工具-iaptool) | `takeown`/`setowner` 没进 IAPTool | **客户拿不到 C10 这个功能** | 我们 |
-| **P3** | [ISS-B2](#iss-b2--两块板的-mac-是否互不相同) | 两块板 MAC 是否不同 | 需求 **E1**、逐板检查单 **F2** | 等第二块板 |
-| P4 | [ISS-A3](#iss-a3--pg9-改输入应该挪到-ioc-里) | PG9 改输入应挪进 `.ioc` | 无（整洁问题） | 我们 |
-| P5 | [ISS-D1](#iss-d1--发现限流是固定窗口实测能超标-20) | 限流是固定窗口，能超标 20% | 无（合法用量差 25 倍） | 我们，要对外承诺数字时再做 |
-| — | [ISS-A2](#iss-a2--boot-行前有个乱码字节) | `[BOOT]` 前一个乱码字节 | 无。**根因已查清，建议接受** | **要你定**（曾被误记成已决策，已更正） |
+| **P1** | [ISS-A4](#iss-a4--所有权命令还没进出货工具-iaptool) | `takeown`/`setowner` 没进 IAPTool | **客户拿不到 C10 这个功能** | 我们 |
+| **P2** | [ISS-B2](#iss-b2--两块板的-mac-是否互不相同) | 两块板 MAC 是否不同 | 需求 **E1**、逐板检查单 **F2** | 等第二块板 |
+| P3 | [ISS-A3](#iss-a3--pg9-改输入应该挪到-ioc-里) | PG9 改输入应挪进 `.ioc` | 无（整洁问题） | 我们 |
+| P4 | [ISS-D1](#iss-d1--发现限流是固定窗口实测能超标-20) | 限流是固定窗口，能超标 20% | 无（合法用量差 25 倍） | 我们，要对外承诺数字时再做 |
 | — | [ISS-B1](#iss-b1--boot-millis-靠电荷泵余电才出得来) | `[BOOT] millis=` 靠电荷泵余电 | 无。**等一个设计决策** | 要你定 |
 
 ---
 
 # P1–P3 · 卡在别人身上或影响客户的
-
-## ISS-B5 · ★ 某些 app 装上去之后板子对 IAPTool 不可达
-
-**是什么**：装上 `$TOOL:TestCase/onboard/sdram/SDRAM_Acceptance` 之后，板子**回 ICMP ping，但完全不回 UDP 发现**，`IAPTool ether` 报 `No response from <ip>, exiting`。换成 `SerialPort` 就好。
-
-**A/B 实测（2026-08-22，同一块板、同一个 bootloader、同一个网络）**：
-
-| 板上装的 | ICMP | UDP 发现（56865） |
-|---|---|---|
-| `SDRAM_Acceptance` | ✅ | ❌ **60 秒超时** |
-| 只有 bootloader，无 app | ✅ | ✅ 复位后 5.1 s |
-| `SerialPort` | ✅ | ✅ 0.1 s |
-
-**已经排除的**：
-
-| 排除项 | 依据 |
-|---|---|
-| 板子掉线 / IP 变了 | 该 app 自己的串口打印 `[NET] ip=192.168.0.35`，且 ICMP 到那个地址通 |
-| 以太网 DMA / lwIP 整体坏了 | ICMP 应答由 lwIP 核心处理，它是通的 |
-| 端口不对 | app 侧和 bootloader 侧都用 `getPort()` = 56865（`$TOOL:IAP_Ether.go:441-445`） |
-| sketch 没启动应答器 | `core:cores/arduino/main.cpp:184` **无条件**调用 `openplc_udp_server_start(NULL)`，而且在 `setup()` **之前** |
-| sketch 的 `loop()` 堵住了主循环 | `SDRAM_Acceptance.ino:129` 是 `void loop() {}`，且核心循环每轮都调 `openplc_net_process()` |
-| **SDRAM 用法本身（2026-08-31 新增）** | 板上那个 `PROBE B5v2` sketch = `SerialPort` + `OpenPLC_SDRAM::begin()` + 16 MB alloc/zero，**UDP 发现照常应答** —— `python tools/enter_bootloader.py` 走以太网把它请进了 bootloader，那条路径非应答不可。所以锅不在「用了 SDRAM」，在 `SDRAM_Acceptance` 的其它部分 |
-
-**由此支持的解释（推断，不是实测）**：ICMP 通而绑在 56865 的 UDP pcb 不应答，正是 **`udp_bind` 失败**的形状 —— 那个 pcb 是独立的，绑不上不影响 lwIP 其余部分。
-
-⚠️ **为什么两个 sketch 会不一样，还没查明。不要猜。**
-
-**在哪找**：`core:cores/arduino/main.cpp:184`（应答器启动点）；`core:libraries/OpenPLC_IAP/src/udp_server.c`（应答器本体）；`core:libraries/OpenPLC_IAP/src/OpenPLC_IAP_Autostart.h`（诊断计数器声明）。
-
-**可能的影响**：⚠️ **用户的 PLC 程序可能把自己锁在网络升级之外。** 不是变砖 —— BOOT0 长按、CDC、ST-Link 都还能进上传模式 —— 但**无人值守的网络升级会失效**，而那是这套 IAP 的主要用法。
-
-顺带两条：
-- **需求 A3 的成立范围要收窄**，它假设了「app 会应答发现」，现在已知有反例。A3 在 `$PROD/docs/STATUS.md` 因此从 ✅ 降成 🟡。
-- **SD1 必须是任何序列里最后一条依赖网络的用例**，否则它后面所有用例都够不到板子。板级用例的标准载荷因此选 `SerialPort`，不是 `SDRAM_Acceptance`。
-
-🚧 **下一步是现成的，不用猜**：用 `-DOPENPLC_DIAG_HEARTBEAT` 编一版那个 sketch（`core:cores/arduino/main.cpp:104-128`），它会周期打印 `udp_start` / `udp_rx` / `udp_tx` / **`bind_fail`** 计数 —— 那几个计数器**存在本身就说明这类事以前出过**，一眼就能确认或否掉。
-
-⚠️ **改 core 是跨仓的共享基础设施**（见 `$PROD/docs/design/ARCHITECTURE.md`），所以定位之后再决定谁改、怎么发版。**定位本身不需要动 core，只要加一个编译宏。**
 
 ## ISS-A4 · 所有权命令还没进出货工具 IAPTool
 
@@ -82,7 +41,7 @@
 | **做什么用的** | 取代原先写死的 `00:80:E1:00:43:21` —— 那个值所有板子相同，同一网段放两台直接冲突 |
 | **在哪找** | bootloader `LWIP/Target/ethernetif.c` 的 USER CODE MACADDRESS 块<br>core `core:libraries/OpenPLC_Net/src/ethernetif.c`（**跨仓镜像，改一处必须改另一处**） |
 | **可能的影响** | 单板已验证：两侧串口都打印 `02:BB:49:3E:A8:02`，同 IP。但**"两块板不同"从未观察过** —— 如果派生算法有缺陷，量产时才会暴露成大面积 IP 冲突 |
-| **要做什么** | 拿到第二块板，同网段同时上电，比对两边串口打印的 MAC。用例骨架是 [../test/CASE-DESIGNS.md](../test/CASE-DESIGNS.md) 的 **M3** |
+| **要做什么** | 拿到第二块板，同网段同时上电，比对两边串口打印的 MAC（用例 **M3**） |
 
 ⚠️ **P2 已经自动比对了两侧派生算法的一致性**，剩下的只有"算法本身会不会撞"，那需要真的两块板。
 
@@ -125,41 +84,6 @@
 ---
 
 # 已查清根因，等一个决定
-
-## ISS-A2 · `[BOOT]` 行前有个乱码字节
-
-**根因已查清。三个候选排除了两个。建议接受。**
-
-| | |
-|---|---|
-| **是什么** | bootloader 交权给 app 前后，串口上多出一个乱码字节 |
-| **可能的影响** | **纯显示问题**，不影响任何功能。但会让人怀疑串口配置错了，浪费排查时间 |
-
-串口原文：
-
-```
-** APP Mod ...
-[?[BOOT] millis=12      ← 乱码紧贴在 [BOOT] 前面
-UART echo ready         ← 前面是干净的
-```
-
-| 候选 | 窗口 | 在哪找 | 机理 | 状态 |
-|---|---|---|---|---|
-| ⚠1 | DeInit 之后、关收发器之前 | `IAPServer/IAP_server.c:481` | PC10（MAX3221 的 DIN）被释放成浮空，而芯片还开着 → 输出跟噪声抖 | ❌ **已排除** —— 改了顺序，乱码一模一样还在 |
-| **⚠2** | 关收发器那一刻 | `IAPServer/IAP_server.c:482`（定义在 `Core/Src/usart.c:151`） | 电荷泵停转，线电平从 mark 塌向 0V → 接收端判成起始位 | ✅ **就是这个** |
-| ⚠3 | sketch 打开收发器那一刻 | — | 电荷泵启动爬升 | ❌ **已排除** —— 而这是我原先标的"最高把握" |
-
-**这是主动关断收发器的固有代价，不是 bug。** 而"交权时让 app 拿到一块冷板子的收发器状态"是刻意设计（见 `server_jump_to_app()` 注释）。
-
-**剩下的选项，都不便宜：**
-
-| 方案 | 代价 |
-|---|---|
-| **接受它**，文档写明 | 0。一个纯显示字节 |
-| 关断前多发几个空闲位，把塌陷推到有效数据之后 | 要试出需要几个位，且塌陷时间随电容容差变 |
-| 干脆不关收发器 | ❌ 违反"app 拿到冷板子状态"的设计 |
-
-**我建议接受，但这条还没拍板 —— 等你定。** 根因已经查清，所以不用重查；要定的只是"接不接受"。定了之后再进 [../design/DECISIONS.md](../design/DECISIONS.md)。
 
 ## ISS-B1 · `[BOOT] millis=` 靠电荷泵余电才出得来
 

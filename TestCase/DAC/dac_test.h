@@ -16,7 +16,7 @@
 // either is bridged, the XTR111 input becomes a summing node with /VREF and
 // both numbers change - and neither the jumper state nor /VREF's voltage is
 // documented. The firmware prints what it set and what to expect; the person
-// reading the ammeter decides. See docs/test/BOARD-BRINGUP-CASES.md.
+// reading the ammeter decides.
 //
 // There is no software enable to check: the XTR111 OD pin is tied to ground
 // through 10k. The fault flags on PI4/PE3 are not readable either - their

@@ -18,8 +18,8 @@
 //
 // Three phases, then it stays in the last one:
 //   R1  pin level, needs nothing attached: toggle PD4 and PD5 as GPIO, read back
-//   R2  transmit a banner every 2 s so an adapter or a scope sees traffic
-//   R4  echo whatever arrives back to the sender
+//   R2  transmit a banner every 3 s so an adapter or a scope sees traffic
+//   R4  print whatever arrives (ASCII + hex) and echo it back to the sender
 //
 // Runs forever (does not return).
 
