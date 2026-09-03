@@ -1,5 +1,10 @@
 // din_test.h
 //
+// *** The idle reading depends on whether 24 V is connected. With 24 V the
+// *** comparator's + node is pulled to 0 V through 1k1 and an unconnected
+// *** channel reads 0; on ST-Link's 3.3 V alone the LM339 has no supply, the
+// *** 10k pull-up wins, and the same channel reads 1. Neither is a fault.
+//
 // Board bring-up case 1: read the eight Digital In pins and print what is on
 // them.
 //

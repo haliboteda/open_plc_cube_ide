@@ -342,6 +342,7 @@ void process_command() {
 					printf("flash command missing/invalid signature - refusing to erase\r\n");
 					send_response("ERR");
 				} else if (!authOk) {
+					printf("flash command failed authentication - refusing\r\n");
 					send_response("ERR");
 					/* RAM only: this is the one rejection path an unauthenticated
 					 * caller can reach, so it must never touch Flash. */

@@ -1,5 +1,16 @@
 // adc_test.h
 //
+// *** The port labels are swapped: Analog In 1 is PC3_C, Analog In 2 is PA6.
+// *** The internal VREFBUF must be enabled first. There is no reference chip
+// *** on this board, so without it VREF+ floats below 1.2 V and the readings
+// *** come out as 0x8000 and other powers of two - they look like data.
+// *** The range jumpers are solder bridges: JP5/JP6/JP8/JP9 are open from the
+// *** factory and bridging them CANNOT BE UNDONE.
+// *** The board has two connectors called J4. The analog terminals are on
+// *** UpperDeck J4; JunctionLink J4 is the 20-pin expansion header.
+// *** The LM50 output has no filter capacitor and drives the ADC sampling
+// *** capacitor directly - too short a sampling time reads low.
+//
 // Board bring-up cases 3 (Analog In) and 11 (on-board temperature).
 // Both live here because they share ADC1 - two HAL_ADC_Init() calls on one
 // instance would overwrite each other.
@@ -8,8 +19,6 @@
 //   Analog In 1 (UpperDeck J3-4) -> PC3_C, ADC3_INP1
 //   Analog In 2 (UpperDeck J4-1) -> PA6,   ADC12_INP3
 //   Analog GND  (UpperDeck J4-4 / J4-5)
-//   NOTE the port labels are swapped relative to the requirement text: on
-//   this board Analog In 1 is the PC3_C pin, not PA6.
 //
 // Case 11, temperature - on board, no wiring:
 //   PA0 = ADC1_INP16  (LM50BIM3 @ LowerDeck U1, reverse-polarity side, T-PS)

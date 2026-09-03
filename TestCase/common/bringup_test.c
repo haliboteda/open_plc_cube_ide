@@ -6,7 +6,7 @@
 
 #include "main.h"
 #include "usart.h"
-#include "relay.h"
+#include "RELAY/relay_test.h"
 
 #include "DIN/din_test.h"
 #include "ADC/adc_test.h"
@@ -14,7 +14,6 @@
 
 #include <stdio.h>
 
-#define RELAY_TEST_HALF_PERIOD_MS 2000U
 
 enum {
     CASE_DIN = 0,    /* 1  */
@@ -34,8 +33,6 @@ static const char *const case_names[CASE_COUNT] = {
 };
 
 static int      case_enabled[CASE_COUNT];
-static uint32_t relay_due_ms;
-static int      relay_state;
 
 /* This board has no external voltage reference - the Bridge BOM contains no
  * reference IC at all - so VREF+ carries nothing but its decoupling and the
@@ -83,36 +80,6 @@ static void BringUp_EnableVrefBuf(void)
            " settled for 20 ms\r\n", (unsigned long)ready_ms);
 }
 
-static void BringUp_Relay_Init(void)
-{
-    /* The six relay pins are already GPIO outputs out of MX_GPIO_Init. */
-    Relay_Init();
-    for (int i = 0; i < RELAY_COUNT; i++) {
-        Relay_Off((RELAY_Name)i);
-    }
-    relay_state  = 0;
-    relay_due_ms = HAL_GetTick();
-}
-
-static void BringUp_Relay_Tick(uint32_t now_ms)
-{
-    if ((int32_t)(now_ms - relay_due_ms) < 0) {
-        return;
-    }
-    relay_due_ms = now_ms + RELAY_TEST_HALF_PERIOD_MS;
-    relay_state = !relay_state;
-
-    for (int i = 0; i < RELAY_COUNT; i++) {
-        if (relay_state) {
-            Relay_On((RELAY_Name)i);
-        } else {
-            Relay_Off((RELAY_Name)i);
-        }
-    }
-    printf("[T2 ] Relays 1-6 just switched %s (they flip every 2 seconds)\r\n",
-           relay_state ? "ON" : "OFF");
-}
-
 static void BringUp_PrintHelp(void)
 {
     printf("\r\n--- board bring-up, cases 1 2 3 4 11 running together ---\r\n");
@@ -130,10 +97,7 @@ static void BringUp_Toggle(int idx)
     /* Leave the relays where the operator can see them rather than frozen
      * mid-cycle in whatever state the last toggle happened to land on. */
     if (idx == CASE_RELAY && !case_enabled[idx]) {
-        for (int i = 0; i < RELAY_COUNT; i++) {
-            Relay_Off((RELAY_Name)i);
-        }
-        relay_state = 0;
+        Relay_Test_AllOff();
     }
 }
 
@@ -176,7 +140,7 @@ void BringUp_Test_Run(void)
     printf("\r\n[BRINGUP] cases 1, 4 and 11; cases 2 and 3 are paused\r\n");
 
     DIN_Test_Init();
-    BringUp_Relay_Init();
+    Relay_Test_Init();
 
     /* Before both analog inits: they measure and use the reference it sets up. */
     BringUp_EnableVrefBuf();
@@ -197,7 +161,7 @@ void BringUp_Test_Run(void)
         uint32_t now_ms = HAL_GetTick();
 
         if (case_enabled[CASE_DIN])   { DIN_Test_Tick(now_ms); }
-        if (case_enabled[CASE_RELAY]) { BringUp_Relay_Tick(now_ms); }
+        if (case_enabled[CASE_RELAY]) { Relay_Test_Tick(now_ms); }
         if (case_enabled[CASE_AIN])   { ADC_Test_TickAnalogIn(now_ms); }
         if (case_enabled[CASE_AOUT])  { DAC_Test_Tick(now_ms); }
         if (case_enabled[CASE_TEMP])  { ADC_Test_TickTemperature(now_ms); }

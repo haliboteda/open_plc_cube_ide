@@ -9,9 +9,12 @@
 //           PD6 = USART2_RX <- U6 RO
 //           PD4 = direction  -> U6 /RE and DE, which share one net
 //
-// ⚠ /RE and DE are the same net (netlist.ipc:497-498), so the receiver is off
-// whenever the driver is on. The board cannot hear itself: proving RS485 works
-// needs a second device on A/B. Host side: $TOOL/TestCase/tools/rs485_echo.py
+// *** /RE and DE are the same net (netlist.ipc:497-498), so the receiver is
+// *** off whenever the driver is on. The board cannot hear itself: proving
+// *** RS485 works needs a second device on A/B.
+// *** PI2 = RS485_EN does not exist on this board - PD4 is the only control.
+//
+// Host side: $TOOL/TestCase/tools/rs485_echo.py
 //
 // The transceiver has no enable pin - pin 8 is tied straight to +3V3 - so PD4
 // is the only control there is.

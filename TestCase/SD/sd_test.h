@@ -9,7 +9,7 @@
 // microSD socket - see Hardware/Bridge_overview.txt section 3):
 //   CMD  -> PD2  (SDIO1_CMD)
 //   CLK  -> PC12 (SDIO1_CLK)
-//   DAT0 -> PC8  (SDIO1_D0)          <- only DAT0 wired, so 1-bit bus only
+//   DAT0 -> PC8  (SDIO1_D0)          <- *** only DAT0 wired: 1-bit bus only
 //   CD   -> PE6  (mechanical card-detect switch, not the SD DAT3/CD line)
 //
 // This project's .ioc never enabled SDMMC1 (no pins, no

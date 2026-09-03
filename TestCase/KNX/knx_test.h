@@ -41,7 +41,7 @@
 //   collector, LED on -> output low.  R94 10k to VCCCORE pulls the output up.
 //   So PB14 high -> STKNX pin 24 high -> active pulse.  PB14 low -> idle.
 //
-//   PB14 must therefore never be left floating: with no LED current the
+//   *** PB14 must never be left floating: with no LED current the
 //   output releases and R94 holds STKNX pin 24 high, i.e. the transceiver
 //   sinks bus current continuously.  STKNX's own 6 uA pull-down on pin 24
 //   cannot fight a 10k pull-up.  Park PB14 driven low.

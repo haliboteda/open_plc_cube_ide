@@ -1,5 +1,9 @@
 // pwm_test.h
 //
+// *** Digital Out 6 is a high-side FET fed from the 24 V input, so 24 V must
+// *** be connected or the output cannot drive the LED at all. Size the series
+// *** resistor for that rail, not for 3V3.
+//
 // Standalone PWM bring-up test for the STM32H743 OpenPLC board.
 // Not part of the bootloader's core logic - safe to delete once the
 // PWM driver has been validated and ported into the Arduino core.

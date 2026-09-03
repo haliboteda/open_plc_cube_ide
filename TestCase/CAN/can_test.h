@@ -67,7 +67,7 @@
 // ---------------------------------------------------------------------------
 // R69 (120 R 1%) IS fitted, but it sits in series with JP7, a 2-pad
 // SolderJumper_2_Open that ships OPEN - bare copper, nothing placed. So the
-// board is UNTERMINATED as delivered. Terminating means bridging JP7 with
+// *** board is UNTERMINATED as delivered. Terminating means bridging JP7 with
 // solder, which is not reversible in any convenient way.
 //
 // The loopback phases do not need termination, and neither does a short

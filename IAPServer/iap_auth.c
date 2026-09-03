@@ -129,7 +129,11 @@ bool iap_auth_verify_and_consume(const uint8_t *msg, uint32_t msg_len, const uin
 	iap_keyderive_get_device_key(device_key);
 	hmac_sha256(device_key, sizeof(device_key), buf, IAP_AUTH_NONCE_SIZE + msg_len, calc);
 
-	return constant_time_eq(calc, hmac, IAP_AUTH_HMAC_SIZE);
+	if (!constant_time_eq(calc, hmac, IAP_AUTH_HMAC_SIZE)) {
+		printf("Auth rejected: HMAC does not match the challenge\r\n");
+		return false;
+	}
+	return true;
 }
 
 uint32_t iap_auth_get_counter(void)

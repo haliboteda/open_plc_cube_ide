@@ -1,5 +1,8 @@
 // rs232_test.h
 //
+// *** Terminals C05/C06 carry true RS-232 levels (+/-12 V). A TTL USB-serial
+// *** adapter connected there can be destroyed. Use an RS232 adapter.
+//
 // Standalone RS232 receive bring-up test for the STM32H743 OpenPLC board.
 // Not part of the bootloader's core logic - safe to delete once RS232
 // receive has been validated.

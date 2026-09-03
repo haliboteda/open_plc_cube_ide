@@ -1,5 +1,14 @@
 // dac_test.h
 //
+// *** The expected currents hold only while JP3 and JP4 are open. Bridge
+// *** either and the XTR111 input becomes a summing node with /VREF, which
+// *** changes both numbers.
+// *** Full scale is VREF+, not 3V3.
+// *** The fault flags on PI4/PE3 cannot be read: their pull-up network only
+// *** brings an asserted-low down to about 3.0 V.
+// *** The board has two connectors called J4. The analog terminals are on
+// *** UpperDeck J4; JunctionLink J4 is the 20-pin expansion header.
+//
 // Board bring-up case 4: Analog Out.
 //
 // External ports the ammeter goes in series with:
