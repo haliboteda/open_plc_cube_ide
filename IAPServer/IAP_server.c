@@ -32,7 +32,6 @@ uint32_t expected_size;
 uint32_t expected_checksum;
 static uint8_t expected_signature[FW_SIGNATURE_SIZE];
 static bool have_expected_signature;
-static uint32_t expected_version; /* 0 if the flash command didn't carry one (older PC tool) */
 static bool s_boot0_held;         /* BOOT0 was down at this boot's decision point */
 
 // volatile: written from IAP_data_recv() (USB/lwIP receive callback context)
@@ -194,16 +193,6 @@ void process_command() {
 			char uid_hex[IAP_MACHINE_ID_HEX_LEN + 1U];
 			iap_keyderive_get_machine_id_hex(uid_hex);
 			send_response(uid_hex);
-		} else if (strncmp((char *)RXBuffer, "getversion", 10) == 0) {
-			// Lets the PC tool learn the version currently installed *before*
-			// committing to a flash command, so it can warn the operator
-			// about a downgrade in its own console. The bootloader itself
-			// never refuses a downgrade -- that decision is the operator's.
-			iap_fw_metadata_t meta;
-			char verbuf[16];
-			uint32_t v = bootloader_state_get_metadata(&meta) ? meta.fw_version : 0U;
-			snprintf(verbuf, sizeof(verbuf), "%" PRIu32, v);
-			send_response(verbuf);
 		} else if (strncmp((char *)RXBuffer, "getpubkey", 9) == 0) {
 			// Lets the PC tool confirm its signing key matches the key this
 			// bootloader verifies against, before it spends time sending an
@@ -293,20 +282,14 @@ void process_command() {
 				}
 			}
 		} else if (strncmp((char *)RXBuffer, "flash", 5) == 0) {
-			// decode flash command: "flash <size> <crc32hex> <signature_hex> <hmac_hex> [version]"
+			// decode flash command: "flash <size> <crc32hex> <signature_hex> <hmac_hex>"
 			// - signature_hex: 64-byte ECDSA r||s from IAPTool sign / IAPTool cdc (128 hex chars)
-			// - hmac_hex: HMAC-SHA256(auth_key, nonce || "flash <size> <crc32hex> <signature_hex>[ <version>]")
+			// - hmac_hex: HMAC-SHA256(auth_key, nonce || "flash <size> <crc32hex> <signature_hex>")
 			//   for the nonce most recently returned by "authchallenge" (32 hex chars)
-			// - version: optional decimal firmware version; omitted by older PC
-			//   tools, in which case it's saved as 0 (no rollback comparison
-			//   possible for that image, same as before this field existed)
 			char sig_hex[129] = {0};
 			char hmac_hex[65] = {0};
-			uint32_t parsed_version = 0U;
-			int nParsed = sscanf((char *)RXBuffer, "flash %" SCNu32 " %" SCNx32 " %128s %64s %" SCNu32,
-					&expected_size, &expected_checksum, sig_hex, hmac_hex, &parsed_version);
-			bool haveVersion = (nParsed == 5);
-			expected_version = haveVersion ? parsed_version : 0U;
+			int nParsed = sscanf((char *)RXBuffer, "flash %" SCNu32 " %" SCNx32 " %128s %64s",
+					&expected_size, &expected_checksum, sig_hex, hmac_hex);
 
 			have_expected_signature = false;
 			if (nParsed >= 3) {
@@ -319,14 +302,11 @@ void process_command() {
 
 			bool authOk = false;
 			uint8_t hmacBytes[IAP_AUTH_HMAC_SIZE];
-			if ((nParsed == 4 || nParsed == 5) && have_expected_signature
+			if (nParsed == 4 && have_expected_signature
 					&& hex_decode(hmac_hex, hmacBytes, IAP_AUTH_HMAC_SIZE)) {
 				char authMsg[220];
-				int authMsgLen = haveVersion
-						? snprintf(authMsg, sizeof(authMsg), "flash %" PRIu32 " %" PRIx32 " %s %" PRIu32,
-								expected_size, expected_checksum, sig_hex, parsed_version)
-						: snprintf(authMsg, sizeof(authMsg), "flash %" PRIu32 " %" PRIx32 " %s",
-								expected_size, expected_checksum, sig_hex);
+				int authMsgLen = snprintf(authMsg, sizeof(authMsg), "flash %" PRIu32 " %" PRIx32 " %s",
+						expected_size, expected_checksum, sig_hex);
 				authOk = iap_auth_verify_and_consume((const uint8_t *)authMsg, (uint32_t)authMsgLen, hmacBytes);
 			}
 
@@ -437,7 +417,7 @@ void process_command() {
 					bootloader_state_log_event(IAP_EVT_FLASH_WRITE_FAIL, (uint32_t)current_method, peer_ip, nowTick, authCtr);
 				} else {
 					printf("Checksum and signature OK. Rebooting...\r\n");
-					bootloader_state_save_metadata(expected_size, expected_version, hash, expected_signature);
+					bootloader_state_save_metadata(expected_size, hash, expected_signature);
 					bootloader_state_log_event(IAP_EVT_UPDATE_OK, (uint32_t)current_method, peer_ip, nowTick, authCtr);
 					HAL_Delay(500);
 					HAL_NVIC_SystemReset();

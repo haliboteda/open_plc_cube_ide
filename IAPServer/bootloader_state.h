@@ -46,14 +46,13 @@ extern "C" {
 #define IAP_JOURNAL_SLOT_SIZE 32U
 #define IAP_METADATA_SLOTS    4U
 
-/* Firmware metadata payload: 4+4+32+64+16 = 120 bytes, which with the 8-byte
+/* Firmware metadata payload: 4+32+64+20 = 120 bytes, which with the 8-byte
  * record header fills IAP_METADATA_SLOTS slots exactly. */
 typedef struct {
 	uint32_t app_size;
-	uint32_t fw_version;
 	uint8_t  sha256[32];
 	uint8_t  signature[64];
-	uint8_t  reserved[16];
+	uint8_t  reserved[20];
 } iap_fw_metadata_t;
 
 /* The log record itself is iap_log_rec_t in bootloader_state.c. */
@@ -84,7 +83,7 @@ bool bootloader_state_get_metadata(iap_fw_metadata_t *out);
 
 /* Appends a new metadata record after a successful, signature-verified
  * update. Does not erase/overwrite the previous record. */
-void bootloader_state_save_metadata(uint32_t app_size, uint32_t fw_version,
+void bootloader_state_save_metadata(uint32_t app_size,
                                      const uint8_t sha256[32], const uint8_t signature[64]);
 
 /* Appends a tamper-chained log entry. Each entry's stored hash covers the

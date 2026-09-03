@@ -65,15 +65,6 @@ update. Failure (or missing signature) is rejected *before* erasing flash,
 so a bad request can't brick a working app for nothing. Identical for both
 transports - no CDC-specific work needed here.
 
-The trailing `version` field is optional (an older PC tool that never sends
-it still works, saved as `0`) and is *not* used by the bootloader to block
-anything - a validly signed older image is always accepted. It exists so a
-`getversion` query (same command handler, no auth needed - it only reads
-back a non-secret number) lets the PC tool learn the currently-installed
-version before it sends `flash`, and warn the operator in its own console if
-what it's about to push is older. The decision to proceed through a
-downgrade is the operator's, made outside the device.
-
 **5. Data transfer** (integrity only) - CRC32 over the full image once
 received (`HAL_CRC_Calculate`). Catches transmission corruption; proves
 nothing about who sent it or whether it was deliberately altered (trivial to
@@ -157,13 +148,5 @@ key was never on the device.
       itself is still a placeholder baked into every image; an independent,
       unguessable secret per device generated at manufacturing time is the
       actual remaining item.
-- [ ] **PC-tool downgrade prompt.** The bootloader-side foundation is done
-      (Step 4: `flash` carries a real version, `getversion` reports what's
-      installed, downgrades are never blocked device-side). What's still
-      missing is entirely on the PC-tool side: before sending `flash`, query
-      `getversion`, compare against the image about to be sent, and if it's
-      a downgrade, print a warning and require an explicit yes in that
-      tool's own console before proceeding. Needs access to that repo (not
-      part of this workspace) to implement.
 - [ ] **Consolidate `iap_auth.c`/`sha256.c` across the three repos** into one
       shared source instead of three hand-synced copies.

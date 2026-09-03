@@ -185,7 +185,7 @@ bool bootloader_state_get_metadata(iap_fw_metadata_t *out)
 	return true;
 }
 
-void bootloader_state_save_metadata(uint32_t app_size, uint32_t fw_version,
+void bootloader_state_save_metadata(uint32_t app_size,
                                      const uint8_t sha256_digest[32], const uint8_t signature[64])
 {
 	iap_meta_rec_t rec;
@@ -201,7 +201,6 @@ void bootloader_state_save_metadata(uint32_t app_size, uint32_t fw_version,
 	rec.type = IAP_REC_METADATA;
 	rec.slots = (uint8_t)IAP_METADATA_SLOTS;
 	rec.meta.app_size = app_size;
-	rec.meta.fw_version = fw_version;
 	memcpy(rec.meta.sha256, sha256_digest, 32U);
 	memcpy(rec.meta.signature, signature, 64U);
 

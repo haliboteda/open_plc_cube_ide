@@ -42,7 +42,6 @@ SL2 的核心要求是"人类用户要能被唯一识别",不是"有没有认证
 | 固件/软件完整性校验 | ✅ | ECDSA P-256 签名验证,开机时和升级后都验(Step 1、Step 6),这块覆盖得比很多商用 PLC 都到位 |
 | 输入校验 | ✅ | `hex_decode` 严格长度校验、`expected_size` 边界检查(`IAP_APP_MAX_SIZE`) |
 | 错误处理不静默失败 | ✅ | 每种失败都有明确的 `ERR`/`Checksum Failed`/`Signature Failed` 之类的响应,不会"看起来成功但其实没做" |
-| 防回滚(anti-rollback) | ⚠️ | 已经有版本号追踪的地基(`getversion`/`flash ... version`),但按你的决定,降级只在 PC 工具端提示确认,设备侧不做强制拦截--这是一个刻意的权衡,不是遗漏,但要在自查表里明确写出来,免得以后被误判成"没做" |
 | **本项目/固件本体的完整性(bootloader 自身)** | ❌ | 前面讨论过的 WRP/RDP,目前还没做--所有上面的签名校验都建立在"bootloader 自己没被换掉"这个假设上,这个假设目前只是靠"没人去改"撑着,没有硬件强制 |
 
 ## FR4 - 数据机密性(Data Confidentiality)

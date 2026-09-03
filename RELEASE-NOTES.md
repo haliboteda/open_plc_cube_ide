@@ -44,9 +44,11 @@ already has firmware on it.
 > **The bootloader and the application must be upgraded together. This is not a
 > recommendation.**
 
-Application metadata (size, version, hash) lives in the bootloader's journal,
-and 0.1.3 changed the journal format. A 0.1.3 bootloader cannot read a journal
-written by 0.1.2:
+Application metadata (size, hash, signature) lives in the bootloader's journal,
+and 0.1.3 changed both the journal format and the metadata record itself - the
+version field is gone, because nothing compares versions any more. A 0.1.3
+bootloader cannot read a journal written by 0.1.2, and a metadata record
+written by an earlier 0.1.3 build no longer lines up either:
 
 1. It finds no metadata for the application already in flash.
 2. It therefore declares that application invalid.
