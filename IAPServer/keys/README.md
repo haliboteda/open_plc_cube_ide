@@ -12,8 +12,13 @@ produces valid signatures is not.
 | `fw_signing_key.TEST_ONLY.pem` | Placeholder signing **private** key | yes - see below |
 | `fw_signing_key.pem` | Your real signing private key | **no** (gitignored) |
 | `*.pem.certserial` | Certificate serial counter for that key | yes - not a secret |
+| `*.pem.cert` | A certificate somebody else's root issued for that key | **no** - site-specific |
 | `rotate_keys.sh` | Replaces the signing keypair | yes |
 | `backup/` | Snapshots taken before each rotation | **no** (gitignored) |
+
+Anything derived from a key sits beside it under the key's own name plus a
+suffix. That is not decoration: it makes pairing a key with the wrong
+counter, or the wrong certificate, impossible to express.
 
 `fw_pubkey.inc` is `#include`d directly by `fw_pubkey.c`. No generator step, no
 generated headers - editing it and rebuilding is the whole mechanism.
@@ -57,13 +62,26 @@ A board that has been **claimed** does not follow this key at all: it verifies
 against the owner recorded in its own flash. Hand such a board over with
 `IAPTool setowner`, not by rotating here. See `../../docs/design/OWNERSHIP.md`.
 
-## The serial counter
+## Certificates and the serial counter
 
-`IAPTool cert` numbers each certificate it issues from `<key>.pem.certserial`,
-a plain integer kept beside the private key it belongs to. Two certificates
-from one root must never share a number, because that number is what a future
-revocation list will name. Losing the file restarts the count and can reissue a
-number already used by that same root - keep it with the key.
+A certificate says "this root authorises that key". `IAPTool cert <leafPubHex>`
+issues one; the holder saves it as `<their key>.pem.cert` and can then upload
+without ever having the root private key. Self-signing (no argument) is what
+one person with one key gets, and the board cannot tell the two apart - it only
+ever asks whether the root it trusts signed the certificate in front of it.
+
+Delegated certificates are numbered from `<key>.pem.certserial`, a plain
+integer kept beside the private key that issues them. Two certificates from one
+root must never share a number, because that number is what a revocation would
+name. Losing the file restarts the count and can reissue a number already used
+by that same root - keep it with the key.
+
+Self-signed certificates do not draw a number and do not touch the counter, so
+uploading never writes into this directory.
+
+⚠️ **Rotating the signing key invalidates every certificate issued by the old
+one.** `rotate_keys.sh` renames them out of the way rather than leaving them to
+fail later with a message that points at the board.
 
 ## Before shipping
 

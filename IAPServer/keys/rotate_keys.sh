@@ -188,8 +188,20 @@ printf '%s\n' "$PEM_TARGETS" | while read -r f; do
 	cp "$WORK/fw_signing_key.pem" "$f"
 	chmod 600 "$f" 2>/dev/null || true
 	printf 'wrote %s\n' "$f"
+
+	# A certificate names the old root. Left in place it is presented to every
+	# board and refused, and the refusal reads as "this board does not trust
+	# you" -- pointing at the board rather than at the rotation that just
+	# happened. Moved aside, the key certifies itself again and uploads work.
+	if [ -f "$f.cert" ]; then
+		mv "$f.cert" "$f.cert.superseded"
+		printf 'moved aside %s (issued by the old root)\n' "$f.cert"
+	fi
+	# The counter belongs to the key that drew from it. A new key starts over.
+	rm -f "$f.certserial"
 done
-rm -f "$IAPSERVER/keys/fw_signing_key.TEST_ONLY.pem"
+rm -f "$IAPSERVER/keys/fw_signing_key.TEST_ONLY.pem" \
+      "$IAPSERVER/keys/fw_signing_key.TEST_ONLY.pem.certserial"
 
 cat <<EOF
 
@@ -198,6 +210,8 @@ Done. Now, in this order:
   1. Rebuild the bootloader (the public key is compiled in).
   2. Flash it over ST-Link or DFU -- IAP cannot update the bootloader.
   3. Rebuild and upload your sketch.
+  4. Reissue certificates: anything the old root vouched for is void. The old
+     files are beside their keys as *.cert.superseded.
 
 To undo:  ./rotate_keys.sh --restore=$STAMP
 The backup holds the private key in the clear -- keep $BACKUP_ROOT out of git.
