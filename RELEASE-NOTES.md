@@ -210,14 +210,20 @@ click.
   than for the tool to exit.
 - Long-term stability under a real OpenPLC runtime.
 
-### Before shipping
+### The shipped signing key is public on purpose
 
-The signing key in this repository is a placeholder and its private half is
-committed — anyone with the source can sign an image the board accepts. Run
-`IAPServer/keys/rotate_keys.sh`, then keep `fw_signing_key.pem` off this
-machine. See `IAPServer/keys/README.md`.
+Its private half is committed, so anyone with the source can sign an image a
+factory board accepts. **Rotating it is not the answer, and the vendor cannot
+be the one to do it.** Users write their own PLC programs; uploading one means
+signing it; the key therefore has to be on the user's machine. A secret vendor
+key would mean users could only run firmware the vendor signed.
 
-There is no second secret to rotate: the board holds only public keys now.
+A board becomes defended when it is claimed (`IAPTool takeown`, no ST-Link
+needed), or when a customer compiles the board package with a root of their own
+(`IAPServer/keys/rotate_keys.sh`). Until then the boot log says on every start
+that anyone can sign firmware it will run. See `IAPServer/keys/README.md`.
+
+There is no second secret: the board holds only public keys.
 
 ---
 
@@ -239,7 +245,9 @@ also runs the host-side tests. Run it before working through the rest by hand.
 - [ ] Everything verified in the live Arduino15 package has been copied back
       into the core package's git repository and committed.
       → `$TOOL/TestCase/tools/check_core_sync.py`
-- [ ] Signing key rotated, and the private half stored off-machine. Any
-      certificate the old key issued is void — reissue them.
+- [ ] The published-root warning still fires on an unclaimed board
+      (`$TOOL/TestCase/tools/check_public_root.py`, case P6). It is the only
+      thing telling a customer their board is undefended, and it goes quiet
+      the moment the fingerprint it compares against drifts.
 - [ ] Bootloader flashed over ST-Link/DFU and the application uploaded over
       IAP, in that order, on a board that previously ran the older release.

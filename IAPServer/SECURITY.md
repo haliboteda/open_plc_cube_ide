@@ -135,23 +135,34 @@ key, once a board has been claimed. See `../docs/design/OWNERSHIP.md`.
   `flash` auth. Availability quirk, not a security hole (a nonce can never
   be double-consumed or accepted after being overwritten).
 
-## Keys - must be rotated before production
+## The shipped key is public, and stays that way
 
-- **ECDSA signing key**: `fw_signing_key.TEST_ONLY.pem` is a public test
-  key - anyone with this repo can sign an image the placeholder public key
-  accepts. Run `keys/rotate_keys.sh`, rebuild and re-flash the bootloader
-  over ST-Link, keep the private key off any repo/network.
-There is no second secret to rotate. Session authentication used to derive a
-per-device HMAC key from a fixed password compiled into every image; anyone who
-extracted that password could compute any device's key from its public UID.
-That whole scheme is gone - a signed challenge needs no shared secret, so
-nothing on the board is worth extracting.
+`fw_signing_key.TEST_ONLY.pem` is committed, so anyone with this repository can
+sign an image a factory board accepts. **That is not a defect awaiting a
+rotation.** Users write their own PLC programs; uploading one means signing it;
+the private key therefore has to be on the user's machine, and the project
+ships no per-customer material. A secret vendor key would mean users could only
+run firmware the vendor signed. The derivation is in
+`../docs/design/OWNERSHIP.md`.
+
+So everything above protects a factory board against corrupted images and
+remote injection, and against nothing else. **The board becomes defended when
+it is claimed** (`IAPTool takeown`), or when a customer compiles the board
+package with their own root (`keys/rotate_keys.sh`). Until one of those
+happens, the boot log says so on every start.
+
+There is no second secret. Session authentication used to derive a per-device
+HMAC key from a fixed password compiled into every image; anyone who extracted
+that password could compute any device's key from its public UID. That whole
+scheme is gone - a signed challenge needs no shared secret, so nothing on the
+board is worth extracting.
 
 ## TODO
 
-- [ ] **A real release signing key.** `fw_signing_key.TEST_ONLY.pem` is
-      public. Everything above is sound and still runs firmware anyone can
-      sign until this is rotated and the board is claimed.
+- [ ] **Claim every board before it goes into service.** Nothing above
+      protects a board that still trusts the published key, and the vendor
+      cannot fix that by rotating -- see the section above. This is an
+      operational step, not a code change.
 - [ ] **Revoking one delegated certificate.** Today the only revocation is
       handing the board to a new root (`IAPTool setowner`), which voids every
       certificate the old root issued -- including the firmware already

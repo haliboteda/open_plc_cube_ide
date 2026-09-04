@@ -83,15 +83,28 @@ uploading never writes into this directory.
 one.** `rotate_keys.sh` renames them out of the way rather than leaving them to
 fail later with a message that points at the board.
 
-## Before shipping
+## Who this script is for
 
-The placeholder signing key in this repo is public - anyone who cloned the
-project can sign an image the placeholder `fw_pubkey.inc` accepts. Run
-`./rotate_keys.sh`, then move `fw_signing_key.pem` off this machine: losing it
-means you can never sign an update again, leaking it means anyone can.
+**Not the vendor.** The key shipped with this project is public and has to stay
+that way: users write their own PLC programs, uploading one means signing it,
+so the private key has to be on the user's machine — and the project ships no
+per-customer material. Rotating it would produce another key that also has to
+ship publicly. The full argument is in `../../docs/design/OWNERSHIP.md`; the
+short version is that a secret vendor key means users can only run firmware the
+vendor signed, which is not this product.
 
-Note the deliberate trade-off already baked into this design: the signing key
-ships inside the Arduino package, because users compile their own PLC programs.
-That makes it effectively public. The signature guards against corrupted images
-and remote injection - **not** against the person holding the board. Claiming a
-board (`IAPTool takeown`) is what closes that gap for a specific customer.
+So a factory board is undefended, by construction. The signature guards against
+corrupted images and remote injection — **not** against the person holding the
+board.
+
+**`rotate_keys.sh` is for a customer who compiles the board package
+themselves.** Running it bakes their own root into the bootloader, and their
+boards are safe out of the box: nobody else's signature will start firmware on
+them, and the "trusts the PUBLISHED root key" warning never appears.
+
+A customer who uses the packaged binaries instead gets the same protection with
+`IAPTool takeown`, which needs no rebuild and no ST-Link. That is the path most
+people are on.
+
+Either way, keep the private key: losing it means you can never sign an update
+for those boards again, leaking it means anyone can.
