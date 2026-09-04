@@ -68,6 +68,25 @@ There is no code-level mitigation for this, by decision. The old format is not
 readable and adding a compatibility path would mean carrying a parser for a
 format no released board is supposed to keep.
 
+**The event log goes quiet until that first upload, too.** The boot after a
+bootloader upgrade reports an unrecognised record and a full journal, and stops
+recording events — it will not erase a sector on the strength of a record it
+cannot read. The next successful update reclaims the sector, and logging
+resumes. Observed going from a full 4096 slots to 10 on the upload that
+followed.
+
+### The upload tool has to be upgraded too
+
+**A 0.1.2 IAPTool cannot flash a 0.1.3 board**, and the failure is quiet: the
+old tool authenticates with an HMAC, the new bootloader wants a certificate and
+a signed challenge, and the board answers `ERR` with
+`flash command failed authentication` on its serial log. Nothing says "wrong
+tool version".
+
+The tool ships inside the Arduino board package, so installing the package
+updates it — but a machine that keeps a copy elsewhere, or a script pointing at
+an old path, will fail this way until it is pointed at the new one.
+
 ### Flashing the bootloader
 
 IAP writes the application region only — it can never update the bootloader.
@@ -123,6 +142,29 @@ only the current owner's key, so a handover can be done remotely. `takeown`
 refuses to fall back to the signing key from `local_config.json` — claiming a
 board with the wrong key can only be undone with an ST-Link.
 
+### Letting colleagues upload without the owner key
+
+One person with one key needs nothing here. A team where one administrator
+holds the owner key does: each colleague keeps a key of their own, and the
+administrator issues a certificate saying that key is authorised.
+
+```
+colleague:      IAPTool pubkey keys/fw_signing_key.pem      → 128 hex characters
+administrator:  IAPTool cert <those characters> --key=owner.pem
+colleague:      save the reply as keys/fw_signing_key.pem.cert
+```
+
+Uploading is unchanged from there, including from the Arduino IDE — the
+certificate is found beside the key it covers. **The owner private key never
+leaves the administrator's machine.**
+
+**Revoking a colleague means handing the board to a new owner** (`setowner`)
+and issuing fresh certificates to everyone still there. Certificates from the
+old owner stop verifying the moment the board's owner changes — including on
+firmware already installed, which the board will refuse at the next reset until
+someone uploads again. Plan a revocation as a maintenance window, not as a
+click.
+
 ### Known issues
 
 - **If the start-up log says `** SDRAM SELF-TEST FAILED at offset ... **`, stop
@@ -170,10 +212,12 @@ board with the wrong key can only be undone with an ST-Link.
 
 ### Before shipping
 
-The signing key and the IAP password in this repository are placeholders, and
-the placeholder private key is committed — anyone with the source can sign an
-image the board accepts. Run `IAPServer/keys/rotate_keys.sh`, then keep
-`fw_signing_key.pem` off this machine. See `IAPServer/keys/README.md`.
+The signing key in this repository is a placeholder and its private half is
+committed — anyone with the source can sign an image the board accepts. Run
+`IAPServer/keys/rotate_keys.sh`, then keep `fw_signing_key.pem` off this
+machine. See `IAPServer/keys/README.md`.
+
+There is no second secret to rotate: the board holds only public keys now.
 
 ---
 
@@ -195,6 +239,7 @@ also runs the host-side tests. Run it before working through the rest by hand.
 - [ ] Everything verified in the live Arduino15 package has been copied back
       into the core package's git repository and committed.
       → `$TOOL/TestCase/tools/check_core_sync.py`
-- [ ] Secrets rotated, and the private signing key stored off-machine.
+- [ ] Signing key rotated, and the private half stored off-machine. Any
+      certificate the old key issued is void — reissue them.
 - [ ] Bootloader flashed over ST-Link/DFU and the application uploaded over
       IAP, in that order, on a board that previously ran the older release.

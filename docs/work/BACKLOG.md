@@ -4,9 +4,13 @@
 
 | 模块 | 覆盖需求 | 成本 | 依赖 | 状态 |
 |---|---|---|---|---|
-| **证书链** | C11 C12 | 大 | owner 槽（已完成） | 🔨 方向已定，未实现 |
+| **单张证书撤销** | C12 | 中 | 证书链（已完成） | ⬜ 等一个真实需求 |
 
-⚠️ **证书链要碰 bootloader 扇区布局**，动之前先读 [../design/OWNERSHIP.md](../design/OWNERSHIP.md) 和 [../design/JOURNAL.md](../design/JOURNAL.md)。
+**C11 证书链已完成**（2026-09-04，三仓 + 板级验证）。委托叶子可用：管理员持根发证，同事用自己的密钥上传，根私钥不离开管理员的机器。
+
+**C12 还没做，因为今天已经有一个够用的撤销手段**：`IAPTool setowner` 换一把新根，旧根签发的一切当场失效。它的代价是管理员的根私钥每次都要换。**等"根私钥不用换"这条需求被真实场景顶上来再立项** —— 那时的方向是 owner 记录里加一个「最小可接受 serial」水位线，`iap_cert.h` 的 `serial` 字段就是为它留的。
+
+⚠️ 那会**改 owner 记录格式**（签名前缀 88→92，三仓同步），动之前先读 [../design/OWNERSHIP.md](../design/OWNERSHIP.md) 和 [../design/JOURNAL.md](../design/JOURNAL.md)。owner 区只有 51 个槽，每次撤销吃一个且不可回收 —— 这是撤销次数的硬上限。
 
 ⚠️ **要改 `open_plc_arduino`（共享 core）的模块**，那是分发给其他工程师的基础设施 —— 见 `$PROD/docs/design/ARCHITECTURE.md`。流程是 **live 改 → 编译/上板验证 → 拷回 repo → 跑用例 P3**。
 

@@ -13,18 +13,23 @@ survive transport, no key involved), or an **authentication** (does the
 other party hold a secret it should hold).
 
 **0. Crypto self-test** (self-test, once per boot) - `bootloader_state_init()`
-runs `sha256_selftest()` against known FIPS 180-4 / RFC 4231 vectors. Confirms
-the SHA-256/HMAC implementation in this running binary computes correctly;
-does not check the bootloader's or app's integrity. Runs once per power
-cycle - nothing changes between operations within one session, so re-running
-it per-command would add cost for no new information.
+runs `sha256_selftest()` against known FIPS 180-4 vectors. Confirms the
+SHA-256 implementation in this running binary computes correctly; does not
+check the bootloader's or app's integrity. Runs once per power cycle -
+nothing changes between operations within one session, so re-running it
+per-command would add cost for no new information.
 
-**1. Boot-time signature verification** (self-check) - `server_init()`
-re-hashes the actual app flash region and verifies it against the ECDSA
-signature stored in the last accepted metadata record (`fw_verify_signature`,
-public key in `fw_pubkey.c`). Runs every boot, not just once after flashing,
-because flash content can degrade or be tampered with after a successful
-write. Failure keeps the device in the bootloader.
+**1. Boot-time signature verification** (self-check) - `server_decide()`
+re-hashes the actual app flash region and checks it against the last accepted
+metadata record, which holds both the image signature and the certificate that
+authorised it (`iap_cert_verify_image`). Two questions, both re-asked every
+boot: is that certificate signed by the root this board currently trusts
+(`owner_slot_root()`), and did the certificate's leaf key sign this image.
+Storing the whole certificate rather than a cached leaf key is what makes a
+change of owner retroactively invalidate the installed firmware - the stored
+signature only verifies under the root that issued it. Runs every boot, not
+just once after flashing, because flash content can degrade or be tampered
+with after a successful write. Failure keeps the device in the bootloader.
 
 **2. Discovery** (intentionally unauthenticated) - `udp_server_recv()`
 replies to `DISCOVER`/`openplc_discover`/`openplc_server_where_r_y`/`ping`
@@ -41,8 +46,13 @@ per 2s (LRU-evicted, not a security boundary, just an abuse cap).
 
 **3. Entering upload mode** - two triggers, held to different standards:
 - Network: `openplc_server_reboot_challenge` / `openplc_server_reboot
-  <hmac_hex>` requires a valid HMAC-SHA256 over a fresh one-shot, 30s-TTL
-  nonce (`iap_auth.c`). Wrong/missing HMAC is logged and ignored.
+  <cert_hex> <noncesig_hex>` requires a certificate the trusted root vouches
+  for, plus an ECDSA signature by that certificate's leaf key over a fresh
+  one-shot, 30s-TTL nonce (`iap_auth.c`). A wrong or missing signature is
+  logged and ignored. The running application answers this one, and resolves
+  the trusted root by reading the bootloader's owner-record area directly
+  (`owner_root_ro.c` in the Arduino core) - there is no other channel that
+  would hand it that root.
 - USB CDC: the 1200bps "magic touch" (`CDC_SET_LINE_CODING` in
   `usbd_cdc_if.c`) resets straight into the bootloader with no
   authentication possible - it's a one-way baud-rate signal with no return
@@ -57,13 +67,15 @@ deliberate, accepted tradeoff, not a gap.
 **4. Upload session authorization** (authentication) - `process_command()`
 (`IAP_server.c`) is one state machine shared verbatim by CDC and Ethernet;
 only `send_response()` routes differently. `flash <size> <crc32_hex>
-<signature_hex> <hmac_hex> [version]` requires `hmac_hex ==
-HMAC-SHA256(shared key, nonce || "flash <size> <crc32hex> <signature_hex>[
-<version>]")` for the most recent nonce (constant-time compare, nonce
-consumed either way). Proves the caller holds the key authorized to start an
-update. Failure (or missing signature) is rejected *before* erasing flash,
-so a bad request can't brick a working app for nothing. Identical for both
-transports - no CDC-specific work needed here.
+<signature_hex> <cert_hex> <noncesig_hex>` requires two things to hold: the
+certificate verifies against the root this board trusts, and `noncesig_hex` is
+an ECDSA signature by that certificate's leaf key over
+`sha256(nonce || "flash <size> <crc32hex> <signature_hex>")` for the most
+recent nonce (consumed either way). Proves the caller holds a private key some
+trusted root authorised - not that they hold a shared secret, of which the
+board has none. Failure (or missing signature) is rejected *before* erasing
+flash, so a bad request can't brick a working app for nothing. Identical for
+both transports - no CDC-specific work needed here.
 
 **5. Data transfer** (integrity only) - CRC32 over the full image once
 received (`HAL_CRC_Calculate`). Catches transmission corruption; proves
@@ -71,13 +83,14 @@ nothing about who sent it or whether it was deliberately altered (trivial to
 recompute after tampering).
 
 **6. Post-transfer signature verification** (authentication) - same
-`fw_verify_signature()` call as Step 1, over the freshly written region.
-Answers a different question than Step 4: not "is this session authorized"
-but "was this exact binary signed by the release key." An authorized session
-uploading an unsigned/tampered image is still rejected here.
+`iap_cert_verify_image()` call as Step 1, over the image staged in SDRAM
+before the application region is touched. Answers a different question than
+Step 4: not "is this session authorized" but "was this exact binary signed by
+the key that certificate names." An authorized session uploading an
+unsigned/tampered image is still rejected here.
 
 **7. Commit** - `bootloader_state_save_metadata()` appends the new
-(size, version, SHA-256, signature) record; `bootloader_state_log_event(...)`
+(size, SHA-256, signature, certificate) record; `bootloader_state_log_event(...)`
 appends a tamper-chained log entry (each entry's stored hash covers the
 previous entry's raw bytes) carrying the event type, transport, `peer_ip`
 (TCP only - always `0` for CDC, USB carries no address-equivalent identity
@@ -87,17 +100,29 @@ specific challenge attempt instead of just "a failure happened at some
 point"). Device reboots into Step 0/1, which re-verifies from scratch
 rather than trusting this session's own success report.
 
-## Two independent keys
+## One key, and what a certificate adds
 
-- **ECDSA P-256 keypair** (`IAPServer/keys/`) - decides whether the
-  bootloader trusts a firmware image enough to execute it (Steps 1, 6). One
-  keypair per release line; private key never touches a device.
-- **Per-device HMAC secret** (`iap_auth.c`) - decides who may *start* an
-  update session (Steps 3 network trigger, 4).
+There is exactly one kind of secret in this system: an ECDSA P-256 private
+key, and it is never on a device. Everything the board holds is public - a
+root public key, and whatever certificates arrive with a command.
 
-Separate on purpose: extracting a device's HMAC secret (e.g. physical
-compromise) still can't forge a firmware signature, since the ECDSA private
-key was never on the device.
+Both questions above are answered against that one root:
+
+- **May this caller start an update** (Steps 3, 4) - it presented a
+  certificate the root vouches for and signed a fresh nonce with the key that
+  certificate names.
+- **May this image run** (Steps 1, 6) - the same certificate's leaf key signed
+  the image.
+
+A certificate is what lets those two be *different people's* keys over time
+without the board learning anything new. The root holder can sign firmware
+directly (a self-signed certificate: leaf equals root), or issue certificates
+to colleagues so they can upload without ever holding the root key. The board
+has no branch for the two cases -- it only ever asks whether the root it
+trusts signed the certificate in front of it.
+
+Which root that is comes from the owner-record area, not from the compiled-in
+key, once a board has been claimed. See `../docs/design/OWNERSHIP.md`.
 
 ## Accepted asymmetries (documented so they aren't mistaken for bugs)
 
@@ -116,37 +141,34 @@ key was never on the device.
   key - anyone with this repo can sign an image the placeholder public key
   accepts. Run `keys/rotate_keys.sh`, rebuild and re-flash the bootloader
   over ST-Link, keep the private key off any repo/network.
-- **HMAC session key**: derived per-device now (`iap_keyderive.c`, mirrored
-  in Arduino core and in the PC tool's `iapcrypto` package) as
-  `HMAC-SHA256(fixed_password, device_UID)`, replacing the single global
-  key every device used to share. This stops naive cross-device replay/
-  confusion, but it is **not** equivalent to real manufacturing
-  provisioning: the fixed password is still one value hardcoded identically
-  in all three places, and the UID it's mixed with is public (sent in the
-  clear by discovery/ping/`getuid`). Anyone who extracts that password from
-  a firmware image or the PC tool binary can compute any device's key from
-  its UID alone. The real fix is still an independent secret per device,
-  generated at manufacturing time and looked up by UID rather than derived
-  from a value that ships in every image.
+There is no second secret to rotate. Session authentication used to derive a
+per-device HMAC key from a fixed password compiled into every image; anyone who
+extracted that password could compute any device's key from its public UID.
+That whole scheme is gone - a signed challenge needs no shared secret, so
+nothing on the board is worth extracting.
 
 ## TODO
 
-- [ ] **Flash Option Bytes (WRP) on the bootloader sector.** Nothing today
-      stops a Flash write primitive (bug elsewhere, or direct SWD/JTAG) from
-      overwriting the bootloader itself or the embedded public key in
-      `fw_pubkey.c` - every check above assumes the bootloader performing it
-      hasn't been replaced. WRP enforces that at the hardware level. Once
-      set, bootloader updates require physical SWD access (ST-Link/J-Link +
-      STM32CubeProgrammer) to clear WRP, reflash, and re-lock - document
-      this as a factory/service procedure, not part of the end-user Arduino
-      IDE flow. If RDP is also considered: check the STM32H7 reference
-      manual first - lowering RDP triggers a full chip mass-erase by design,
-      wiping bootloader and app and requiring full re-provisioning.
-- [ ] **Real manufacturing-line HMAC provisioning + real release ECDSA
-      key** - fixed-password+UID key derivation (`iap_keyderive.c`) closes
-      the "everyone shares one literal key" gap, but the fixed password
-      itself is still a placeholder baked into every image; an independent,
-      unguessable secret per device generated at manufacturing time is the
-      actual remaining item.
-- [ ] **Consolidate `iap_auth.c`/`sha256.c` across the three repos** into one
-      shared source instead of three hand-synced copies.
+- [ ] **A real release signing key.** `fw_signing_key.TEST_ONLY.pem` is
+      public. Everything above is sound and still runs firmware anyone can
+      sign until this is rotated and the board is claimed.
+- [ ] **Revoking one delegated certificate.** Today the only revocation is
+      handing the board to a new root (`IAPTool setowner`), which voids every
+      certificate the old root issued -- including the firmware already
+      installed, which must be re-uploaded. Naming a single certificate
+      instead is requirement C12; the `serial` field exists for it.
+- [ ] **Consolidate `iap_auth.c`/`iap_cert.c`/`sha256.c` across the three
+      repos** into one shared source instead of hand-synced copies. What
+      guards them meanwhile is `check_mirror_sync.py` (case P2), which
+      compares the format constants across all three.
+
+Not on this list any more, and deliberately so:
+
+- **Flash Option Bytes (WRP) on the bootloader sector.** Decided 2026-09-04:
+  the vendor does not set it. It is the only thing that would stop a Flash
+  write primitive from overwriting the bootloader or its embedded root key,
+  but clearing it needs physical SWD access, a reflash and a re-lock -- too
+  sharp an edge to ship enabled. A customer who wants that protection can set
+  it themselves. See `../docs/design/OWNERSHIP.md`.
+- **Per-device manufacturing secrets.** Retired: there is no shared secret
+  left to replace.
