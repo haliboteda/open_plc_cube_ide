@@ -13,16 +13,11 @@
  * width of an erase, and losing them there would silently return the board to
  * the factory root -- the one failure this must not have.
  *
- * ---------------------------------------------------------------------------
- * WHAT IS IMPLEMENTED SO FAR (step 2 of 6)
- * ---------------------------------------------------------------------------
- * Reading and structural parsing only. Nothing here writes flash.
- *
- * owner_slot_root() deliberately returns the compiled-in root even when a
- * record is present, because verifying a record's prev_sig is step 5 and does
- * not exist yet. Honouring an unverified record would mean any code that can
- * write flash could hand itself the trust root -- strictly worse than not
- * having the feature. It logs loudly instead.
+ * Fully implemented: init/claim/set_owner/factory_reset all write real
+ * records, and owner_slot_root() walks the verified chain (resolve_chain() in
+ * the .c file) rather than trusting the compiled-in root unconditionally.
+ * docs/design/OWNERSHIP.md is the design source; this header only states the
+ * on-flash layout.
  */
 
 #ifndef IAPSERVER_OWNER_SLOT_H_
@@ -45,27 +40,45 @@
 
 #define OWNER_RECORD_TYPE      'O'
 #define OWNER_RECORD_ERASED    0xFFU
-#define OWNER_FORMAT_VER       1U
+#define OWNER_FORMAT_VER       2U
 #define OWNER_RECORD_SLOTS     5U
 
 /* flags */
 #define OWNER_FLAG_CLEARED     0x00000001UL   /* factory reset: fall back to R0 */
 
-/* Layout is fixed by docs/design/OWNERSHIP.md and locked by a _Static_assert in the
+/*
+ * Layout is fixed by docs/design/OWNERSHIP.md and locked by a _Static_assert in the
  * .c file. format_ver exists from the first version on purpose, so a later
- * format change is an upgrade rather than a breaking migration. */
+ * format change is an upgrade rather than a breaking migration.
+ *
+ * v2 (2026-09-04): added `uid`, binding a record to the one board it was
+ * issued for -- without it, the raw bytes of one board's record area could be
+ * copied onto another board's and verify just as well, since nothing in the
+ * signed prefix said which board it was for. `uid` sits between root_pubkey
+ * and prev_sig, inside OWNER_SIGNED_PREFIX_LEN, so it is covered by the same
+ * signature as everything else -- a field the signature does not cover is not
+ * actually bound to anything.
+ *
+ * No v1 compatibility: nothing in the field carries a v1 record forward, so
+ * OWNER_FORMAT_VER is a hard cut, not a migration. record_is_structurally_valid()
+ * rejects format_ver != 2 outright.
+ */
 typedef struct {
 	uint8_t  type;             /*   0  'O', or 0xFF when erased               */
 	uint8_t  slots;            /*   1  5                                       */
-	uint16_t format_ver;       /*   2  1                                       */
+	uint16_t format_ver;       /*   2  2                                       */
 	uint32_t generation;       /*   4  monotonic; highest valid record wins     */
 	uint32_t flags;            /*   8  bit0 = cleared                          */
 	uint8_t  root_pubkey[64];  /*  12  secp256r1 X||Y; all zero when cleared    */
-	uint8_t  prev_sig[64];     /*  76  previous root's signature over bytes 0..75
+	uint8_t  uid[12];          /*  76  this board's HAL_GetUIDw0/1/2(), big-endian
+	                            *      UIDW2||UIDW1||UIDW0. Zero for a cleared
+	                            *      record (there is no "this board" claim
+	                            *      left once cleared).                     */
+	uint8_t  prev_sig[64];     /*  88  previous root's signature over bytes 0..87
 	                            *      all zero for the first claim and for a
 	                            *      cleared record -- those are gated by a
 	                            *      physical action, not by a signature      */
-	uint8_t  reserved[20];     /* 140                                          */
+	uint8_t  reserved[8];      /* 152                                          */
 } owner_record_t;
 
 /* Scan the area. Read-only; safe to call before anything else is up. */
@@ -90,10 +103,11 @@ void owner_slot_init(void);
 bool owner_slot_claim(const uint8_t root_pubkey[64], bool boot0_held);
 
 /* The bytes a change-of-owner signature covers: everything in the record
- * before prev_sig itself -- type, slots, format_ver, generation, flags and the
- * incoming public key. Signing the generation is what stops a captured record
- * from being replayed into a later slot. */
-#define OWNER_SIGNED_PREFIX_LEN 76U
+ * before prev_sig itself -- type, slots, format_ver, generation, flags, the
+ * incoming public key, and (v2) the board's own uid. Signing the generation is
+ * what stops a captured record from being replayed into a later slot; signing
+ * uid is what stops the whole record being replayed onto a different board. */
+#define OWNER_SIGNED_PREFIX_LEN 88U
 
 /*
  * Append a record handing the board to `new_root`.
@@ -136,11 +150,9 @@ uint32_t owner_slot_generation(void);
 bool owner_slot_factory_reset(bool physically_confirmed);
 
 /*
- * The root to verify firmware against.
- *
- * ⚠️ Until step 5 lands this always returns the compiled-in root. See the note
- * at the top of this file: trusting an unverified record would be worse than
- * having no owner slot at all.
+ * The root to verify firmware against: the last verified link in the on-flash
+ * chain (resolve_chain(), .c file), or the compiled-in fw_public_key when the
+ * area is empty or the chain resolves to nothing valid.
  */
 const uint8_t *owner_slot_root(void);
 

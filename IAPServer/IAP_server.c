@@ -13,6 +13,7 @@
 #include "sha256.h"
 #include "fw_verify.h"
 #include "fw_pubkey.h"
+#include "iap_cert.h"
 #include "owner_slot.h"
 #include "bootloader_state.h"
 #include "iap_auth.h"
@@ -32,6 +33,7 @@ uint32_t expected_size;
 uint32_t expected_checksum;
 static uint8_t expected_signature[FW_SIGNATURE_SIZE];
 static bool have_expected_signature;
+static iap_cert_t expected_cert;   /* the leaf cert that (claims to) authorise expected_signature */
 static bool s_boot0_held;         /* BOOT0 was down at this boot's decision point */
 
 // volatile: written from IAP_data_recv() (USB/lwIP receive callback context)
@@ -282,14 +284,20 @@ void process_command() {
 				}
 			}
 		} else if (strncmp((char *)RXBuffer, "flash", 5) == 0) {
-			// decode flash command: "flash <size> <crc32hex> <signature_hex> <hmac_hex>"
-			// - signature_hex: 64-byte ECDSA r||s from IAPTool sign / IAPTool cdc (128 hex chars)
-			// - hmac_hex: HMAC-SHA256(auth_key, nonce || "flash <size> <crc32hex> <signature_hex>")
-			//   for the nonce most recently returned by "authchallenge" (32 hex chars)
+			// decode flash command:
+			//   "flash <size> <crc32hex> <signature_hex> <cert_hex> <noncesig_hex>"
+			// - signature_hex: 64-byte ECDSA r||s over the image, by the cert's
+			//   leaf key (128 hex chars)
+			// - cert_hex: the IAP_CERT_SIZE-byte certificate naming that leaf key
+			//   (IAP_CERT_SIZE*2 hex chars) -- see iap_cert.h
+			// - noncesig_hex: 64-byte ECDSA r||s, by the same leaf key, over
+			//   sha256(nonce || "flash <size> <crc32hex> <signature_hex>") for the
+			//   nonce most recently returned by "authchallenge" (128 hex chars)
 			char sig_hex[129] = {0};
-			char hmac_hex[65] = {0};
-			int nParsed = sscanf((char *)RXBuffer, "flash %" SCNu32 " %" SCNx32 " %128s %64s",
-					&expected_size, &expected_checksum, sig_hex, hmac_hex);
+			char cert_hex[(IAP_CERT_SIZE * 2U) + 1U] = {0};
+			char noncesig_hex[129] = {0};
+			int nParsed = sscanf((char *)RXBuffer, "flash %" SCNu32 " %" SCNx32 " %128s %264s %128s",
+					&expected_size, &expected_checksum, sig_hex, cert_hex, noncesig_hex);
 
 			have_expected_signature = false;
 			if (nParsed >= 3) {
@@ -301,13 +309,15 @@ void process_command() {
 			}
 
 			bool authOk = false;
-			uint8_t hmacBytes[IAP_AUTH_HMAC_SIZE];
-			if (nParsed == 4 && have_expected_signature
-					&& hex_decode(hmac_hex, hmacBytes, IAP_AUTH_HMAC_SIZE)) {
+			uint8_t noncesigBytes[FW_SIGNATURE_SIZE];
+			if (nParsed == 5 && have_expected_signature
+					&& hex_decode(cert_hex, (uint8_t *)&expected_cert, IAP_CERT_SIZE)
+					&& hex_decode(noncesig_hex, noncesigBytes, FW_SIGNATURE_SIZE)) {
 				char authMsg[220];
 				int authMsgLen = snprintf(authMsg, sizeof(authMsg), "flash %" PRIu32 " %" PRIx32 " %s",
 						expected_size, expected_checksum, sig_hex);
-				authOk = iap_auth_verify_and_consume((const uint8_t *)authMsg, (uint32_t)authMsgLen, hmacBytes);
+				authOk = iap_auth_verify_and_consume((const uint8_t *)authMsg, (uint32_t)authMsgLen,
+						&expected_cert, noncesigBytes);
 			}
 
 			if (nParsed >= 2) {
@@ -405,7 +415,7 @@ void process_command() {
 				/* Hashes the staging buffer, not the app region -- the app region
 				 * still holds the previous image at this point. */
 				bootloader_state_hash_app(IAP_STAGE_BASE, expected_size, hash);
-				if (!fw_verify_signature(hash, expected_signature)) {
+				if (!iap_cert_verify_image(hash, expected_signature, &expected_cert, owner_slot_root())) {
 					printf("Signature verification FAILED - firmware not trusted. "
 							"Application region untouched.\r\n");
 					send_response("Signature Failed");
@@ -417,7 +427,7 @@ void process_command() {
 					bootloader_state_log_event(IAP_EVT_FLASH_WRITE_FAIL, (uint32_t)current_method, peer_ip, nowTick, authCtr);
 				} else {
 					printf("Checksum and signature OK. Rebooting...\r\n");
-					bootloader_state_save_metadata(expected_size, hash, expected_signature);
+					bootloader_state_save_metadata(expected_size, hash, expected_signature, &expected_cert);
 					bootloader_state_log_event(IAP_EVT_UPDATE_OK, (uint32_t)current_method, peer_ip, nowTick, authCtr);
 					HAL_Delay(500);
 					HAL_NVIC_SystemReset();
@@ -523,7 +533,12 @@ IAP_Method server_decide(uint8_t boot0Pressed) {
 		if (bootloader_state_get_metadata(&meta) && meta.app_size > 0U && meta.app_size <= IAP_APP_MAX_SIZE) {
 			uint8_t hash[32];
 			bootloader_state_hash_app(app_base, meta.app_size, hash);
-			app_signature_valid = fw_verify_signature(hash, meta.signature);
+			/* Re-checks meta.cert's root_sig too, not just the leaf signature --
+			 * that is what makes a setowner handover retroactively invalidate
+			 * firmware certified by the old owner: the stored cert's root_sig
+			 * only verifies against the root that signed it, and owner_slot_root()
+			 * has since moved on. */
+			app_signature_valid = iap_cert_verify_image(hash, meta.signature, &meta.cert, owner_slot_root());
 		}
 	}
 	bootloader_state_set_app_valid(app_signature_valid);
@@ -696,7 +711,7 @@ void IAP_data_recv(IAP_Method iapM, uint8_t *Buf, uint32_t Len) {
 		// accepted so a raw terminal whose Enter key only sends '\r' still
 		// works). Without this, a command longer than one USB CDC packet or
 		// one TCP segment -- e.g. "flash <size> <crc32> <128-hex-sig>
-		// <64-hex-hmac>", ~214 bytes -- can arrive split across several
+		// <cert_hex> <noncesig_hex>", ~610 bytes -- can arrive split across several
 		// IAP_data_recv() calls; overwriting RXBuffer from offset 0 on every
 		// call (the old behavior) meant only the LAST fragment survived by
 		// the time process_command() ran, which is why "flash" landed as

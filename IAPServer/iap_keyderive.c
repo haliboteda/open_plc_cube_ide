@@ -5,14 +5,8 @@
  */
 
 #include "iap_keyderive.h"
-#include "sha256.h"
 #include "main.h"
 #include <stdio.h>
-
-/* Rotate with keys/rotate_keys.sh. */
-static const uint8_t iap_fixed_password[] =
-#include "keys/iap_fixed_password.txt"
-;
 
 void iap_keyderive_get_machine_id(uint8_t out_id[IAP_MACHINE_ID_SIZE])
 {
@@ -33,11 +27,3 @@ void iap_keyderive_get_machine_id_hex(char out_hex[IAP_MACHINE_ID_HEX_LEN + 1U])
 			(unsigned long)HAL_GetUIDw2(), (unsigned long)HAL_GetUIDw1(), (unsigned long)HAL_GetUIDw0());
 }
 
-void iap_keyderive_get_device_key(uint8_t out_key[IAP_DEVICE_KEY_SIZE])
-{
-	uint8_t machine_id[IAP_MACHINE_ID_SIZE];
-
-	iap_keyderive_get_machine_id(machine_id);
-	hmac_sha256(iap_fixed_password, sizeof(iap_fixed_password) - 1U,
-			machine_id, IAP_MACHINE_ID_SIZE, out_key);
-}

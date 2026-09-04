@@ -44,7 +44,7 @@ typedef struct {
 	uint8_t  prev_hash[12];
 } iap_log_rec_t;
 
-/* Four flash words: 8-byte header + the 120-byte payload. */
+/* Eight flash words: 8-byte header + the 248-byte payload. */
 typedef struct {
 	uint8_t  type;      /* IAP_REC_METADATA */
 	uint8_t  slots;     /* IAP_METADATA_SLOTS */
@@ -186,7 +186,8 @@ bool bootloader_state_get_metadata(iap_fw_metadata_t *out)
 }
 
 void bootloader_state_save_metadata(uint32_t app_size,
-                                     const uint8_t sha256_digest[32], const uint8_t signature[64])
+                                     const uint8_t sha256_digest[32], const uint8_t signature[64],
+                                     const iap_cert_t *cert)
 {
 	iap_meta_rec_t rec;
 
@@ -203,6 +204,7 @@ void bootloader_state_save_metadata(uint32_t app_size,
 	rec.meta.app_size = app_size;
 	memcpy(rec.meta.sha256, sha256_digest, 32U);
 	memcpy(rec.meta.signature, signature, 64U);
+	memcpy(&rec.meta.cert, cert, sizeof(rec.meta.cert));
 
 	journal_write(&rec, IAP_METADATA_SLOTS);
 	s_last_metadata_slot = s_next_free_slot - IAP_METADATA_SLOTS;

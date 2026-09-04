@@ -15,7 +15,9 @@
  */
 
 #include "iap_auth.h"
-#include "iap_keyderive.h"
+#include "iap_cert.h"
+#include "owner_slot.h"
+#include "fw_verify.h"
 #include "sha256.h"
 #include "bootloader_state.h"
 #include "rtc.h"
@@ -61,16 +63,6 @@ static uint32_t next_counter(void)
 	return v;
 }
 
-static bool constant_time_eq(const uint8_t *a, const uint8_t *b, uint32_t len)
-{
-	uint8_t diff = 0;
-	uint32_t i;
-	for (i = 0; i < len; i++) {
-		diff |= a[i] ^ b[i];
-	}
-	return diff == 0U;
-}
-
 void iap_auth_issue_challenge(char *out_hex)
 {
 	uint32_t counter = next_counter();
@@ -92,19 +84,19 @@ void iap_auth_issue_challenge(char *out_hex)
 	out_hex[IAP_AUTH_NONCE_SIZE * 2U] = '\0';
 }
 
-bool iap_auth_verify_and_consume(const uint8_t *msg, uint32_t msg_len, const uint8_t hmac[IAP_AUTH_HMAC_SIZE])
+bool iap_auth_verify_and_consume(const uint8_t *msg, uint32_t msg_len,
+		const iap_cert_t *cert, const uint8_t nonce_sig[64])
 {
 	uint8_t buf[IAP_AUTH_NONCE_SIZE + 256U];
-	uint8_t calc[IAP_AUTH_HMAC_SIZE];
-	uint8_t device_key[IAP_DEVICE_KEY_SIZE];
+	uint8_t digest[SHA256_DIGEST_SIZE];
 
 	/* If the self-test run at boot (bootloader_state_init) found the
-	 * SHA-256/HMAC implementation broken, no result it produces can be
-	 * trusted -- mirror the same precondition server_decide() already
-	 * applies to the boot-time signature check, rather than computing an
-	 * HMAC with a known-unreliable primitive and trusting the answer. */
+	 * SHA-256 implementation broken, no result it produces can be trusted --
+	 * mirror the same precondition server_decide() already applies to the
+	 * boot-time signature check, rather than computing a digest with a
+	 * known-unreliable primitive and trusting the answer. */
 	if (!bootloader_state_crypto_selftest_passed()) {
-		printf("Auth rejected: crypto self-test failed at boot, not trusting HMAC\r\n");
+		printf("Auth rejected: crypto self-test failed at boot, not trusting the check\r\n");
 		return false;
 	}
 
@@ -123,14 +115,20 @@ bool iap_auth_verify_and_consume(const uint8_t *msg, uint32_t msg_len, const uin
 		return false;
 	}
 
+	/* Not folded into the signed message: the certificate isn't secret or
+	 * session-specific (its own validity is anchored by root_sig, not by
+	 * nonce freshness), so it is checked as its own independent step. */
+	if (!iap_cert_verify(cert, owner_slot_root())) {
+		printf("Auth rejected: certificate does not verify against the trusted root\r\n");
+		return false;
+	}
+
 	memcpy(buf, s_nonce, IAP_AUTH_NONCE_SIZE);
 	memcpy(buf + IAP_AUTH_NONCE_SIZE, msg, msg_len);
+	sha256(buf, IAP_AUTH_NONCE_SIZE + msg_len, digest);
 
-	iap_keyderive_get_device_key(device_key);
-	hmac_sha256(device_key, sizeof(device_key), buf, IAP_AUTH_NONCE_SIZE + msg_len, calc);
-
-	if (!constant_time_eq(calc, hmac, IAP_AUTH_HMAC_SIZE)) {
-		printf("Auth rejected: HMAC does not match the challenge\r\n");
+	if (!fw_verify_signature_with_key(cert->leaf_pubkey, digest, nonce_sig)) {
+		printf("Auth rejected: signature does not match the challenge\r\n");
 		return false;
 	}
 	return true;

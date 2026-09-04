@@ -1,12 +1,11 @@
 /*
  * owner_slot.c -- see owner_slot.h.
- *
- * Step 2 of 6: read and parse. Nothing here writes flash.
  */
 
 #include "owner_slot.h"
 #include "fw_pubkey.h"
 #include "fw_verify.h"
+#include "iap_keyderive.h"
 #include "sha256.h"
 #include "usbd_cdc_flash.h"
 #include <stdio.h>
@@ -69,7 +68,9 @@ static const owner_record_t *record_at(uint32_t index)
 
 /*
  * Structural validity only -- this says nothing about whether the record is
- * *authorised*. That is prev_sig's job and it is not checked yet (step 5).
+ * *authorised* (prev_sig, checked in resolve_chain()) or *for this board*
+ * (uid, also checked in resolve_chain() -- it needs my_uid, which this
+ * function has no reason to compute on every one of 51 slots).
  */
 static bool record_is_structurally_valid(const owner_record_t *r)
 {
@@ -80,9 +81,10 @@ static bool record_is_structurally_valid(const owner_record_t *r)
 		return false;
 	}
 	if (r->format_ver != (uint16_t)OWNER_FORMAT_VER) {
-		/* A newer format is not corruption -- it is a record this firmware
-		 * is too old to understand. Counted separately so the boot line can
-		 * say which it is. */
+		/* No v1 fallback: v1 had no uid field, so there is nothing safe to do
+		 * with one here. A different format is not corruption -- it is a
+		 * record this firmware is too old (or too new) to understand.
+		 * Counted separately so the boot line can say which it is. */
 		return false;
 	}
 	return true;
@@ -133,9 +135,18 @@ static bool sig_is_absent(const owner_record_t *r)
  * let an attacker invalidate one link and have the rest of the chain -- written
  * under a different owner -- silently apply.
  *
- * ⚠️ Signature verification is step 5 and does not exist yet, so for now any
- * record that would need one stops the walk. That is the safe direction: the
- * board keeps the root it already trusted.
+ * v2: every non-cleared record must also carry THIS board's uid, checked
+ * before the signature/TOFU branch below and applying to both. Without it, the
+ * raw bytes of a board that has already been claimed -- a valid, correctly
+ * signed chain -- could be copied onto an unclaimed board and would resolve
+ * exactly as if that board had been claimed the same way. The check has to sit
+ * ahead of the TOFU case too, not just the signed one: TOFU's whole point is
+ * that there is no signature to check, so uid is the only thing standing
+ * between "this board's first claim" and "somebody else's first claim, copied
+ * here". Cleared records carry uid = 0 and are exempt -- clearing does not
+ * assert anything about which board the record was for, it only says "fall
+ * back to the built-in root", which is safe regardless of whose bytes these
+ * were.
  */
 static void resolve_chain(void)
 {
@@ -143,6 +154,9 @@ static void resolve_chain(void)
 	uint32_t last_gen = 0U;
 	bool first = true;
 	bool prev_cleared = false;
+	uint8_t my_uid[IAP_MACHINE_ID_SIZE];
+
+	iap_keyderive_get_machine_id(my_uid);
 
 	for (;;) {
 		const owner_record_t *next = NULL;
@@ -168,6 +182,14 @@ static void resolve_chain(void)
 		}
 
 		bool cleared = ((next->flags & OWNER_FLAG_CLEARED) != 0UL);
+
+		if (!cleared && (memcmp(next->uid, my_uid, sizeof(my_uid)) != 0)) {
+			/* Structurally fine and possibly even correctly signed -- just not
+			 * for this board. Same failure bucket as an unauthorised signature:
+			 * it stops the walk, it does not skip the record and keep going. */
+			s_unauthorised_count++;
+			break;
+		}
 
 		if (sig_is_absent(next)) {
 			/*
@@ -355,6 +377,7 @@ bool owner_slot_set_owner(uint32_t generation, const uint8_t new_root[64],
 	rec.generation = generation;
 	rec.flags = 0UL;
 	memcpy(rec.root_pubkey, new_root, sizeof(rec.root_pubkey));
+	iap_keyderive_get_machine_id(rec.uid);
 	memcpy(rec.prev_sig, sig, sizeof(rec.prev_sig));
 	memset(rec.reserved, 0, sizeof(rec.reserved));
 
@@ -420,6 +443,7 @@ bool owner_slot_claim(const uint8_t root_pubkey[64], bool boot0_held)
 	rec.generation = (s_effective != NULL) ? (s_effective->generation + 1U) : 1U;
 	rec.flags = 0UL;
 	memcpy(rec.root_pubkey, root_pubkey, sizeof(rec.root_pubkey));
+	iap_keyderive_get_machine_id(rec.uid);
 	memset(rec.prev_sig, 0, sizeof(rec.prev_sig));   /* nothing to sign with yet */
 	memset(rec.reserved, 0, sizeof(rec.reserved));
 
@@ -482,6 +506,7 @@ bool owner_slot_factory_reset(bool physically_confirmed)
 	 * deliberately: whoever can physically reach the board can reset it and
 	 * take it over. What that buys is that nobody can do it remotely. */
 	memset(rec.root_pubkey, 0, sizeof(rec.root_pubkey));
+	memset(rec.uid, 0, sizeof(rec.uid));   /* cleared record asserts nothing about which board */
 	memset(rec.prev_sig, 0, sizeof(rec.prev_sig));
 	memset(rec.reserved, 0, sizeof(rec.reserved));
 

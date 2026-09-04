@@ -34,6 +34,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "iap_cert.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -42,17 +43,33 @@ extern "C" {
 /* One STM32H7 flash word: the smallest thing that can be programmed, and a word
  * may only be programmed once. A log entry is exactly one of these, so the
  * journal holds as many events as the hardware can possibly fit. Metadata needs
- * four (the SHA-256 and the signature alone are 96 bytes). */
+ * eight (the signature and certificate alone are 196 bytes). */
 #define IAP_JOURNAL_SLOT_SIZE 32U
-#define IAP_METADATA_SLOTS    4U
+#define IAP_METADATA_SLOTS    8U
 
-/* Firmware metadata payload: 4+32+64+20 = 120 bytes, which with the 8-byte
- * record header fills IAP_METADATA_SLOTS slots exactly. */
+/*
+ * Firmware metadata payload: 4+32+64+132+16 = 248 bytes, which with the
+ * 8-byte record header fills IAP_METADATA_SLOTS slots exactly (256 = 8x32).
+ *
+ * `cert` is the certificate whose leaf key produced `signature` -- stored
+ * whole, not just the leaf pubkey, because re-verification at every boot
+ * (server_decide()) has to re-check root_sig too. That is what makes a
+ * setowner handover retroactively invalidate the currently-installed
+ * firmware: the stored cert's root_sig only verifies against the root that
+ * signed it, and owner_slot_root() changes the moment ownership changes. A
+ * cached "last known good leaf_pubkey" would silently defeat that -- do not
+ * add one.
+ *
+ * Grew from 4 to 8 slots for this (was reserved[20], now cert[132]+reserved[16]).
+ * One update now costs 9 journal slots instead of 5 (8 metadata + 1 log);
+ * 4096/9 =~ 455 updates before reclaim, still no practical concern.
+ */
 typedef struct {
-	uint32_t app_size;
-	uint8_t  sha256[32];
-	uint8_t  signature[64];
-	uint8_t  reserved[20];
+	uint32_t   app_size;
+	uint8_t    sha256[32];
+	uint8_t    signature[64];   /* by the cert's leaf key, not necessarily the root */
+	iap_cert_t cert;
+	uint8_t    reserved[16];
 } iap_fw_metadata_t;
 
 /* The log record itself is iap_log_rec_t in bootloader_state.c. */
@@ -82,9 +99,12 @@ bool bootloader_state_crypto_selftest_passed(void);
 bool bootloader_state_get_metadata(iap_fw_metadata_t *out);
 
 /* Appends a new metadata record after a successful, signature-verified
- * update. Does not erase/overwrite the previous record. */
+ * update. Does not erase/overwrite the previous record. `cert` is stored
+ * whole (see the comment on iap_fw_metadata_t above) -- it is the certificate
+ * whose leaf key produced `signature`. */
 void bootloader_state_save_metadata(uint32_t app_size,
-                                     const uint8_t sha256[32], const uint8_t signature[64]);
+                                     const uint8_t sha256[32], const uint8_t signature[64],
+                                     const iap_cert_t *cert);
 
 /* Appends a tamper-chained log entry. Each entry's stored hash covers the
  * previous entry's full raw bytes, so deleting/altering a past entry breaks
