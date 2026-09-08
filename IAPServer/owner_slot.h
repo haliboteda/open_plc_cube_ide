@@ -1,7 +1,7 @@
 /*
  * owner_slot.h -- which public key this board trusts as its signing root.
  *
- * Requirement C10. Design: docs/design/OWNERSHIP.md. Plan: docs/work/M1-owner-slot.md.
+ * Requirement C10. Design: docs/design/OWNERSHIP.md.
  *
  * An append-only record area in the top 8K of the bootloader's own flash
  * sector, reserved by STM32H743IIKX_FLASH.ld (FLASH LENGTH is 120K, not the

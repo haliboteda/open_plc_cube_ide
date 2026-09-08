@@ -532,9 +532,8 @@ bool owner_slot_root_is_public(void)
 {
 	uint8_t digest[SHA256_DIGEST_SIZE];
 
-	/* Hash whatever root is actually in force, not fw_public_key directly, so
-	 * this keeps telling the truth once step 5 lets an owner record take
-	 * effect: a board that has been claimed must stop warning. */
+	/* Hash whatever root is actually in force, not fw_public_key directly:
+	 * a board that has been claimed must stop warning. */
 	sha256(owner_slot_root(), 64U, digest);
 
 	return memcmp(digest, k_published_root_sha256, sizeof(digest)) == 0;

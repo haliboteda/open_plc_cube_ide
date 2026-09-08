@@ -9,7 +9,6 @@
 #include "tcp_server.h"
 #include "udp_server.h"
 #include "crc.h"
-#include "md5.h"
 #include "sha256.h"
 #include "fw_verify.h"
 #include "fw_pubkey.h"
@@ -190,8 +189,8 @@ void process_command() {
 			send_response(nonce_hex);
 		} else if (strncmp((char *)RXBuffer, "getuid", 6) == 0) {
 			// Lets a PC tool connected over CDC (no discovery reply available)
-			// learn this device's machine ID, needed to derive its device key
-			// before an authchallenge/flash exchange.
+			// learn this device's machine ID, so it can tell one board from
+			// another in its own logs and output.
 			char uid_hex[IAP_MACHINE_ID_HEX_LEN + 1U];
 			iap_keyderive_get_machine_id_hex(uid_hex);
 			send_response(uid_hex);
@@ -215,7 +214,7 @@ void process_command() {
 			// "takeown <128 hex chars>" -- bind this board to a signing key.
 			//
 			// Only ever the FIRST claim. Changing an existing owner needs the
-			// current owner's signature and is a different command (M1 step 5),
+			// current owner's signature and is a different command (setowner),
 			// because this one is gated by physical presence alone.
 			uint8_t key[64];
 			const char *hex = (const char *)RXBuffer + 8;

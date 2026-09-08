@@ -10,7 +10,7 @@ discovery protocol.
 Each step is labeled by what it actually guarantees: a **self-test** (is the
 verification code itself working), an **integrity check** (did the bits
 survive transport, no key involved), or an **authentication** (does the
-other party hold a secret it should hold).
+other party hold a private key some trusted root authorised).
 
 **0. Crypto self-test** (self-test, once per boot) - `bootloader_state_init()`
 runs `sha256_selftest()` against known FIPS 180-4 vectors. Confirms the

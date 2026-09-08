@@ -1,6 +1,6 @@
 # 所有权与信任根
 
-**状态：✅ 已实现并实测（2026-08-18）。** 配图版是 [../archive/artifacts/owner-slot.html](../archive/artifacts/owner-slot.html)（⚠️ 快照，和本文打架时以本文为准）。
+**状态：✅ 已实现并实测（2026-08-18）。** 全套安全设计的配图版是 [security-design.html](security-design.html)（浏览器打开，可缩放；⚠️ 和本文打架时以本文为准）。
 
 **本文件是设计推理的出处**。
 
@@ -175,7 +175,7 @@ R3 挡不住的那条**必须接受** —— `keys/README.md` 已把"防不住�
 
 > **最后一列全是"不用"。owner 槽完全活在 bootloader 里，Arduino core 一行都不用改** —— 认领要求 BOOT0 物理按键，那时 app 根本没在跑。不涉及跨仓镜像、不用重新分发板卡包。
 >
-> 对比：会话认证一旦改成证书，core 侧 `iap_keyderive` 必须跟着改。**两件事成本差一个数量级，应该影响实施顺序。**
+> 对比：会话认证改成证书时，core 侧 `iap_keyderive` 必须跟着改 —— **两件事都已完成**（2026-09-04），`iap_keyderive` 现在只剩 machine ID，不再派生任何密钥。
 
 **证书为什么可以留在 journal 里**：它只需要验证*当前那个* app，而 `journal_reclaim()` 只发生在 `save_metadata()` 内部 —— 擦完立刻就有一条新 M 记录带着新证书写进去。**只有 owner 根和撤销状态需要免疫 reclaim。**
 

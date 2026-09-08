@@ -9,9 +9,10 @@
  * Note this counter stays in the backup register even though the boot-mode
  * request moved out to SRAM4 (IAP_boot_handoff.h): the two want opposite
  * lifetimes. A boot request must NOT survive a power cycle, whereas this counter
- * must, or nonces would repeat across power cycles and defeat the replay check. Uniqueness -- not
- * unpredictability -- is what defeats replay here: the HMAC key is what an
- * attacker actually needs and never gets from observing nonces.
+ * must, or nonces would repeat across power cycles and defeat the replay check.
+ * Uniqueness -- not unpredictability -- is what defeats replay here: the leaf
+ * private key is what an attacker actually needs, and observing nonces never
+ * yields it.
  */
 
 #include "iap_auth.h"

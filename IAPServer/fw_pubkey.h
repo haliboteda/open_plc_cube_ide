@@ -1,9 +1,13 @@
 /*
  * fw_pubkey.h
  *
- * *** THIS SHIPS WITH A PLACEHOLDER / TEST-ONLY KEY. ***
- * The matching private key is public -- anyone can sign a "valid" firmware
- * image with it. Run IAPServer/keys/rotate_keys.sh before shipping.
+ * *** THE MATCHING PRIVATE KEY IS PUBLIC, BY DESIGN. ***
+ * Anyone with this repository can sign an image a factory board accepts. That
+ * is not a defect awaiting a rotation -- users sign their own PLC programs, so
+ * the private key has to be on the user's machine. A board becomes defended
+ * when it is claimed (IAPTool takeown) or when a customer compiles the board
+ * package with their own root (keys/rotate_keys.sh). See
+ * ../docs/design/OWNERSHIP.md for the derivation.
  */
 
 #ifndef IAPSERVER_FW_PUBKEY_H_
