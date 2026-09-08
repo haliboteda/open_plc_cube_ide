@@ -65,7 +65,6 @@
 | `Core/Src/relay.c` | 上电时 6 路继电器自检时序 |
 | `Core/Src/crc.c` | 硬件 CRC32 |
 | `Core/Src/rtc.c` | RTC 初始化。⚠️ **它不再存"为什么进 bootloader"** —— 那个搬到 SRAM4 了 |
-| `Core/Src/md5.c` | ⚠️ **死代码**：`IAP_server.c:12` 只 `#include "md5.h"`，没有任何调用。校验走 CRC32 + SHA-256 |
 
 ## 5. lwIP 配置要点（`LWIP/Target/lwipopts.h`）
 

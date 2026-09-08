@@ -1,0 +1,2184 @@
+<title>安全流程与设计</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f6f3;
+    --band: #ffffff;
+    --card: #fbfbf9;
+    --line: #d6d4cd;
+    --line-strong: #8d8a82;
+    --ink: #1f1e1b;
+    --muted: #726f68;
+    --red: #ab332c;      --red-bg: #fbefec;   --red-line: #e0b4ad;
+    --green: #2b7350;    --green-bg: #edf6f0; --green-line: #a8cdb8;
+    --amber: #8d6210;    --amber-bg: #fcf4e4; --amber-line: #ddc48a;
+    --blue: #2b5893;     --blue-bg: #eef3fa;  --blue-line: #a9c1e0;
+    --violet: #6a4796;   --violet-bg: #f3eefa; --violet-line: #c4b0dd;
+    --toolbar: #ffffffee;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16161a;
+      --band: #1e1e23;
+      --card: #26262c;
+      --line: #3c3c44;
+      --line-strong: #8b8890;
+      --ink: #e9e7e2;
+      --muted: #9c998f;
+      --red: #e5877d;    --red-bg: #31201e;   --red-line: #5c3833;
+      --green: #6ec392;  --green-bg: #1b2a22; --green-line: #33513f;
+      --amber: #d7a84c;  --amber-bg: #2b2519; --amber-line: #55462a;
+      --blue: #7ea7dc;   --blue-bg: #1c2430;  --blue-line: #34455c;
+      --violet: #b195d8; --violet-bg: #241f2f; --violet-line: #453a5c;
+      --toolbar: #1e1e23ee;
+    }
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB",
+                 "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  }
+
+  header {
+    position: sticky; top: 0; z-index: 20;
+    padding: 9px 16px 7px;
+    background: var(--toolbar);
+    border-bottom: 1px solid var(--line);
+    backdrop-filter: blur(6px);
+  }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+  h1 { font-size: 15px; margin: 0 10px 0 0; font-weight: 700; }
+  .sub { font-size: 12px; color: var(--muted); margin: 0; }
+  .spacer { flex: 1 1 30px; }
+
+  nav { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 5px; }
+  nav a {
+    font-size: 12px; text-decoration: none;
+    color: var(--muted); background: var(--card);
+    border: 1px solid var(--line); border-radius: 5px;
+    padding: 2px 8px; cursor: pointer;
+  }
+  nav a:hover { color: var(--ink); border-color: var(--line-strong); }
+
+  button {
+    font: inherit; font-size: 13px;
+    color: var(--ink); background: var(--card);
+    border: 1px solid var(--line); border-radius: 6px;
+    padding: 4px 10px; cursor: pointer;
+  }
+  button:hover { border-color: var(--line-strong); }
+  #pct { font-size: 13px; color: var(--muted); min-width: 46px; text-align: right;
+         font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 150px; accent-color: var(--blue); }
+
+  #stage { overflow: auto; }
+  #sizer { position: relative; }
+  #sheet { width: 1500px; transform-origin: top left; padding: 18px 0 60px; }
+
+  section { margin: 0 0 14px; }
+  h2 {
+    font-size: 19px; margin: 26px 0 2px 20px; font-weight: 700;
+    scroll-margin-top: 90px;
+  }
+  h2 .no { color: var(--muted); font-weight: 400; margin-right: 8px; }
+  .lede { font-size: 13.5px; color: var(--muted); margin: 0 0 8px 20px; max-width: 1180px; }
+  svg.dia { display: block; }
+
+  /* SVG text */
+  svg.dia text { fill: var(--ink); }
+  .t-h    { font-size: 16.5px; font-weight: 700; }
+  .t-h2   { font-size: 14.5px; font-weight: 700; }
+  .t-b    { font-size: 14px; }
+  .t-s    { font-size: 12.5px; }
+  .t-ref  { font-size: 12px; fill: var(--muted);
+            font-family: Consolas, "Cascadia Mono", monospace; }
+  .t-mono { font-size: 13px; font-family: Consolas, "Cascadia Mono", monospace; }
+  .t-chip { font-size: 12.5px; font-weight: 700; }
+  .t-edge { font-size: 12.5px; fill: var(--muted); }
+  .t-loop { font-size: 13px; fill: var(--muted); }
+  .t-sec  { font-size: 19px; font-weight: 700; }
+  .em     { font-weight: 700; }
+
+  .band { fill: var(--band); stroke: var(--line); }
+  .card { fill: var(--card); stroke: var(--line); }
+  .edge { stroke: var(--line-strong); stroke-width: 2; fill: none; }
+  .thin { stroke: var(--line); stroke-width: 1.2; fill: none; }
+  .loop { stroke: var(--line-strong); stroke-width: 1.6; fill: none;
+          stroke-dasharray: 7 5; }
+
+  .red    { fill: var(--red-bg);    stroke: var(--red-line); }
+  .green  { fill: var(--green-bg);  stroke: var(--green-line); }
+  .amber  { fill: var(--amber-bg);  stroke: var(--amber-line); }
+  .blue   { fill: var(--blue-bg);   stroke: var(--blue-line); }
+  .violet { fill: var(--violet-bg); stroke: var(--violet-line); }
+  .ink-red    { fill: var(--red); }
+  .ink-green  { fill: var(--green); }
+  .ink-amber  { fill: var(--amber); }
+  .ink-blue   { fill: var(--blue); }
+  .ink-violet { fill: var(--violet); }
+  .ink-muted  { fill: var(--muted); }
+
+
+  /* 泳道与输入输出 */
+  .lane   { fill: var(--card); stroke: none; opacity: .45; }
+  .lane2  { fill: var(--band); stroke: none; opacity: .55; }
+  .io-in  { font-weight: 700; fill: var(--blue); }
+  .io-do  { font-weight: 700; fill: var(--ink); }
+  .io-out { font-weight: 700; fill: var(--green); }
+  .io-br  { font-weight: 700; fill: var(--amber); }
+  .t-lane { font-size: 15px; font-weight: 700; }
+
+  /* 表格 */
+  table { border-collapse: collapse; margin: 4px 0 8px 20px; font-size: 13.5px; }
+  th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left;
+           vertical-align: top; }
+  th { background: var(--card); font-weight: 700; }
+  td code, th code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px; }
+  tbody tr:nth-child(even) { background: var(--card); }
+  .go { color: var(--blue); font-weight: 700; white-space: nowrap; }
+  .hand { color: var(--amber); font-weight: 700; white-space: nowrap; }
+
+
+  .divider { margin: 30px 0 6px 20px; border-top: 2px solid var(--line-strong);
+             padding-top: 6px; }
+  .divider span { font-size: 13px; color: var(--muted); font-weight: 700;
+                  letter-spacing: .04em; }
+
+  @media print {
+    header { display: none; }
+    #stage { overflow: visible; }
+    #sheet { transform: none !important; width: auto; }
+  }
+</style>
+
+<header>
+  <div class="bar">
+    <div>
+      <h1>OpenPLC bootloader · 安全流程与设计</h1>
+      <p class="sub">前半回答「怎么走」（场景索引 + 泳道流程），后半回答「具体是什么」（格式、布局、边界）。事实来源在 docs/design/ 和 IAPServer/SECURITY.md</p>
+    </div>
+    <div class="spacer"></div>
+    <button id="out" title="缩小">&minus;</button>
+    <input id="rng" type="range" min="25" max="300" step="5" value="100" aria-label="缩放">
+    <button id="in" title="放大">&plus;</button>
+    <span id="pct">100%</span>
+    <button id="fit">适应窗口</button>
+    <button id="one">100%</button>
+    <span class="sub">Ctrl + 滚轮</span>
+  </div>
+  <nav id="nav"></nav>
+</header>
+
+<div id="stage"><div id="sizer"><div id="sheet">
+
+<!-- shared arrowhead for every diagram below -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"
+     xmlns="http://www.w3.org/2000/svg"><defs>
+  <marker id="ah" viewBox="0 0 10 10" refX="9.5" refY="5"
+          markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="var(--line-strong)"/>
+  </marker>
+</defs></svg>
+
+
+<div class="divider"><span>第一部分 · 怎么走</span></div>
+
+<section>
+<h2 id="s0"><span class="no">0</span>场景索引 · 我这个情况该看哪张图</h2>
+<p class="lede">先在这张表里找到你的场景，它会告诉你从哪张流程图开始看、在哪个分支点上做决定、终点是什么。<b>带 <span class="hand">✋</span> 的场景需要你到板子跟前动手</b>，其余都能在电脑上完成。</p>
+<table>
+<thead><tr>
+  <th style="width:16%">你的场景</th><th style="width:8%">谁动手</th><th style="width:11%">看哪张图</th>
+  <th style="width:33%">关键分支点</th><th style="width:32%">终点</th>
+</tr></thead>
+<tbody>
+<tr><td><b>新板到手，先把程序跑起来</b></td><td>你</td><td class="go">流程 A</td>
+    <td>没有分支。板子信公开根，工具默认那把私钥就能签</td>
+    <td>app 跑起来，<b>但每次启动都打不设防告警</b></td></tr>
+<tr><td><b>把这块板变成我的</b></td><td class="hand">✋ 你</td><td class="go">流程 B</td>
+    <td>① BOOT0 必须在 <b>1.5 秒判定点</b>那一刻按下　② 板子必须还没被认领过</td>
+    <td>owner 区多一条 G1 记录，<b>告警消失</b>，此后只认你的根</td></tr>
+<tr><td><b>日常升级一块已认领的板</b></td><td>你或同事</td><td class="go">流程 A</td>
+    <td>④ 会话认证 → ⑥ CRC → ⑦ 镜像验签，<b>三道都过才动 app 区</b></td>
+    <td>新 app 跑起来，journal 里多一条 M 记录</td></tr>
+<tr><td><b>让同事也能上传，但不给他根私钥</b></td><td>管理员</td><td class="go">流程 C</td>
+    <td>没有分支，<b>而且完全不碰板子</b> —— 板子从第一版就懂证书链</td>
+    <td>同事拿到一张 cert（132 字节）+ 他自己的叶私钥，之后走流程 A</td></tr>
+<tr><td><b>同事离职，或他的叶私钥泄露了</b></td><td>管理员</td><td class="go">流程 D</td>
+    <td><b>今天只能整根换</b>。按 serial 撤单张证书 = 需求 C12，未做</td>
+    <td>旧根签的一切失效，<b>每块板都要被触达一次并重传 app</b></td></tr>
+<tr><td><b>我把根私钥丢了</b></td><td class="hand">✋ 你</td><td class="go">流程 E</td>
+    <td>BOOT0 <b>按过 10 秒</b>、听到三下咔哒后松手。按到 30 秒不放会被判卡键</td>
+    <td>回落公开根，<b>回到不设防状态</b>，可以重新走流程 B 认领</td></tr>
+<tr><td><b>板子起不来 / 一直停在 bootloader</b></td><td>你</td><td class="go">诊断表</td>
+    <td>看串口打印的是哪一行 —— <b>三种原因现象一样但完全不同</b></td>
+    <td>按表里那一行的恢复办法做</td></tr>
+<tr><td><b>我用 ST-Link 换过 bootloader</b></td><td class="hand">✋ 你</td><td class="go">流程 B + A</td>
+    <td>owner 记录和 bootloader 同扇区，<b>已经一起被擦掉了</b></td>
+    <td>必须<b>同时</b>重传 app <b>和</b>重新认领，两件事都做完才回到有主状态</td></tr>
+</tbody>
+</table>
+</section>
+
+
+<section>
+<h2 id="sA"><span class="no">流程 A</span>一次上传 · 从点「上传」到 app 跑起来</h2>
+<p class="lede">前提：板子已经在上传模式（怎么进去看参考 4）。<b>三个分支点是这张图的重点</b> —— ④ 会话认证、⑥ CRC、⑦ 镜像验签，任何一个不过都<b>不会碰到 app 区</b>，因为镜像全程先待在 SDRAM 里。</p>
+<svg class="dia" viewBox="0 0 1460 1716" xmlns="http://www.w3.org/2000/svg">
+  <rect class="lane" x="20" y="46" width="210" height="1658" rx="8"/>
+  <text class="t-lane" x="30" y="34">👤 操作者</text>
+  <rect class="lane2" x="256" y="46" width="370" height="1658" rx="8"/>
+  <text class="t-lane" x="266" y="34">💻 PC 工具 IAPTool</text>
+  <rect class="lane" x="652" y="46" width="470" height="1658" rx="8"/>
+  <text class="t-lane" x="662" y="34">🟩 bootloader</text>
+  <rect class="lane2" x="1148" y="46" width="292" height="1658" rx="8"/>
+  <text class="t-lane" x="1158" y="34">💾 存储</text>
+  <rect class="card amber" x="28" y="64" width="194" height="78" rx="7"/>
+  <text class="t-h2" x="40" y="89">触发上传</text>
+  <text class="t-s" x="40" y="113">
+    <tspan x="40" dy="0"><tspan class="io-do">做</tspan>　Arduino IDE 点上传，</tspan>
+    <tspan x="40" dy="20"><tspan class="io-do"></tspan>　　或跑 IAPTool flash</tspan>
+  </text>
+  <path class="edge" d="M222,103 L243,103 L243,139 L264,139" marker-end="url(#ah)"/>
+  <rect class="card " x="264" y="64" width="354" height="152" rx="7"/>
+  <text class="t-h2" x="276" y="89">① 准备镜像</text>
+  <text class="t-s" x="276" y="113">
+    <tspan x="276" dy="0"><tspan class="io-in">入</tspan>　sketch.bin · 叶私钥 · cert 文件</tspan>
+    <tspan x="276" dy="20"><tspan class="io-do">做</tspan>　sha256(镜像) → ECDSA 签名</tspan>
+    <tspan x="276" dy="20"><tspan class="io-do"></tspan>　　CRC32(镜像)</tspan>
+    <tspan x="276" dy="20"><tspan class="io-out">出</tspan>　→ 板子：authchallenge</tspan>
+    <tspan x="276" dy="20"><tspan class="ink-muted">cert 是自签还是委托，工具不关心</tspan></tspan>
+  </text>
+  <path class="edge" d="M618,140 L639,140 L639,254 L660,254" marker-end="url(#ah)"/>
+  <rect class="card " x="660" y="176" width="454" height="172" rx="7"/>
+  <text class="t-h2" x="672" y="201">② 发挑战</text>
+  <text class="t-s" x="672" y="225">
+    <tspan x="672" dy="0"><tspan class="io-in">入</tspan>　authchallenge（CDC 与以太网到同一个状态机）</tspan>
+    <tspan x="672" dy="20"><tspan class="io-do">做</tspan>　counter = DR1 + 1</tspan>
+    <tspan x="672" dy="20"><tspan class="io-do"></tspan>　　nonce = counter‖UIDw0‖tick‖0（16 字节）</tspan>
+    <tspan x="672" dy="20"><tspan class="io-do"></tspan>　　记为「当前唯一在飞的挑战」，TTL 30 秒</tspan>
+    <tspan x="672" dy="20"><tspan class="io-out">出</tspan>　→ 工具：32 个 hex 字符</tspan>
+    <tspan x="672" dy="20"><tspan class="io-out"></tspan>　　→ RTC DR1：counter 落盘</tspan>
+  </text>
+  <text class="t-ref" x="672" y="337">iap_auth.c:66-85</text>
+  <path class="edge" d="M1114,262 L1135,262 L1135,214 L1156,214" marker-end="url(#ah)"/>
+  <rect class="card violet" x="1156" y="176" width="276" height="108" rx="7"/>
+  <text class="t-h2" x="1168" y="201">RTC 备份 DR1</text>
+  <text class="t-s" x="1168" y="225">
+    <tspan x="1168" dy="0">counter 跨掉电存活。</tspan>
+    <tspan x="1168" dy="20">整个备份域丢过的话，启动</tspan>
+    <tspan x="1168" dy="20">时明说 replay weakened，</tspan>
+    <tspan x="1168" dy="20">而不是静默少一层保护。</tspan>
+  </text>
+  <path class="edge" d="M660,310 L639,310 L639,430 L618,430" marker-end="url(#ah)"/>
+  <rect class="card " x="264" y="376" width="354" height="130" rx="7"/>
+  <text class="t-h2" x="276" y="401">③ 签这次会话</text>
+  <text class="t-s" x="276" y="425">
+    <tspan x="276" dy="0"><tspan class="io-in">入</tspan>　板子回的那个 nonce</tspan>
+    <tspan x="276" dy="20"><tspan class="io-do">做</tspan>　用叶私钥签</tspan>
+    <tspan x="276" dy="20"><tspan class="io-do"></tspan>　　sha256(nonce ‖ 命令原文)</tspan>
+    <tspan x="276" dy="20"><tspan class="io-out">出</tspan>　→ 板子：flash size crc</tspan>
+    <tspan x="276" dy="20"><tspan class="io-out"></tspan>　　sig cert noncesig</tspan>
+  </text>
+  <path class="edge" d="M618,441 L639,441 L639,620 L660,620" marker-end="url(#ah)"/>
+  <rect class="card blue" x="660" y="530" width="454" height="200" rx="7"/>
+  <text class="t-h2" x="672" y="555">④ 分支点：会话认证</text>
+  <text class="t-s" x="672" y="579">
+    <tspan x="672" dy="0"><tspan class="io-in">入</tspan>　命令里五个字段 + 板子记着的那个 nonce</tspan>
+    <tspan x="672" dy="20"><tspan class="io-do">做</tspan>　① 用 owner_slot_root() 验 cert.root_sig</tspan>
+    <tspan x="672" dy="20"><tspan class="io-do"></tspan>　　② 用 cert 里的叶公钥验 noncesig</tspan>
+    <tspan x="672" dy="20"><tspan class="io-do"></tspan>　　③ nonce 未过期、未被消费</tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">✗ 任一不过 → 回 ERR，只在 RAM 里记账</tspan></tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">　 不碰 flash，app 区完好无损</tspan></tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">✓ 全过 → 才开始收数据</tspan></tspan>
+  </text>
+  <text class="t-ref" x="672" y="719">IAP_server.c:286-340 · iap_auth.c:87-135</text>
+  <path class="edge" d="M887,730 L887,762" marker-end="url(#ah)"/>
+  <rect class="card " x="660" y="770" width="454" height="118" rx="7"/>
+  <text class="t-h2" x="672" y="795">⑤ 收数据</text>
+  <text class="t-s" x="672" y="819">
+    <tspan x="672" dy="0"><tspan class="io-in">入</tspan>　数据块，CDC 与以太网走同一个 process_command()</tspan>
+    <tspan x="672" dy="20"><tspan class="io-do">做</tspan>　逐块写入外部 SDRAM</tspan>
+    <tspan x="672" dy="20"><tspan class="io-out">出</tspan>　→ SDRAM 0xC0000000</tspan>
+  </text>
+  <path class="edge" d="M1114,810 L1135,810 L1135,420 L1156,420" marker-end="url(#ah)"/>
+  <rect class="card violet" x="1156" y="376" width="276" height="128" rx="7"/>
+  <text class="t-h2" x="1168" y="401">SDRAM 暂存区</text>
+  <text class="t-s" x="1168" y="425">
+    <tspan x="1168" dy="0">2 MiB @ 0xC0000000。</tspan>
+    <tspan x="1168" dy="20">此刻 app 区一个字节没动。</tspan>
+    <tspan x="1168" dy="20">这个地址刻意不在任何链接</tspan>
+    <tspan x="1168" dy="20">脚本的 MEMORY 块里 ⇒ 工具</tspan>
+    <tspan x="1168" dy="20">链不可能把东西放这。</tspan>
+  </text>
+  <path class="edge" d="M887,888 L887,920" marker-end="url(#ah)"/>
+  <rect class="card " x="660" y="928" width="454" height="136" rx="7"/>
+  <text class="t-h2" x="672" y="953">⑥ 分支点：CRC32</text>
+  <text class="t-s" x="672" y="977">
+    <tspan x="672" dy="0"><tspan class="io-in">入</tspan>　SDRAM 里收全的镜像</tspan>
+    <tspan x="672" dy="20"><tspan class="io-do">做</tspan>　HAL_CRC_Calculate，和命令里的 crc 比</tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">✗ 不等 → CRC Failed + 日志 CRC_FAIL</tspan></tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">✓ 相等 → 继续（只证明没传坏，不证明是谁发的）</tspan></tspan>
+  </text>
+  <path class="edge" d="M887,1064 L887,1096" marker-end="url(#ah)"/>
+  <rect class="card green" x="660" y="1104" width="454" height="158" rx="7"/>
+  <text class="t-h2" x="672" y="1129">⑦ 分支点：镜像验签</text>
+  <text class="t-s" x="672" y="1153">
+    <tspan x="672" dy="0"><tspan class="io-in">入</tspan>　SDRAM 镜像 · sig · cert · owner_slot_root()</tspan>
+    <tspan x="672" dy="20"><tspan class="io-do">做</tspan>　iap_cert_verify_image()，和启动时同一个调用</tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">✗ 不过 → Signature Failed + 日志 SIG_FAIL</tspan></tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">　 一个已授权的会话传了坏镜像，也栽在这里</tspan></tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">✓ 过 → 到这一步才第一次允许动 app 区</tspan></tspan>
+  </text>
+  <text class="t-ref" x="672" y="1251">iap_cert.c:9-24 · IAP_server.c:396-423</text>
+  <path class="edge" d="M887,1262 L887,1294" marker-end="url(#ah)"/>
+  <rect class="card " x="660" y="1302" width="454" height="140" rx="7"/>
+  <text class="t-h2" x="672" y="1327">⑧ 提交</text>
+  <text class="t-s" x="672" y="1351">
+    <tspan x="672" dy="0"><tspan class="io-do">做</tspan>　擦 app 区 → 从 SDRAM 拷进 flash</tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">✗ 写失败 → FLASH_WRITE_FAIL</tspan></tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">　 和 SIG_FAIL 刻意分开：镜像是好的，flash 写坏了</tspan></tspan>
+    <tspan x="672" dy="20"><tspan class="io-out">出</tspan>　→ app 区 0x08020000</tspan>
+  </text>
+  <path class="edge" d="M1114,1350 L1135,1350 L1135,580 L1156,580" marker-end="url(#ah)"/>
+  <rect class="card green" x="1156" y="546" width="276" height="108" rx="7"/>
+  <text class="t-h2" x="1168" y="571">app 区</text>
+  <text class="t-s" x="1168" y="595">
+    <tspan x="1168" dy="0">0x08020000 起 1792 KiB。</tspan>
+    <tspan x="1168" dy="20">在这之前的每一步失败，</tspan>
+    <tspan x="1168" dy="20">这块都还是旧 app —— 坏</tspan>
+    <tspan x="1168" dy="20">请求毁不掉能用的程序。</tspan>
+  </text>
+  <path class="edge" d="M887,1442 L887,1474" marker-end="url(#ah)"/>
+  <rect class="card " x="660" y="1482" width="454" height="140" rx="7"/>
+  <text class="t-h2" x="672" y="1507">⑨ 记账</text>
+  <text class="t-s" x="672" y="1531">
+    <tspan x="672" dy="0"><tspan class="io-do">做</tspan>　剩余格 &lt; 8 或格式认不出 → 整扇区 reclaim</tspan>
+    <tspan x="672" dy="20"><tspan class="io-out">出</tspan>　→ journal：M 记录 248 字节 / 8 格</tspan>
+    <tspan x="672" dy="20"><tspan class="io-out"></tspan>　　→ journal：L 记录 32 字节，链上前一条的哈希</tspan>
+    <tspan x="672" dy="20"><tspan class="ink-muted">日志满了也绝不擦 —— 一切规则偏向保住 metadata</tspan></tspan>
+  </text>
+  <path class="edge" d="M1114,1530 L1135,1530 L1135,726 L1156,726" marker-end="url(#ah)"/>
+  <rect class="card amber" x="1156" y="692" width="276" height="108" rx="7"/>
+  <text class="t-h2" x="1168" y="717">journal（state 扇区）</text>
+  <text class="t-s" x="1168" y="741">
+    <tspan x="1168" dy="0">0x081E0000 起 128 KiB。</tspan>
+    <tspan x="1168" dy="20">全代码唯一会擦的地方，</tspan>
+    <tspan x="1168" dy="20">而且只在这一刻擦 —— 旧证明</tspan>
+    <tspan x="1168" dy="20">描述的东西已经不存在了。</tspan>
+  </text>
+  <path class="edge" d="M887,1622 L887,1650" marker-end="url(#ah)"/>
+  <rect class="card blue" x="660" y="1658" width="454" height="46" rx="7"/>
+  <text class="t-s" x="672" y="1684">
+    <tspan x="672" dy="0"><tspan class="io-do">⑩ 复位 → 从 Step 0/1 重新验一遍，不相信这次会话自己的成功报告</tspan></tspan>
+  </text>
+</svg>
+</section>
+
+
+<section>
+<h2 id="sB"><span class="no">流程 B</span>认领 · 把板子变成我的</h2>
+<p class="lede">全程只有一次物理动作，而且<b>只有第一次能做</b>。之后换主人走流程 D，不需要再到板子跟前。</p>
+<svg class="dia" viewBox="0 0 1460 900" xmlns="http://www.w3.org/2000/svg">
+  <rect class="lane" x="20" y="46" width="210" height="842" rx="8"/>
+  <text class="t-lane" x="30" y="34">👤 操作者</text>
+  <rect class="lane2" x="256" y="46" width="370" height="842" rx="8"/>
+  <text class="t-lane" x="266" y="34">💻 PC 工具 IAPTool</text>
+  <rect class="lane" x="652" y="46" width="470" height="842" rx="8"/>
+  <text class="t-lane" x="662" y="34">🟩 bootloader</text>
+  <rect class="lane2" x="1148" y="46" width="292" height="842" rx="8"/>
+  <text class="t-lane" x="1158" y="34">💾 存储</text>
+  <rect class="card amber" x="28" y="64" width="194" height="120" rx="7"/>
+  <text class="t-h2" x="40" y="89">✋ 到板子跟前</text>
+  <text class="t-s" x="40" y="113">
+    <tspan x="40" dy="0"><tspan class="io-do">做</tspan>　① 按住 BOOT0（PG9）</tspan>
+    <tspan x="40" dy="20"><tspan class="io-do"></tspan>　　② 复位板子</tspan>
+    <tspan x="40" dy="20"><tspan class="io-do"></tspan>　　③ 一直按着，听继电器</tspan>
+    <tspan x="40" dy="20"><tspan class="io-out">出</tspan>　→ 板子：一个电平</tspan>
+  </text>
+  <path class="edge" d="M222,124 L441,124 L441,130 L660,130" marker-end="url(#ah)"/>
+  <rect class="card amber" x="660" y="64" width="454" height="160" rx="7"/>
+  <text class="t-h2" x="672" y="89">① 启动窗口</text>
+  <text class="t-s" x="672" y="113">
+    <tspan x="672" dy="0"><tspan class="io-in">入</tspan>　PG9 电平</tspan>
+    <tspan x="672" dy="20"><tspan class="io-do">做</tspan>　继电器依次咔哒 3 × 500 ms（这期间不看引脚）</tspan>
+    <tspan x="672" dy="20"><tspan class="io-do"></tspan>　　1.5 秒那一刻读一次 PG9</tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">✗ 那一刻没按下 → 正常启动，takeown 之后一律被拒</tspan></tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">✓ 按下了 → latch s_boot0_held = true，模式 IAP_ALL</tspan></tspan>
+    <tspan x="672" dy="20"><tspan class="ink-muted">判定是「那一刻按着」，不是「按满了 1.5 秒」</tspan></tspan>
+  </text>
+  <text class="t-ref" x="672" y="213">main.c:164-253</text>
+  <path class="edge" d="M660,200 L441,200 L441,250 L222,250" marker-end="url(#ah)"/>
+  <rect class="card " x="28" y="216" width="194" height="76" rx="7"/>
+  <text class="t-h2" x="40" y="241">松手</text>
+  <text class="t-s" x="40" y="265">
+    <tspan x="40" dy="0"><tspan class="io-do">做</tspan>　10 秒前松开</tspan>
+    <tspan x="40" dy="20"><tspan class="ink-muted">按过 10 秒 → 流程 E</tspan></tspan>
+  </text>
+  <path class="edge" d="M222,254 L243,254 L243,300 L264,300" marker-end="url(#ah)"/>
+  <rect class="card " x="264" y="254" width="354" height="130" rx="7"/>
+  <text class="t-h2" x="276" y="279">② 造一把根</text>
+  <text class="t-s" x="276" y="303">
+    <tspan x="276" dy="0"><tspan class="io-do">做</tspan>　IAPTool genkey</tspan>
+    <tspan x="276" dy="20"><tspan class="io-out">出</tspan>　→ 本机文件：根私钥（保密）</tspan>
+    <tspan x="276" dy="20"><tspan class="io-out"></tspan>　　→ 板子：takeown「128 hex」</tspan>
+    <tspan x="276" dy="20"><tspan class="ink-muted">这把私钥从此就是这块板的主人凭证，</tspan></tspan>
+    <tspan x="276" dy="20"><tspan class="ink-muted">丢了只能走流程 E</tspan></tspan>
+  </text>
+  <path class="edge" d="M618,320 L639,320 L639,400 L660,400" marker-end="url(#ah)"/>
+  <rect class="card green" x="660" y="300" width="454" height="248" rx="7"/>
+  <text class="t-h2" x="672" y="325">③ 分支点：写 G1 记录</text>
+  <text class="t-s" x="672" y="349">
+    <tspan x="672" dy="0"><tspan class="io-in">入</tspan>　takeown 命令里的 64 字节根公钥 + latch 住的 s_boot0_held</tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">✗ s_boot0_held 为假 → 拒。远程摸不到这条路</tspan></tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">✗ 板子已被认领过 → 拒。takeown 只能是第一次</tspan></tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">✗ owner 区满（51 条）→ 拒，报 area is full</tspan></tspan>
+    <tspan x="672" dy="20"><tspan class="io-do">做</tspan>　组 G1：generation=1 · uid=本板 UID · prev_sig 全 0（TOFU）</tspan>
+    <tspan x="672" dy="20"><tspan class="io-do"></tspan>　　先写 body、最后写 header ⇒ 掉电撕裂不出「看着有效」的记录</tspan>
+    <tspan x="672" dy="20"><tspan class="io-do"></tspan>　　写完立刻重扫一遍，确认这条真的在链上生效</tspan>
+    <tspan x="672" dy="20"><tspan class="io-out">出</tspan>　→ owner 区：追加 160 字节</tspan>
+    <tspan x="672" dy="20"><tspan class="io-out"></tspan>　　→ 工具：OK</tspan>
+  </text>
+  <text class="t-ref" x="672" y="537">owner_slot.c:415-467</text>
+  <path class="edge" d="M1114,424 L1135,424 L1135,400 L1156,400" marker-end="url(#ah)"/>
+  <rect class="card green" x="1156" y="300" width="276" height="150" rx="7"/>
+  <text class="t-h2" x="1168" y="325">owner 记录区</text>
+  <text class="t-s" x="1168" y="349">
+    <tspan x="1168" dy="0">0x0801E000 起 8 KiB，</tspan>
+    <tspan x="1168" dy="20">在 bootloader 自己的扇区尾部。</tspan>
+    <tspan x="1168" dy="20">只追加、永不擦除 —— 这个扇</tspan>
+    <tspan x="1168" dy="20">区里还住着正在执行的</tspan>
+    <tspan x="1168" dy="20">bootloader，擦不得。</tspan>
+  </text>
+  <path class="edge" d="M887,548 L887,580" marker-end="url(#ah)"/>
+  <rect class="card green" x="660" y="588" width="454" height="130" rx="7"/>
+  <text class="t-h2" x="672" y="613">④ 下次启动开始生效</text>
+  <text class="t-s" x="672" y="637">
+    <tspan x="672" dy="0"><tspan class="io-do">做</tspan>　owner_slot_root() 不再回落 fw_public_key，</tspan>
+    <tspan x="672" dy="20"><tspan class="io-do"></tspan>　　而是返回你这条 G1 记录里的根</tspan>
+    <tspan x="672" dy="20"><tspan class="io-out">出</tspan>　→ 串口：不设防告警消失</tspan>
+    <tspan x="672" dy="20"><tspan class="ink-muted">因为「当前根 == 那把公开根」不再成立</tspan></tspan>
+  </text>
+  <path class="edge" d="M887,718 L887,750" marker-end="url(#ah)"/>
+  <rect class="card blue" x="660" y="758" width="454" height="118" rx="7"/>
+  <text class="t-h2" x="672" y="783">⑤ 此后一切验签都用你的根</text>
+  <text class="t-s" x="672" y="807">
+    <tspan x="672" dy="0"><tspan class="io-out">出</tspan>　→ 上传要你的根签发的证书（流程 A 的 ④ 和 ⑦）</tspan>
+    <tspan x="672" dy="20"><tspan class="io-out"></tspan>　　→ 启动验 app 也用你的根（参考 5）</tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">⚠ 之前用公开根签的那个 app，下次启动会被拒 → 要重传一次</tspan></tspan>
+  </text>
+</svg>
+</section>
+
+
+<section>
+<h2 id="sC"><span class="no">流程 C</span>发证书 · 让同事能上传，但不给他根私钥</h2>
+<p class="lede">这张图最重要的一点：<b>它完全不碰板子</b>。发证书是纯本地操作，板子不需要学任何新东西，也不需要重新连接。</p>
+<svg class="dia" viewBox="0 0 1460 560" xmlns="http://www.w3.org/2000/svg">
+  <rect class="lane" x="20" y="46" width="250" height="502" rx="8"/>
+  <text class="t-lane" x="30" y="34">👤 管理员 / 同事</text>
+  <rect class="lane2" x="290" y="46" width="420" height="502" rx="8"/>
+  <text class="t-lane" x="300" y="34">💻 PC 工具 IAPTool</text>
+  <rect class="lane" x="740" y="46" width="400" height="502" rx="8"/>
+  <text class="t-lane" x="750" y="34">🟩 bootloader</text>
+  <rect class="lane2" x="1170" y="46" width="270" height="502" rx="8"/>
+  <text class="t-lane" x="1180" y="34">💾 存储</text>
+  <rect class="card violet" x="28" y="64" width="234" height="100" rx="7"/>
+  <text class="t-h2" x="40" y="89">管理员</text>
+  <text class="t-s" x="40" y="113">
+    <tspan x="40" dy="0"><tspan class="io-in">入</tspan>　根私钥（自己手上）</tspan>
+    <tspan x="40" dy="20"><tspan class="io-in"></tspan>　　同事的叶公钥</tspan>
+    <tspan x="40" dy="20"><tspan class="io-out">出</tspan>　→ 工具：IAPTool cert</tspan>
+  </text>
+  <path class="edge" d="M262,110 L280,110 L280,130 L298,130" marker-end="url(#ah)"/>
+  <rect class="card violet" x="298" y="64" width="404" height="168" rx="7"/>
+  <text class="t-h2" x="310" y="89">签一张证书</text>
+  <text class="t-s" x="310" y="113">
+    <tspan x="310" dy="0"><tspan class="io-in">入</tspan>　根私钥 · 叶公钥 · .certserial 计数器</tspan>
+    <tspan x="310" dy="20"><tspan class="io-do">做</tspan>　serial = 计数器++</tspan>
+    <tspan x="310" dy="20"><tspan class="io-do"></tspan>　　root_sig = 根私钥签 sha256(叶公钥‖serial)</tspan>
+    <tspan x="310" dy="20"><tspan class="io-out">出</tspan>　→ 文件：cert 132 字节，给同事</tspan>
+    <tspan x="310" dy="20"><tspan class="io-out"></tspan>　　→ 本机：.certserial += 1</tspan>
+    <tspan x="310" dy="20"><tspan class="ink-muted">自签证书固定 serial=0xFFFFFFFF，不吃号</tspan></tspan>
+  </text>
+  <rect class="card " x="748" y="64" width="384" height="168" rx="7"/>
+  <text class="t-h2" x="760" y="89">板子这边：什么都不用做</text>
+  <text class="t-s" x="760" y="113">
+    <tspan x="760" dy="0">⚠ 这条流程完全不碰板子。</tspan>
+    <tspan x="760" dy="20"></tspan>
+    <tspan x="760" dy="20">板子从第一版就懂证书链，它只问</tspan>
+    <tspan x="760" dy="20">「我信任的根，签过眼前这张纸吗」。</tspan>
+    <tspan x="760" dy="20">纸上写的公钥是不是根自己，</tspan>
+    <tspan x="760" dy="20">板子不关心 ⇒ 没有自签特例分支。</tspan>
+  </text>
+  <text class="t-ref" x="760" y="221">iap_cert.h:8-13</text>
+  <path class="edge" d="M298,200 L280,200 L280,290 L262,290" marker-end="url(#ah)"/>
+  <rect class="card green" x="28" y="256" width="234" height="108" rx="7"/>
+  <text class="t-h2" x="40" y="281">同事</text>
+  <text class="t-s" x="40" y="305">
+    <tspan x="40" dy="0"><tspan class="io-in">入</tspan>　cert 文件 + 自己的叶私钥</tspan>
+    <tspan x="40" dy="20"><tspan class="io-do">做</tspan>　照常上传</tspan>
+    <tspan x="40" dy="20"><tspan class="io-out">出</tspan>　→ 走流程 A，一步不差</tspan>
+    <tspan x="40" dy="20"><tspan class="ink-muted">他从未持有根私钥</tspan></tspan>
+  </text>
+  <rect class="card amber" x="298" y="256" width="404" height="108" rx="7"/>
+  <text class="t-s" x="310" y="282">
+    <tspan x="310" dy="0"><tspan class="io-br">⚠ 也可以直接把根私钥拷给同事 —— 能用，但想收回</tspan></tspan>
+    <tspan x="310" dy="20"><tspan class="io-br">其中一个人的权限时只能换根，等于所有人一起重来。</tspan></tspan>
+    <tspan x="310" dy="20"><tspan class="io-br"></tspan></tspan>
+    <tspan x="310" dy="20"><tspan class="io-br">人多就用证书，不要拷私钥。</tspan></tspan>
+  </text>
+</svg>
+</section>
+
+
+<section>
+<h2 id="sD"><span class="no">流程 D</span>换根 · 私钥泄露了怎么收场</h2>
+<p class="lede">和流程 C 相反：这条<b>必须触达每一块板</b>，而且做完之后<b>板上现有的 app 会被作废</b>。看清③那一步，它是最容易被漏掉的后果。</p>
+<svg class="dia" viewBox="0 0 1460 700" xmlns="http://www.w3.org/2000/svg">
+  <rect class="lane" x="20" y="46" width="250" height="642" rx="8"/>
+  <text class="t-lane" x="30" y="34">👤 管理员 / 同事</text>
+  <rect class="lane2" x="290" y="46" width="420" height="642" rx="8"/>
+  <text class="t-lane" x="300" y="34">💻 PC 工具 IAPTool</text>
+  <rect class="lane" x="740" y="46" width="400" height="642" rx="8"/>
+  <text class="t-lane" x="750" y="34">🟩 bootloader</text>
+  <rect class="lane2" x="1170" y="46" width="270" height="642" rx="8"/>
+  <text class="t-lane" x="1180" y="34">💾 存储</text>
+  <rect class="card violet" x="28" y="64" width="234" height="92" rx="7"/>
+  <text class="t-h2" x="40" y="89">管理员</text>
+  <text class="t-s" x="40" y="113">
+    <tspan x="40" dy="0"><tspan class="io-do">做</tspan>　IAPTool genkey → 新根</tspan>
+    <tspan x="40" dy="20"><tspan class="io-out">出</tspan>　→ 工具：setowner</tspan>
+  </text>
+  <path class="edge" d="M262,110 L280,110 L280,140 L298,140" marker-end="url(#ah)"/>
+  <rect class="card blue" x="298" y="64" width="404" height="190" rx="7"/>
+  <text class="t-h2" x="310" y="89">① 组一条换主人记录</text>
+  <text class="t-s" x="310" y="113">
+    <tspan x="310" dy="0"><tspan class="io-in">入</tspan>　当前根私钥 · 新根公钥</tspan>
+    <tspan x="310" dy="20"><tspan class="io-in"></tspan>　　板子当前 generation（先用 getowner 查）</tspan>
+    <tspan x="310" dy="20"><tspan class="io-do">做</tspan>　填 generation = 当前 + 1、uid = 那块板的 UID</tspan>
+    <tspan x="310" dy="20"><tspan class="io-do"></tspan>　　prev_sig = 当前根私钥签前 88 字节</tspan>
+    <tspan x="310" dy="20"><tspan class="io-out">出</tspan>　→ 板子：setowner「gen · 新根公钥 · sig」</tspan>
+    <tspan x="310" dy="20"><tspan class="ink-muted">不需要 BOOT0 ⇒ 可以远程做，刻意如此</tspan></tspan>
+  </text>
+  <path class="edge" d="M702,160 L725,160 L725,200 L748,200" marker-end="url(#ah)"/>
+  <rect class="card blue" x="748" y="64" width="384" height="216" rx="7"/>
+  <text class="t-h2" x="760" y="89">② 分支点：验签后追加</text>
+  <text class="t-s" x="760" y="113">
+    <tspan x="760" dy="0"><tspan class="io-in">入</tspan>　三个字段</tspan>
+    <tspan x="760" dy="20"><tspan class="io-br">✗ generation 不是「生效 + 1」→ 拒</tspan></tspan>
+    <tspan x="760" dy="20"><tspan class="io-br">　（挡住把捕获的旧记录重放进后面的槽）</tspan></tspan>
+    <tspan x="760" dy="20"><tspan class="io-br">✗ prev_sig 验不过 → 拒</tspan></tspan>
+    <tspan x="760" dy="20"><tspan class="io-br">　 攻击者能写 flash 也签不出这条 ⇒ R2 是真保证</tspan></tspan>
+    <tspan x="760" dy="20"><tspan class="io-do">做</tspan>　写前先验，不是等下次启动再拒</tspan>
+    <tspan x="760" dy="20"><tspan class="io-out">出</tspan>　→ owner 区：追加 G(n+1)</tspan>
+  </text>
+  <text class="t-ref" x="760" y="269">owner_slot.c:354-413</text>
+  <path class="edge" d="M1132,240 L1155,240 L1155,200 L1178,200" marker-end="url(#ah)"/>
+  <rect class="card green" x="1178" y="64" width="254" height="216" rx="7"/>
+  <text class="t-h2" x="1190" y="89">owner 区</text>
+  <text class="t-s" x="1190" y="113">
+    <tspan x="1190" dy="0">链变长一条。</tspan>
+    <tspan x="1190" dy="20"></tspan>
+    <tspan x="1190" dy="20">解析规则是「从最老往新逐条</tspan>
+    <tspan x="1190" dy="20">走，一条不过就停」，不是</tspan>
+    <tspan x="1190" dy="20">「代号最大者胜」 —— 否则任何</tspan>
+    <tspan x="1190" dy="20">能追加字节的人写一条高代号</tspan>
+    <tspan x="1190" dy="20">无签名记录就夺权了。</tspan>
+  </text>
+  <path class="edge" d="M940,280 L940,312" marker-end="url(#ah)"/>
+  <rect class="card red" x="748" y="320" width="384" height="172" rx="7"/>
+  <text class="t-h2" x="760" y="345">③ 后果：现有 app 被作废</text>
+  <text class="t-s" x="760" y="369">
+    <tspan x="760" dy="0"><tspan class="io-do">做</tspan>　下次启动用&lt;新根&gt;验旧 metadata 里那张 cert 的 root_sig</tspan>
+    <tspan x="760" dy="20"><tspan class="io-br">✗ 验不过 —— 那张证书是&lt;旧根&gt;签的</tspan></tspan>
+    <tspan x="760" dy="20"><tspan class="io-out">出</tspan>　→ 拒掉现有 app，停在 bootloader，CDC + 以太网全开</tspan>
+    <tspan x="760" dy="20"><tspan class="ink-muted">这正是「存整张证书而不缓存叶公钥」买到的性质</tspan></tspan>
+  </text>
+  <text class="t-ref" x="760" y="481">bootloader_state.h:67-73</text>
+  <path class="edge" d="M748,406 L505,406 L505,420 L262,420" marker-end="url(#ah)"/>
+  <rect class="card amber" x="28" y="380" width="234" height="132" rx="7"/>
+  <text class="t-h2" x="40" y="405">必须做的收尾</text>
+  <text class="t-s" x="40" y="429">
+    <tspan x="40" dy="0"><tspan class="io-do">做</tspan>　给还在职的人用新根重发证书</tspan>
+    <tspan x="40" dy="20"><tspan class="io-do"></tspan>　　每块板重传一次 app（流程 A）</tspan>
+    <tspan x="40" dy="20"><tspan class="ink-muted">⇒ 换钥要当维护窗口安排，</tspan></tspan>
+    <tspan x="40" dy="20"><tspan class="ink-muted">不是点一下就完事</tspan></tspan>
+  </text>
+  <rect class="card " x="298" y="512" width="404" height="152" rx="7"/>
+  <text class="t-h2" x="310" y="537">这就是今天的「撤销」</text>
+  <text class="t-s" x="310" y="561">
+    <tspan x="310" dy="0">粒度只有一种：全部。</tspan>
+    <tspan x="310" dy="20">旧根签发的每一张证书当场失效。</tspan>
+    <tspan x="310" dy="20"></tspan>
+    <tspan x="310" dy="20">⚠ rotate_keys.sh 会把旧证书改名成</tspan>
+    <tspan x="310" dy="20">*.cert.superseded 挪走 —— 留在原地</tspan>
+    <tspan x="310" dy="20">它会被送给每块板并被拒，而那句拒绝</tspan>
+    <tspan x="310" dy="20">读起来像「这块板不信你」。</tspan>
+  </text>
+</svg>
+</section>
+
+
+<section>
+<h2 id="sE"><span class="no">流程 E</span>恢复出厂 · 根私钥丢了的唯一出路</h2>
+<p class="lede">纯物理，<b>不需要任何签名</b>，也<b>不可能远程触发</b>。注意②那一步的括号：这不是擦除，是往链尾追加一条记录。</p>
+<svg class="dia" viewBox="0 0 1460 660" xmlns="http://www.w3.org/2000/svg">
+  <rect class="lane" x="20" y="46" width="210" height="602" rx="8"/>
+  <text class="t-lane" x="30" y="34">👤 操作者</text>
+  <rect class="lane2" x="256" y="46" width="370" height="602" rx="8"/>
+  <text class="t-lane" x="266" y="34">💻 PC 工具 IAPTool</text>
+  <rect class="lane" x="652" y="46" width="470" height="602" rx="8"/>
+  <text class="t-lane" x="662" y="34">🟩 bootloader</text>
+  <rect class="lane2" x="1148" y="46" width="292" height="602" rx="8"/>
+  <text class="t-lane" x="1158" y="34">💾 存储</text>
+  <rect class="card amber" x="28" y="64" width="194" height="138" rx="7"/>
+  <text class="t-h2" x="40" y="89">✋ 到板子跟前</text>
+  <text class="t-s" x="40" y="113">
+    <tspan x="40" dy="0"><tspan class="io-do">做</tspan>　① 按住 BOOT0</tspan>
+    <tspan x="40" dy="20"><tspan class="io-do"></tspan>　　② 复位</tspan>
+    <tspan x="40" dy="20"><tspan class="io-do"></tspan>　　③ 一直按着不放</tspan>
+    <tspan x="40" dy="20"><tspan class="io-do"></tspan>　　④ 听到三下快咔哒</tspan>
+    <tspan x="40" dy="20"><tspan class="io-do"></tspan>　　⑤ 这时候才松手</tspan>
+  </text>
+  <path class="edge" d="M222,132 L441,132 L441,130 L660,130" marker-end="url(#ah)"/>
+  <rect class="card amber" x="660" y="64" width="454" height="208" rx="7"/>
+  <text class="t-h2" x="672" y="89">① 手势判定</text>
+  <text class="t-s" x="672" y="113">
+    <tspan x="672" dy="0"><tspan class="io-do">做</tspan>　1.5 秒那一刻按着 → 决定已定：留在 bootloader</tspan>
+    <tspan x="672" dy="20"><tspan class="io-do"></tspan>　　继续数，held_ms 累加</tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">到 10 秒 → 三下快咔哒 = 已武装，打印 ARMED</tspan></tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">　 松手 → FACTORY_RESET</tspan></tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">到 30 秒还不松 → 判为按键卡死或线短路，</tspan></tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">　 退回 UPLOAD 模式（否则板子会像死了一样卡在这）</tspan></tspan>
+    <tspan x="672" dy="20"><tspan class="ink-muted">用声音不用灯：这板子没有通用 LED，而且常装在柜子里</tspan></tspan>
+  </text>
+  <text class="t-ref" x="672" y="261">main.c:177 · 182 · 209-253</text>
+  <path class="edge" d="M887,272 L887,304" marker-end="url(#ah)"/>
+  <rect class="card red" x="660" y="312" width="454" height="168" rx="7"/>
+  <text class="t-h2" x="672" y="337">② 分支点：追加 cleared 记录</text>
+  <text class="t-s" x="672" y="361">
+    <tspan x="672" dy="0"><tspan class="io-do">做</tspan>　owner_slot_factory_reset()</tspan>
+    <tspan x="672" dy="20"><tspan class="io-do"></tspan>　　写一条 cleared：root_pubkey 全 0 · uid 全 0 · prev_sig 全 0</tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">⚠ 刻意不要求任何签名 —— 要求当前 owner 签，等于丢钥的</tspan></tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">　 客户只能靠 ST-Link 救板，而这类客户恰恰没有 ST-Link</tspan></tspan>
+    <tspan x="672" dy="20"><tspan class="io-out">出</tspan>　→ owner 区：追加 160 字节</tspan>
+  </text>
+  <text class="t-ref" x="672" y="469">owner_slot.c:469-529</text>
+  <path class="edge" d="M1114,396 L1135,396 L1135,360 L1156,360" marker-end="url(#ah)"/>
+  <rect class="card violet" x="1156" y="312" width="276" height="168" rx="7"/>
+  <text class="t-h2" x="1168" y="337">owner 区</text>
+  <text class="t-s" x="1168" y="361">
+    <tspan x="1168" dy="0">链尾变成一条 cleared。</tspan>
+    <tspan x="1168" dy="20"></tspan>
+    <tspan x="1168" dy="20">⚠ 注意不是「擦掉了」——</tspan>
+    <tspan x="1168" dy="20">这个扇区永不擦除。之前的</tspan>
+    <tspan x="1168" dy="20">G1…Gn 记录字节都还在，</tspan>
+    <tspan x="1168" dy="20">只是链尾 cleared 让解析</tspan>
+    <tspan x="1168" dy="20">回落到编译进来的那把根。</tspan>
+  </text>
+  <path class="edge" d="M887,480 L887,512" marker-end="url(#ah)"/>
+  <rect class="card blue" x="660" y="520" width="454" height="118" rx="7"/>
+  <text class="t-h2" x="672" y="545">③ 回到起点</text>
+  <text class="t-s" x="672" y="569">
+    <tspan x="672" dy="0"><tspan class="io-out">出</tspan>　→ owner_slot_root() 回落 fw_public_key</tspan>
+    <tspan x="672" dy="20"><tspan class="io-out"></tspan>　　→ 串口：不设防告警重新出现</tspan>
+    <tspan x="672" dy="20"><tspan class="io-br">⇒ 回到状态 A：可以走流程 A 直接上传，或走流程 B 重新认领</tspan></tspan>
+  </text>
+  <rect class="card " x="264" y="520" width="354" height="118" rx="7"/>
+  <text class="t-h2" x="276" y="545">⚠ 换来的和付出的</text>
+  <text class="t-s" x="276" y="569">
+    <tspan x="276" dy="0">付出：有物理接触的人可以恢复出厂后接管这块板（R3 挡不住）。</tspan>
+    <tspan x="276" dy="20">换来：没有任何人能远程做这件事。</tspan>
+    <tspan x="276" dy="20">这条取舍必须接受 —— keys/README.md 已把「防不住手里拿着板子的人」写成设计前提。</tspan>
+  </text>
+</svg>
+</section>
+
+
+<section>
+<h2 id="sX"><span class="no">诊断表</span>板子起不来 · 串口那行话是什么意思</h2>
+<p class="lede">现象都是「停在 bootloader，CDC 和以太网都开着」，但<b>原因完全不同</b>。日志能把它们区分开，这是刻意设计的 —— 先看串口打了哪一行。</p>
+<table>
+<thead><tr>
+  <th style="width:26%">串口打的是</th><th style="width:22%">说明什么</th>
+  <th style="width:26%">怎么确认</th><th style="width:26%">怎么恢复</th>
+</tr></thead>
+<tbody>
+<tr><td><code>metadata absent</code></td>
+    <td><b>出厂空板</b>，从来没成功上传过。journal 第一格就是 0xFF</td>
+    <td>UDP 发现回的角色是 <code>BOOTLD-INVALID</code></td>
+    <td>第一次上传就正常了 → <span class="go">流程 A</span></td></tr>
+<tr><td><code>unrecognised record at slot 0</code></td>
+    <td><b>换过 bootloader</b>，journal 里是旧格式的字节。0.1.2 的记录头新解析器认不出</td>
+    <td>多出这一行；而且 <code>s_format_unknown</code> 为真时新事件全丢，日志停止增长</td>
+    <td>重传一次 app → reclaim 整扇区 → 恢复。<b>owner 记录也一起被擦过，要重新认领</b></td></tr>
+<tr><td><code>App signature invalid or absent</code><br>且前面有 <code>metadata present</code></td>
+    <td><b>上传中断，或验签不过</b>。有 M 记录但验不过</td>
+    <td>看有没有 <code>SIG_FAIL</code> / <code>CRC_FAIL</code> 日志；app 区内容和 metadata 对不上</td>
+    <td>重传 → <span class="go">流程 A</span></td></tr>
+<tr><td><code>App signature invalid or absent</code><br>而且你刚做过 setowner</td>
+    <td><b>换根把现有 app 追溯作废了</b>。这是设计行为，不是故障</td>
+    <td>metadata 里那张 cert 是旧根签的，<code>root_sig</code> 在新根下验不过</td>
+    <td>用新根（或新根签的证书）重传 → <span class="go">流程 A</span></td></tr>
+<tr><td><code>** BOOT0 held **</code></td>
+    <td><b>不是故障</b>。有人按住了 BOOT0，物理逃生口赢过一切</td>
+    <td>模式是 <code>IAP_ALL</code>，reason 打的是 <code>BOOT0 held</code></td>
+    <td>松开 BOOT0 再复位。<b>或者顺手做认领</b> → <span class="go">流程 B</span></td></tr>
+<tr><td><code>flash command failed authentication</code></td>
+    <td><b>工具版本不对</b>，或证书不是这块板信的根签的</td>
+    <td>0.1.2 的 IAPTool 刷 0.1.3 的板必然到这里，而且<b>失败得很安静</b> —— 没有一句话说版本不对</td>
+    <td>换新版 IAPTool；确认手上的 cert 是这块板当前根签的（<code>getpubkey</code> 查板子信哪把根）</td></tr>
+<tr><td><code>replay protection is weakened</code></td>
+    <td><b>RTC 备份域丢过</b>（VBAT 断过）。nonce 计数器归零了</td>
+    <td>DR3 里的见证值不见了</td>
+    <td>不影响上传。<b>刻意打这行而不是静默少一层保护</b></td></tr>
+<tr><td>启动就有不设防告警，<br>但你确定认领过</td>
+    <td><b>owner 记录链断了</b>，或者被 ST-Link 重烧擦掉了</td>
+    <td><code>getowner</code> 回 0 = 未认领；回 n 但仍告警 = 当前根恰好等于公开根</td>
+    <td>重新认领 → <span class="go">流程 B</span></td></tr>
+</tbody>
+</table>
+</section>
+
+<div class="divider"><span>第二部分 · 具体是什么</span></div>
+<p class="lede">上面回答「怎么走」，下面回答「具体是什么」：字节级格式、地址布局、边界清单。<b>两部分不重叠</b> —— 遇到具体场景查上面，要动代码或核对格式查下面。</p>
+
+<!-- ═══════════════════════ 1 ═══════════════════════ -->
+<section>
+<h2 id="r1"><span class="no">参考 1</span>一把钥匙，两个问题</h2>
+<p class="lede">整个系统里只有一种秘密：一把 ECDSA P-256 私钥，而且它<b>永远不在设备上</b>。板子持有的东西全是公开的 —— 一把根公钥，加上命令随手带来的证书。</p>
+<svg class="dia" viewBox="0 0 1460 600" xmlns="http://www.w3.org/2000/svg">
+  <!-- 根 -->
+  <rect class="card violet" x="30" y="40" width="330" height="150" rx="10"/>
+  <text class="t-h ink-violet" x="48" y="70">根密钥对 K</text>
+  <text class="t-b" x="48" y="98">
+    <tspan x="48">私钥 · 在人手上，<tspan class="em">从不进设备</tspan></tspan>
+    <tspan x="48" dy="22">公钥 · 板子知道，可以公开</tspan>
+    <tspan x="48" dy="26" class="t-s">出厂那把的私钥在开源仓库里 ⇒ 公开</tspan>
+    <tspan x="48" dy="20" class="t-s">客户自编译或认领后 ⇒ 换成他自己的</tspan>
+  </text>
+
+  <!-- 证书 -->
+  <path class="edge" d="M360,115 L470,115" marker-end="url(#ah)"/>
+  <text class="t-edge" x="415" y="106" text-anchor="middle">签发</text>
+  <rect class="card blue" x="480" y="40" width="400" height="150" rx="10"/>
+  <text class="t-h ink-blue" x="498" y="70">证书 cert · 132 字节</text>
+  <text class="t-b" x="498" y="98">
+    <tspan x="498">纸上写着：<tspan class="em">叶公钥</tspan> + 流水号</tspan>
+    <tspan x="498" dy="22">纸上的章：<tspan class="em">根私钥对前 68 字节的签名</tspan></tspan>
+    <tspan x="498" dy="26" class="t-s">绑定关系只有这个章 —— 没有目录、</tspan>
+    <tspan x="498" dy="20" class="t-s">没有注册表、没有名字匹配</tspan>
+  </text>
+
+  <!-- 叶 -->
+  <path class="edge" d="M880,115 L990,115" marker-end="url(#ah)"/>
+  <text class="t-edge" x="935" y="106" text-anchor="middle">指名</text>
+  <rect class="card green" x="1000" y="40" width="430" height="150" rx="10"/>
+  <text class="t-h ink-green" x="1018" y="70">叶密钥对 L</text>
+  <text class="t-b" x="1018" y="98">
+    <tspan x="1018">拿着它的人可以：签固件、签 nonce</tspan>
+    <tspan x="1018" dy="22">简单模式下 <tspan class="em">L 就是 K</tspan>（自签证书）</tspan>
+    <tspan x="1018" dy="26" class="t-s">团队模式下每个同事一把，管理员不交</tspan>
+    <tspan x="1018" dy="20" class="t-s">出根私钥</tspan>
+  </text>
+
+  <!-- 两个问题 -->
+  <text class="t-sec" x="30" y="248">板子只用这一条链回答两个问题</text>
+
+  <rect class="band" x="30" y="268" width="690" height="200" rx="12"/>
+  <rect class="blue" x="48" y="286" width="104" height="24" rx="12"/>
+  <text class="t-chip ink-blue" x="100" y="303" text-anchor="middle">谁能上传</text>
+  <text class="t-h" x="48" y="342">Step 3 · 4 会话授权</text>
+  <text class="t-b" x="48" y="370">
+    <tspan x="48">他递上一张<tspan class="em">根认可的证书</tspan>，并且用那张证书</tspan>
+    <tspan x="48" dy="22">指名的私钥<tspan class="em">签了一个新鲜 nonce</tspan></tspan>
+    <tspan x="48" dy="26">⇒ 证明他握着某个被信任根授权过的私钥</tspan>
+    <tspan x="48" dy="22">⇒ <tspan class="em">不是</tspan>证明他握着共享密钥 —— 板子没有共享密钥</tspan>
+  </text>
+
+  <rect class="band" x="740" y="268" width="690" height="200" rx="12"/>
+  <rect class="green" x="758" y="286" width="118" height="24" rx="12"/>
+  <text class="t-chip ink-green" x="817" y="303" text-anchor="middle">哪个镜像能跑</text>
+  <text class="t-h" x="758" y="342">Step 1 · 6 镜像验签</text>
+  <text class="t-b" x="758" y="370">
+    <tspan x="758"><tspan class="em">同一张证书</tspan>的叶公钥，签过这个镜像</tspan>
+    <tspan x="758" dy="22">每次启动重问一遍，不是烧完问一次</tspan>
+    <tspan x="758" dy="26">⇒ flash 会退化，也可能事后被改</tspan>
+    <tspan x="758" dy="22">⇒ 验不过就留在 bootloader，app 区不动</tspan>
+  </text>
+
+  <!-- 关键 -->
+  <rect class="card amber" x="30" y="492" width="1400" height="84" rx="10"/>
+  <text class="t-b" x="48" y="520">
+    <tspan x="48"><tspan class="em">证书买到的到底是什么：</tspan>让这两个问题<tspan class="em">随时间指向不同人的密钥</tspan>，而板子不需要学任何新东西。根持有者可以直接签固件（自签证书，叶 = 根），</tspan>
+    <tspan x="48" dy="23">也可以给同事发证书让他们在不持有根私钥的情况下上传。<tspan class="em">板子对这两种情况没有分支</tspan> —— 它只问「我信任的根，签过眼前这张纸吗」。</tspan>
+  </text>
+  <text class="t-ref" x="48" y="568">IAPServer/iap_cert.h:8-13 · 37-44 · IAPServer/SECURITY.md「One key, and what a certificate adds」</text>
+</svg>
+</section>
+
+<!-- ═══════════════════════ 2 ═══════════════════════ -->
+<section>
+<h2 id="r2"><span class="no">参考 2</span>所有权生命周期 · 从不设防到换钥闭环</h2>
+<p class="lede">客户买板、直接用、初始化成主人、私钥泄露、换钥、继续烧写 —— 有始有终的那条主线。四条路都已实现并实测。</p>
+<svg class="dia" viewBox="0 0 1480 3190" xmlns="http://www.w3.org/2000/svg">
+
+  <!-- ============ 起点 ============ -->
+  <text class="t-sec" x="170" y="42">起点 · 客户拿到板子时是什么状态</text>
+
+  <rect class="card red" x="170" y="66" width="600" height="220" rx="10"/>
+  <rect class="red" x="186" y="82" width="112" height="24" rx="12"/>
+  <text class="t-chip ink-red" x="242" y="99" text-anchor="middle">🔴 不设防</text>
+  <text class="t-h" x="186" y="136">① 买厂商烧好的板卡</text>
+  <text class="t-b" x="186" y="164">
+    <tspan x="186">▸ 信任编译进 bootloader 的那把根 R0</tspan>
+    <tspan x="186" dy="23">▸ <tspan class="em">R0 的私钥就在开源仓库里，是公开的</tspan></tspan>
+    <tspan x="186" dy="23">▸ 客户要签自己的 sketch，私钥就必须在客户机器上</tspan>
+    <tspan x="186" dy="23">　 ⇒ 那把私钥必然公开，这不是妥协</tspan>
+  </text>
+  <text class="t-ref" x="186" y="271">IAPServer/keys/fw_signing_key.TEST_ONLY.pem</text>
+
+  <rect class="card green" x="820" y="66" width="600" height="220" rx="10"/>
+  <rect class="green" x="836" y="82" width="140" height="24" rx="12"/>
+  <text class="t-chip ink-green" x="906" y="99" text-anchor="middle">🟢 开箱即安全</text>
+  <text class="t-h" x="836" y="136">② 客户自己编译 bootloader</text>
+  <text class="t-b" x="836" y="164">
+    <tspan x="836">▸ 跑 rotate_keys.sh 换掉 keys/fw_pubkey.inc</tspan>
+    <tspan x="836" dy="23">▸ 编进去的根是他自己的，私钥保密</tspan>
+    <tspan x="836" dy="23">▸ <tspan class="em">不告警，也不需要 takeown</tspan></tspan>
+    <tspan x="836" dy="23">　 ⇒ 直接进状态 B，跳过整个不设防阶段</tspan>
+  </text>
+  <text class="t-ref" x="836" y="271">IAPServer/keys/rotate_keys.sh · docs/design/KEYS.md</text>
+
+  <!-- ============ 状态 A ============ -->
+  <path class="edge" d="M470,286 L470,338" marker-end="url(#ah)"/>
+
+  <rect class="band" x="170" y="346" width="800" height="344" rx="12"/>
+  <rect class="red" x="186" y="362" width="112" height="24" rx="12"/>
+  <text class="t-chip ink-red" x="242" y="379" text-anchor="middle">🔴 谁都能刷</text>
+  <text class="t-sec" x="186" y="418">状态 A · 出厂不设防</text>
+  <text class="t-b" x="186" y="450">
+    <tspan x="186">▸ 验签是<tspan class="em">强制的，没有任何开关</tspan> —— 缺签名或缺会话认证一律拒</tspan>
+    <tspan x="186" dy="24">▸ 但签名用的是那把公开私钥，IAPTool 默认就用它</tspan>
+    <tspan x="186" dy="24">　 ⇒ <tspan class="em">客户拿来就能烧自己的 app，不用做任何初始化</tspan></tspan>
+    <tspan x="186" dy="24">▸ 代价是谁都能签、谁都能刷，也谁都能写 owner 记录区</tspan>
+  </text>
+  <rect class="card amber" x="186" y="560" width="768" height="112" rx="8"/>
+  <text class="t-b" x="202" y="588">
+    <tspan x="202">⚠ <tspan class="em">诚实的上限：这块板上能不能跑任意代码 = 能。</tspan></tspan>
+    <tspan x="202" dy="23">按住 BOOT0 只保护「受支持的那条认领路」，不是密码学保证 —— 第一次认领本质上先到先得。</tspan>
+    <tspan x="202" dy="23">所以文档里写死一句话：<tspan class="em">板子到手第一件事是认领。</tspan></tspan>
+  </text>
+
+  <rect class="card blue" x="1010" y="400" width="410" height="250" rx="10"/>
+  <text class="t-h ink-blue" x="1026" y="430">为什么 ② 不会被告警</text>
+  <text class="t-b" x="1026" y="458">
+    <tspan x="1026">告警条件是<tspan class="em">「我信任的根是不是</tspan></tspan>
+    <tspan x="1026" dy="22"><tspan class="em">那把公开的」</tspan>，不是「槽空不空」。</tspan>
+    <tspan x="1026" dy="30">▸ bootloader 里存了一份公开根的</tspan>
+    <tspan x="1026" dy="22">　 SHA-256 常量</tspan>
+    <tspan x="1026" dy="22">▸ 启动时比对当前信任的根，</tspan>
+    <tspan x="1026" dy="22">　 只有相等才打告警</tspan>
+    <tspan x="1026" dy="22">▸ ② 的槽是空的但根不公开 ⇒ 不告警</tspan>
+  </text>
+  <text class="t-ref" x="1026" y="638">owner_slot.c:39-44 · 569-577</text>
+
+  <!-- ============ 跃迁 ① ============ -->
+  <path class="edge" d="M570,690 L570,742" marker-end="url(#ah)"/>
+  <text class="t-edge" x="584" y="722">认领</text>
+
+  <rect class="band" x="170" y="750" width="800" height="370" rx="12"/>
+  <rect class="amber" x="186" y="766" width="132" height="24" rx="12"/>
+  <text class="t-chip ink-amber" x="252" y="783" text-anchor="middle">✋ 要动手一次</text>
+  <text class="t-sec" x="186" y="822">跃迁 ① · 认领 takeown</text>
+  <text class="t-b" x="186" y="854">
+    <tspan x="186">▸ <tspan class="em">复位后按住 BOOT0</tspan>（就是 PG9），再执行 IAPTool takeown</tspan>
+    <tspan x="186" dy="24">　 按压在启动窗口被 latch，不按住就直接拒</tspan>
+    <tspan x="186" dy="24">▸ 往 0x0801E000 追加一条 G1 记录，160 字节，<tspan class="em">只追加、永不擦除</tspan></tspan>
+    <tspan x="186" dy="24">　（那片空地在 bootloader 自己的扇区尾部，8K，能存 51 条）</tspan>
+    <tspan x="186" dy="24">▸ 记录里 uid[12] 绑本板 UID，<tspan class="em">而且落在签名覆盖范围内</tspan>（前 88 字节）</tspan>
+    <tspan x="186" dy="24">　 ⇒ 把整段记录拷到另一块空白板上，不会被当成首次认领</tspan>
+    <tspan x="186" dy="24">▸ prev_sig 全 0 = TOFU，没有前任能签它，门控只能靠物理按键</tspan>
+    <tspan x="186" dy="24">▸ 已认领的板子拒绝二次认领</tspan>
+  </text>
+  <text class="t-ref" x="186" y="1094">owner_slot.c:415-467 · owner_slot.h:66-110 · IAP_server.c:214-239 · 495-498</text>
+
+  <path class="edge" d="M1120,286 L1120,316 L1445,316 L1445,1300 L1428,1300"
+        marker-end="url(#ah)"/>
+  <text class="t-edge" x="1155" y="308">② 直接到这里 ▶</text>
+
+  <!-- ============ 状态 B ============ -->
+  <path class="edge" d="M570,1120 L570,1172" marker-end="url(#ah)"/>
+
+  <rect class="band" x="170" y="1180" width="1250" height="440" rx="12"/>
+  <rect class="green" x="186" y="1196" width="132" height="24" rx="12"/>
+  <text class="t-chip ink-green" x="252" y="1213" text-anchor="middle">🟢 有主，设防</text>
+  <text class="t-sec" x="186" y="1252">状态 B · 已认领：谁有私钥谁是主人</text>
+  <text class="t-b" x="186" y="1282">
+    <tspan x="186">「当前信任哪把根」由 owner_slot_root() 说了算 —— 槽空或最新一条是 cleared 就回落 R0，否则沿链取最后一条有效记录。</tspan>
+  </text>
+
+  <rect class="card" x="186" y="1302" width="600" height="298" rx="8"/>
+  <text class="t-h" x="202" y="1330">每次上传：四步</text>
+  <text class="t-b" x="202" y="1358">
+    <tspan x="202">1. 工具发 authchallenge</tspan>
+    <tspan x="202" dy="23">2. 板子回 16 字节 nonce（一次性，TTL 30 秒）</tspan>
+    <tspan x="202" dy="23">3. 工具发 flash「大小 · CRC32 · 镜像签名 ·</tspan>
+    <tspan x="202" dy="23">　 <tspan class="em">证书</tspan> · nonce 签名」</tspan>
+    <tspan x="202" dy="23">4. 板子<tspan class="em">两步验</tspan>：</tspan>
+    <tspan x="202" dy="23">　 ① 用当前根验证书上的章</tspan>
+    <tspan x="202" dy="23">　 ② 用证书里的叶公钥验镜像和 nonce</tspan>
+    <tspan x="202" dy="26">▸ 镜像先落外部 SDRAM 暂存，<tspan class="em">过了才擦 app 区</tspan></tspan>
+  </text>
+  <text class="t-ref" x="202" y="1586">iap_auth.c:66-85 · 121 · iap_cert.c:9-24 · IAP_server.c:396-423</text>
+
+  <rect class="card" x="806" y="1302" width="598" height="298" rx="8"/>
+  <text class="t-h" x="822" y="1330">每次启动也验一遍</text>
+  <text class="t-b" x="822" y="1358">
+    <tspan x="822">▸ 从 metadata 取出<tspan class="em">整张证书</tspan>，重验根签名，</tspan>
+    <tspan x="822" dy="23">　 再用叶公钥验现有 app 镜像</tspan>
+    <tspan x="822" dy="23">▸ 证书整张存进 metadata（248 字节，占 8 个</tspan>
+    <tspan x="822" dy="23">　 journal 槽），<tspan class="em">刻意不缓存叶公钥</tspan></tspan>
+    <tspan x="822" dy="23">　 ⇒ 这就是换根能追溯作废旧固件的机制</tspan>
+    <tspan x="822" dy="23">▸ 验不过就留在 bootloader 等重传，app 区不动</tspan>
+    <tspan x="822" dy="26">▸ <tspan class="em">板子上不存任何秘密</tspan>：会话认证是签名挑战，</tspan>
+    <tspan x="822" dy="23">　 没有共享密钥，没什么可被提取</tspan>
+  </text>
+  <text class="t-ref" x="822" y="1586">IAP_server.c:531-544 · bootloader_state.h:67-73 · owner_slot.c:292-303</text>
+
+  <!-- ============ 授权 ============ -->
+  <path class="edge" d="M795,1620 L795,1672" marker-end="url(#ah)"/>
+
+  <rect class="band" x="170" y="1680" width="1250" height="420" rx="12"/>
+  <text class="t-sec" x="186" y="1718">授权 · 除了你自己，还能让谁上传</text>
+  <text class="t-b" x="186" y="1748">
+    <tspan x="186">绑定关系只有一样东西：<tspan class="em">根私钥对证书的签名</tspan>。没有目录、没有注册表、没有名字匹配。</tspan>
+  </text>
+
+  <rect class="card" x="186" y="1768" width="396" height="314" rx="8"/>
+  <text class="t-h" x="202" y="1796">一个人用：简单模式</text>
+  <text class="t-b" x="202" y="1824">
+    <tspan x="202">▸ 工具默认发<tspan class="em">自签证书</tspan>：</tspan>
+    <tspan x="202" dy="23">　 叶公钥 == 根公钥</tspan>
+    <tspan x="202" dy="23">▸ serial 固定 0xFFFFFFFF，</tspan>
+    <tspan x="202" dy="23">　 不吃流水号</tspan>
+    <tspan x="202" dy="23">▸ 板子走的是<tspan class="em">同一条验证书</tspan></tspan>
+    <tspan x="202" dy="23">　 <tspan class="em">的路，没有自签特例分支</tspan></tspan>
+    <tspan x="202" dy="23">　 ⇒ 高级分支不会因为没人走</tspan>
+    <tspan x="202" dy="23">　 而悄悄烂掉</tspan>
+    <tspan x="202" dy="26">▸ 体验等同「只有一把钥匙」</tspan>
+  </text>
+  <text class="t-ref" x="202" y="2068">iap_cert.h:8-13</text>
+
+  <rect class="card green" x="602" y="1768" width="396" height="314" rx="8"/>
+  <rect class="green" x="618" y="1782" width="60" height="22" rx="11"/>
+  <text class="t-chip ink-green" x="648" y="1798" text-anchor="middle">★ 推荐</text>
+  <text class="t-h" x="618" y="1832">一个团队：授权链</text>
+  <text class="t-b" x="618" y="1860">
+    <tspan x="618">▸ 管理员持根私钥，给每个同事</tspan>
+    <tspan x="618" dy="23">　 签一张证书 cert{ 叶 = 同事 }</tspan>
+    <tspan x="618" dy="23">▸ 同事持自己的叶子私钥，</tspan>
+    <tspan x="618" dy="23">　 <tspan class="em">根私钥不出管理员的手</tspan></tspan>
+    <tspan x="618" dy="23">▸ 板子里的公钥<tspan class="em">一个字节不用变</tspan>，</tspan>
+    <tspan x="618" dy="23">　 切过来只要一条命令</tspan>
+    <tspan x="618" dy="23">▸ serial 由根私钥旁边那个</tspan>
+    <tspan x="618" dy="23">　 .certserial 计数器发号</tspan>
+  </text>
+  <text class="t-ref" x="618" y="2068">IAPTool cert · keys/README.md</text>
+
+  <rect class="card amber" x="1018" y="1768" width="386" height="314" rx="8"/>
+  <text class="t-h ink-amber" x="1034" y="1796">⚠ 直接把根私钥拷给别人</text>
+  <text class="t-b" x="1034" y="1824">
+    <tspan x="1034">▸ 也能用 —— 谁有私钥谁就是</tspan>
+    <tspan x="1034" dy="23">　 主人，板子分不出是谁</tspan>
+    <tspan x="1034" dy="23">▸ 代价：想收回其中<tspan class="em">一个人</tspan>的</tspan>
+    <tspan x="1034" dy="23">　 权限，<tspan class="em">只能换根</tspan>，等于所有</tspan>
+    <tspan x="1034" dy="23">　 人一起重来</tspan>
+    <tspan x="1034" dy="26">⇒ 人多的时候用授权链，</tspan>
+    <tspan x="1034" dy="23">　 不要拷私钥</tspan>
+  </text>
+
+  <!-- ============ 事故 ============ -->
+  <path class="edge" d="M795,2100 L795,2152" marker-end="url(#ah)"/>
+
+  <rect class="band" x="170" y="2160" width="1250" height="460" rx="12"/>
+  <text class="t-sec" x="186" y="2198">事故 · 私钥泄露或丢失</text>
+  <text class="t-b" x="186" y="2228">
+    <tspan x="186">走哪条路，取决于<tspan class="em">泄露的是哪一层的私钥</tspan>，以及它还在不在你手上。</tspan>
+  </text>
+
+  <rect class="card" x="186" y="2248" width="396" height="354" rx="8"/>
+  <text class="t-h" x="202" y="2276">叶子私钥泄露</text>
+  <text class="t-b" x="202" y="2300">
+    <tspan x="202" class="t-ref">某个同事那把</tspan>
+    <tspan x="202" dy="28">▸ 今天只有一个办法：<tspan class="em">换根</tspan></tspan>
+    <tspan x="202" dy="23">　（见右边 setowner），旧根发的</tspan>
+    <tspan x="202" dy="23">　 所有证书当场全废</tspan>
+    <tspan x="202" dy="23">▸ 代价：管理员的根私钥每次都</tspan>
+    <tspan x="202" dy="23">　 要换，现场每块板都要被触达</tspan>
+    <tspan x="202" dy="23">　 一次 ⇒ 当维护窗口安排</tspan>
+    <tspan x="202" dy="26">▸ 按 serial 精确撤销单张证书</tspan>
+    <tspan x="202" dy="23">　 = 需求 C12，<tspan class="em">未做</tspan>。证书里</tspan>
+    <tspan x="202" dy="23">　 那个 serial 字段就是为它留的</tspan>
+  </text>
+  <text class="t-ref" x="202" y="2588">IAPServer/SECURITY.md 的 TODO</text>
+
+  <rect class="card blue" x="602" y="2248" width="396" height="354" rx="8"/>
+  <text class="t-h ink-blue" x="618" y="2276">根私钥泄露（还在手上）</text>
+  <text class="t-b" x="618" y="2300">
+    <tspan x="618" class="t-ref">换主人，远程可做</tspan>
+    <tspan x="618" dy="28">▸ IAPTool setowner —— 参数是</tspan>
+    <tspan x="618" dy="23">　「代号 · 新根公钥 · 当前根的签名」</tspan>
+    <tspan x="618" dy="23">▸ 追加一条 G2 记录，<tspan class="em">必须被当前</tspan></tspan>
+    <tspan x="618" dy="23">　 <tspan class="em">根签名</tspan>，否则 bootloader 忽略</tspan>
+    <tspan x="618" dy="23">▸ 代号必须正好是「生效 + 1」，</tspan>
+    <tspan x="618" dy="23">　 挡住把旧记录重放进后面的槽</tspan>
+    <tspan x="618" dy="26">▸ <tspan class="em">不需要 BOOT0，可以远程做</tspan> ——</tspan>
+    <tspan x="618" dy="23">　 这是刻意的，方便远程交接</tspan>
+    <tspan x="618" dy="23">▸ 攻击者就算能往 flash 写字节，</tspan>
+    <tspan x="618" dy="23">　 也签不出这条记录</tspan>
+  </text>
+  <text class="t-ref" x="618" y="2588">IAP_server.c:247-285 · owner_slot.c:354-413</text>
+
+  <rect class="card amber" x="1018" y="2248" width="386" height="354" rx="8"/>
+  <text class="t-h ink-amber" x="1034" y="2276">根私钥丢了</text>
+  <text class="t-b" x="1034" y="2300">
+    <tspan x="1034" class="t-ref">不是泄露，是没了。只剩物理路</tspan>
+    <tspan x="1034" dy="28">▸ ✋ <tspan class="em">复位后按住 BOOT0 满 10 秒，</tspan></tspan>
+    <tspan x="1034" dy="23">　 <tspan class="em">听到三下继电器咔哒后松手</tspan></tspan>
+    <tspan x="1034" dy="23">　（用声音不用灯：这板子没有通用</tspan>
+    <tspan x="1034" dy="23">　 LED，而且常装在柜子里）</tspan>
+    <tspan x="1034" dy="26">▸ 追加一条 cleared 记录 ⇒ 回落</tspan>
+    <tspan x="1034" dy="23">　 公开根 R0 ⇒ <tspan class="em">回到状态 A</tspan></tspan>
+    <tspan x="1034" dy="26">▸ 刻意<tspan class="em">不要求签名</tspan>：要求当前</tspan>
+    <tspan x="1034" dy="23">　 owner 签，等于丢钥客户只能靠</tspan>
+    <tspan x="1034" dy="23">　 ST-Link 救板 —— 而这类客户</tspan>
+    <tspan x="1034" dy="23">　 恰恰没有 ST-Link</tspan>
+  </text>
+  <text class="t-ref" x="1034" y="2588">Core/Src/main.c:177 · 209-253</text>
+
+  <!-- ============ 闭环 ============ -->
+  <path class="edge" d="M795,2620 L795,2672" marker-end="url(#ah)"/>
+  <text class="t-edge" x="809" y="2652">换钥之后</text>
+
+  <rect class="band" x="170" y="2680" width="1250" height="220" rx="12"/>
+  <text class="t-sec" x="186" y="2718">闭环 · 换钥之后必须再传一次 app</text>
+  <text class="t-b" x="186" y="2750">
+    <tspan x="186">▸ 旧根签发的一切当场失效，<tspan class="em">包括已经装在板子上的那份固件</tspan> —— 因为整张证书存在 metadata 里，每次启动都要重验根签名</tspan>
+    <tspan x="186" dy="24">▸ 所以换根后板子下次启动会拒掉现有 app，停在 bootloader，CDC 和以太网两条上传通道全开，等你重传</tspan>
+    <tspan x="186" dy="24">▸ ⇒ 用<tspan class="em">新根</tspan>（或新根签发的证书）重传一次 app，之后<tspan class="em">回到状态 B 正常烧写</tspan></tspan>
+    <tspan x="186" dy="24">▸ 这就是为什么「换钥」要当维护窗口安排，不是点一下就完事</tspan>
+  </text>
+
+  <!-- ============ 兜底 ============ -->
+  <rect class="band" x="170" y="2960" width="1250" height="200" rx="12"/>
+  <text class="t-sec" x="186" y="2998">两条兜底规矩</text>
+  <rect class="card" x="186" y="3016" width="600" height="128" rx="8"/>
+  <text class="t-h" x="202" y="3044">R4 · 撤销必须保底</text>
+  <text class="t-b" x="202" y="3072">
+    <tspan x="202">撤销只针对叶子编号，<tspan class="em">永不能撤到一个有效根都不剩</tspan>。</tspan>
+    <tspan x="202" dy="23">不是假想 —— ESP32 Secure Boot v2 的 aggressive revoke</tspan>
+    <tspan x="202" dy="23">官方文档自己写着可能把设备永久变砖。</tspan>
+  </text>
+  <rect class="card amber" x="806" y="3016" width="598" height="128" rx="8"/>
+  <text class="t-h ink-amber" x="822" y="3044">⚠ ST-Link 重烧 bootloader = 所有权重置</text>
+  <text class="t-b" x="822" y="3072">
+    <tspan x="822">owner 记录和 bootloader 同扇区，重烧会一起擦掉。</tspan>
+    <tspan x="822" dy="23">语义上是对的，但它和「bootloader 与 app 必须捆绑升级」</tspan>
+    <tspan x="822" dy="23">叠加：<tspan class="em">换 bootloader 的人要同时重传 app 并重新认领。</tspan></tspan>
+  </text>
+
+  <!-- ============ 回边 ============ -->
+  <path class="loop" d="M170,2420 L40,2420 L40,520 L152,520" marker-end="url(#ah)"/>
+  <text class="t-loop" transform="translate(28,1470) rotate(-90)" text-anchor="middle">
+    恢复出厂 · 回到状态 A，可重新认领
+  </text>
+
+  <path class="loop" d="M170,2790 L100,2790 L100,1450 L152,1450" marker-end="url(#ah)"/>
+  <text class="t-loop" transform="translate(88,2120) rotate(-90)" text-anchor="middle">
+    重传 app · 回到状态 B
+  </text>
+</svg>
+</section>
+
+<!-- ═══════════════════════ 3 ═══════════════════════ -->
+<section>
+<h2 id="r3"><span class="no">参考 3</span>一次上传的八步 · 每步到底保证了什么</h2>
+<p class="lede">每一步按它<b>实际保证的东西</b>标色：<span style="color:var(--violet)">自检</span>（验证代码本身还工作吗）、<span style="color:var(--muted)">完整性</span>（比特有没有在传输中坏掉，不涉及密钥）、<span style="color:var(--green)">认证</span>（对方是不是握着他该握的私钥）。混淆这三者就会把「CRC 过了」当成「这镜像可信」。</p>
+<svg class="dia" viewBox="0 0 1460 1230" xmlns="http://www.w3.org/2000/svg">
+
+  <!-- 0 -->
+  <rect class="card violet" x="30" y="20" width="1400" height="94" rx="10"/>
+  <text class="t-h2 ink-violet" x="48" y="48">Step 0 · crypto 自检</text>
+  <rect class="violet" x="290" y="30" width="66" height="22" rx="11"/>
+  <text class="t-chip ink-violet" x="323" y="46" text-anchor="middle">自检</text>
+  <text class="t-b" x="48" y="74">
+    <tspan x="48">sha256_selftest() 拿 FIPS 180-4 的已知向量跑一遍。<tspan class="em">每次上电一次</tspan> —— 一个会话里什么都不变，每条命令重跑一遍只加开销不加信息。</tspan>
+    <tspan x="48" dy="22">⚠ 它<tspan class="em">不</tspan>检查 bootloader 或 app 的完整性。不过 ⇒ <tspan class="em">此后一切验签结论一律当作失败</tspan>：验证器本身都不可信，它的结论没有意义。</tspan>
+  </text>
+  <text class="t-ref" x="1412" y="48" text-anchor="end">sha256.c:164 · bootloader_state.c:107</text>
+
+  <!-- 1 -->
+  <path class="edge" d="M120,114 L120,140" marker-end="url(#ah)"/>
+  <rect class="card green" x="30" y="148" width="1400" height="118" rx="10"/>
+  <text class="t-h2 ink-green" x="48" y="176">Step 1 · 启动时镜像验签</text>
+  <rect class="green" x="330" y="158" width="66" height="22" rx="11"/>
+  <text class="t-chip ink-green" x="363" y="174" text-anchor="middle">认证</text>
+  <text class="t-b" x="48" y="202">
+    <tspan x="48">server_decide() 现算 app 区的 SHA-256，拿它去核对最后一条被接受的 metadata —— 那条记录里同时存着镜像签名<tspan class="em">和授权它的那张证书</tspan>。两个问题每次启动都重问：</tspan>
+    <tspan x="48" dy="22">① 这张证书是<tspan class="em">板子当前信任的根</tspan>签的吗（owner_slot_root()）　② 证书里的叶公钥签过这个镜像吗</tspan>
+    <tspan x="48" dy="22">⚠ 每次启动都验，不是烧完验一次 —— flash 会退化，也可能事后被改。失败 ⇒ 留在 bootloader。</tspan>
+  </text>
+  <text class="t-ref" x="1412" y="176" text-anchor="end">IAP_server.c:531-544</text>
+
+  <!-- 2 -->
+  <path class="edge" d="M120,266 L120,292" marker-end="url(#ah)"/>
+  <rect class="card" x="30" y="300" width="1400" height="118" rx="10"/>
+  <text class="t-h2" x="48" y="328">Step 2 · UDP 发现</text>
+  <rect class="amber" x="248" y="310" width="106" height="22" rx="11"/>
+  <text class="t-chip ink-amber" x="301" y="326" text-anchor="middle">刻意不认证</text>
+  <text class="t-b" x="48" y="354">
+    <tspan x="48">回一个身份串「设备名_UID_角色_版本」，角色是 BOOTLD，Step 1 失败时变成 <tspan class="em">BOOTLD-INVALID</tspan>。</tspan>
+    <tspan x="48" dy="22"><tspan class="em">为什么不认证</tspan>：回复里的 UID 正是「每设备密钥」会用来索引的键 —— 要那个密钥才能发现设备，是循环论证。而且这一步不改变任何设备状态。</tspan>
+    <tspan x="48" dy="22">残余风险：同广播域内伪造源 IP 可以拿它当小型反射放大器。<tspan class="em">用限流兜，不用认证兜</tspan> —— 8 个近期来源的 LRU，同一个 2 秒最多回一次。不是安全边界，只是滥用上限。</tspan>
+  </text>
+  <text class="t-ref" x="1412" y="328" text-anchor="end">udp_server.c · SECURITY.md:34-45</text>
+
+  <!-- 3 -->
+  <path class="edge" d="M120,418 L120,444" marker-end="url(#ah)"/>
+  <rect class="card" x="30" y="452" width="1400" height="176" rx="10"/>
+  <text class="t-h2" x="48" y="480">Step 3 · 进入上传模式 —— 两个触发器，两套标准</text>
+  <rect class="card green" x="48" y="494" width="676" height="118" rx="8"/>
+  <text class="t-h2 ink-green" x="64" y="520">网络：要认证</text>
+  <text class="t-b" x="64" y="544">
+    <tspan x="64">openplc_server_reboot_challenge → openplc_server_reboot「证书 · nonce 签名」</tspan>
+    <tspan x="64" dy="21">要一张受信根认可的证书，加上那张证书的叶子对新鲜 nonce 的签名。</tspan>
+    <tspan x="64" dy="21"><tspan class="em">回答这条的是正在跑的 app</tspan>，它靠直接读 bootloader 的 owner 记录区解析</tspan>
+    <tspan x="64" dy="21">出该信哪把根（core 侧 owner_root_ro.c）—— 没有别的渠道能把那把根交给它。</tspan>
+  </text>
+  <rect class="card amber" x="740" y="494" width="674" height="118" rx="8"/>
+  <text class="t-h2 ink-amber" x="756" y="520">USB CDC：⚠ 无认证可能</text>
+  <text class="t-b" x="756" y="544">
+    <tspan x="756">1200 bps 的 magic touch 直接复位进 bootloader，<tspan class="em">没有认证的可能</tspan> ——</tspan>
+    <tspan x="756" dy="21">它是单向的波特率信号，<tspan class="em">没有回程通道</tspan>做挑战应答。</tspan>
+    <tspan x="756" dy="21">接受它，是因为摸到这条路已经需要<tspan class="em">物理 USB 访问</tspan>，比把一个 UDP 包</tspan>
+    <tspan x="756" dy="21">路由到某个 IP 高一个信任层级。而且它只是武装「等上传」状态，<tspan class="em">真正的</tspan></tspan>
+    <tspan x="756" dy="21"><tspan class="em">授权还在 Step 4</tspan>。</tspan>
+  </text>
+
+  <!-- 4 -->
+  <path class="edge" d="M120,628 L120,654" marker-end="url(#ah)"/>
+  <rect class="card green" x="30" y="662" width="1400" height="140" rx="10"/>
+  <text class="t-h2 ink-green" x="48" y="690">Step 4 · 上传会话授权</text>
+  <rect class="green" x="286" y="672" width="66" height="22" rx="11"/>
+  <text class="t-chip ink-green" x="319" y="688" text-anchor="middle">认证</text>
+  <text class="t-b" x="48" y="716">
+    <tspan x="48">flash「size · crc32 · 镜像签名 · <tspan class="em">证书</tspan> · <tspan class="em">nonce 签名</tspan>」要同时成立两件事：</tspan>
+    <tspan x="48" dy="22">① 证书在板子当前信任的根下验得过　② nonce 签名是那张证书的叶子对 <tspan class="t-mono">sha256(nonce ‖ "flash size crc32 镜像签名")</tspan> 的 ECDSA 签名</tspan>
+    <tspan x="48" dy="22">▸ process_command() <tspan class="em">是 CDC 和以太网逐字共用的同一个状态机</tspan>，只有 send_response() 走向不同 ⇒ 两条通道不可能有不同的安全行为</tspan>
+    <tspan x="48" dy="22">▸ 失败（或缺签名）<tspan class="em">在擦 flash 之前</tspan>就被拒 ⇒ 一个坏请求不会白白毁掉一个能用的 app</tspan>
+  </text>
+  <text class="t-ref" x="1412" y="690" text-anchor="end">IAP_server.c:286-340 · iap_auth.c:87-135</text>
+
+  <!-- 5 -->
+  <path class="edge" d="M120,802 L120,828" marker-end="url(#ah)"/>
+  <rect class="card" x="30" y="836" width="1400" height="90" rx="10"/>
+  <text class="t-h2" x="48" y="864">Step 5 · 数据传输</text>
+  <rect class="card" x="242" y="846" width="86" height="22" rx="11"/>
+  <text class="t-chip ink-muted" x="285" y="862" text-anchor="middle">只有完整性</text>
+  <text class="t-b" x="48" y="890">
+    <tspan x="48">收全之后对整个镜像算一遍 CRC32（HAL_CRC_Calculate）。<tspan class="em">只抓传输损坏</tspan>。</tspan>
+    <tspan x="48" dy="22">⚠ 它对「谁发的」「有没有被故意改过」<tspan class="em">什么都不证明</tspan> —— 改完重算一个 CRC 是白送的。</tspan>
+  </text>
+
+  <!-- 6 -->
+  <path class="edge" d="M120,926 L120,952" marker-end="url(#ah)"/>
+  <rect class="card green" x="30" y="960" width="1400" height="112" rx="10"/>
+  <text class="t-h2 ink-green" x="48" y="988">Step 6 · 传输后镜像验签</text>
+  <rect class="green" x="300" y="970" width="66" height="22" rx="11"/>
+  <text class="t-chip ink-green" x="333" y="986" text-anchor="middle">认证</text>
+  <text class="t-b" x="48" y="1014">
+    <tspan x="48">和 Step 1 是<tspan class="em">同一个 iap_cert_verify_image() 调用</tspan>，但对象是<tspan class="em">暂存在 SDRAM 里</tspan>的那份镜像 —— app 区还没被碰过。</tspan>
+    <tspan x="48" dy="22">它问的是和 Step 4 <tspan class="em">不同的问题</tspan>：不是「这个会话有没有被授权」，而是「<tspan class="em">这个确切的二进制</tspan>是不是被证书指名的那把钥匙签的」。</tspan>
+    <tspan x="48" dy="22">⇒ 一个<tspan class="em">已授权</tspan>的会话上传一个未签名或被篡改的镜像，<tspan class="em">照样在这里被拒</tspan>。</tspan>
+  </text>
+
+  <!-- 7 -->
+  <path class="edge" d="M120,1072 L120,1098" marker-end="url(#ah)"/>
+  <rect class="card blue" x="30" y="1106" width="1400" height="112" rx="10"/>
+  <text class="t-h2 ink-blue" x="48" y="1134">Step 7 · 提交</text>
+  <text class="t-b" x="48" y="1160">
+    <tspan x="48">▸ 追加 metadata 记录（size · SHA-256 · 签名 · <tspan class="em">整张证书</tspan>）　▸ 追加一条<tspan class="em">链式防篡改</tspan>日志（event · 通道 · peer_ip · tick · auth 计数器）</tspan>
+    <tspan x="48" dy="22">▸ peer_ip 只有 TCP 有，<tspan class="em">CDC 恒为 0</tspan> —— USB 不携带任何地址等价的身份可记</tspan>
+    <tspan x="48" dy="22">▸ 然后<tspan class="em">重启回 Step 0 / 1 从零重验</tspan>，而不是相信这次会话自己的成功报告</tspan>
+  </text>
+  <text class="t-ref" x="1412" y="1134" text-anchor="end">bootloader_state.c · SECURITY.md:92-101</text>
+</svg>
+</section>
+
+<!-- ═══════════════════════ 4 ═══════════════════════ -->
+<section>
+<h2 id="r4"><span class="no">参考 4</span>四条进入上传模式的路 · 各自的门槛</h2>
+<p class="lede">谁能让板子停在 bootloader 等上传。<b>门槛高低不一样，这是刻意的</b> —— 物理接触本身就是一个更高的信任层级，不必再叠一层密码学。</p>
+<svg class="dia" viewBox="0 0 1460 760" xmlns="http://www.w3.org/2000/svg">
+
+  <rect class="card amber" x="30" y="24" width="340" height="250" rx="10"/>
+  <rect class="amber" x="46" y="38" width="76" height="22" rx="11"/>
+  <text class="t-chip ink-amber" x="84" y="54" text-anchor="middle">✋ 物理</text>
+  <text class="t-h2" x="46" y="88">① BOOT0 按住</text>
+  <text class="t-b" x="46" y="114">
+    <tspan x="46">复位后按住 PG9 穿过继电器窗口</tspan>
+    <tspan x="46" dy="21"><tspan class="em">物理逃生口，赢过一切</tspan> ——</tspan>
+    <tspan x="46" dy="21">不管有没有交接请求、</tspan>
+    <tspan x="46" dy="21">不管签名过不过</tspan>
+    <tspan x="46" dy="25">结果 <tspan class="t-mono em">IAP_ALL</tspan>：不知道操作</tspan>
+    <tspan x="46" dy="21">者会用哪条通道，<tspan class="em">全开</tspan></tspan>
+    <tspan x="46" dy="25">⇒ 它同时是 takeown 的门控：</tspan>
+    <tspan x="46" dy="21">latch 成 s_boot0_held 供整个会话</tspan>
+  </text>
+  <text class="t-ref" x="46" y="262">IAP_server.c:495-498 · 545-556</text>
+
+  <rect class="card amber" x="390" y="24" width="340" height="250" rx="10"/>
+  <rect class="amber" x="406" y="38" width="132" height="22" rx="11"/>
+  <text class="t-chip ink-amber" x="472" y="54" text-anchor="middle">⚠ 无认证可能</text>
+  <text class="t-h2" x="406" y="88">② USB CDC 1200 bps</text>
+  <text class="t-b" x="406" y="114">
+    <tspan x="406">打开串口设 1200 波特再关掉</tspan>
+    <tspan x="406" dy="21">（CDC_SET_LINE_CODING）</tspan>
+    <tspan x="406" dy="25"><tspan class="em">单向信号，没有回程通道</tspan>，</tspan>
+    <tspan x="406" dy="21">做不了挑战应答</tspan>
+    <tspan x="406" dy="25">兜底靠<tspan class="em">物理 USB 访问</tspan>这个前提</tspan>
+    <tspan x="406" dy="25">⇒ 它只武装「等上传」，</tspan>
+    <tspan x="406" dy="21">真正的授权仍在 Step 4</tspan>
+    <tspan x="406" dy="25">结果 <tspan class="t-mono em">IAP_CDC</tspan></tspan>
+  </text>
+  <text class="t-ref" x="406" y="262">USB_DEVICE/.../usbd_cdc_if.c</text>
+
+  <rect class="card green" x="750" y="24" width="340" height="250" rx="10"/>
+  <rect class="green" x="766" y="38" width="90" height="22" rx="11"/>
+  <text class="t-chip ink-green" x="811" y="54" text-anchor="middle">要签名</text>
+  <text class="t-h2" x="766" y="88">③ 网络请求重启</text>
+  <text class="t-b" x="766" y="114">
+    <tspan x="766">openplc_server_reboot_challenge</tspan>
+    <tspan x="766" dy="21">→ openplc_server_reboot</tspan>
+    <tspan x="766" dy="21">　「证书 · nonce 签名」</tspan>
+    <tspan x="766" dy="25"><tspan class="em">回答这条的是正在跑的 app</tspan>，</tspan>
+    <tspan x="766" dy="21">不是 bootloader</tspan>
+    <tspan x="766" dy="25">app 靠直接读 owner 记录区解析</tspan>
+    <tspan x="766" dy="21">该信哪把根（owner_root_ro.c）</tspan>
+    <tspan x="766" dy="25">错的或缺的签名 ⇒ 记账后忽略</tspan>
+  </text>
+  <text class="t-ref" x="766" y="262">core: OpenPLC_IAP/src/udp_server.c</text>
+
+  <rect class="card" x="1110" y="24" width="320" height="250" rx="10"/>
+  <rect class="card" x="1126" y="38" width="90" height="22" rx="11"/>
+  <text class="t-chip ink-muted" x="1171" y="54" text-anchor="middle">派生结果</text>
+  <text class="t-h2" x="1126" y="88">④ 没有可跑的 app</text>
+  <text class="t-b" x="1126" y="114">
+    <tspan x="1126">Step 1 验签没过，或压根没有</tspan>
+    <tspan x="1126" dy="21">metadata（出厂空板）</tspan>
+    <tspan x="1126" dy="25">⇒ <tspan class="t-mono em">IAP_ALL</tspan>，停在 bootloader</tspan>
+    <tspan x="1126" dy="21">等人来重传</tspan>
+    <tspan x="1126" dy="25">⚠ <tspan class="em">一连串失败只记第一次</tspan>：</tspan>
+    <tspan x="1126" dy="21">这条路不需要任何凭证，每次</tspan>
+    <tspan x="1126" dy="21">上电都记，等于让<tspan class="em">任何有电源</tspan></tspan>
+    <tspan x="1126" dy="21"><tspan class="em">开关的人把旧证据挤出日志</tspan></tspan>
+  </text>
+  <text class="t-ref" x="1126" y="262">IAP_server.c:575-588</text>
+
+  <!-- 交接记录 -->
+  <path class="edge" d="M560,274 L560,306" marker-end="url(#ah)"/>
+  <path class="edge" d="M920,274 L920,306" marker-end="url(#ah)"/>
+
+  <rect class="band" x="200" y="314" width="1080" height="196" rx="12"/>
+  <text class="t-h" x="220" y="344">② 和 ③ 都写同一条交接记录，然后复位</text>
+  <text class="t-b" x="220" y="372">
+    <tspan x="220">记录在 <tspan class="t-mono em">SRAM4 起始 32 字节（0x38000000）</tspan>，魔数 "PLC!"。<tspan class="em">boot_handoff_request() 是唯一的写入口，boot_handoff_take() 是唯一的读出口</tspan>，读即消费。</tspan>
+    <tspan x="220" dy="24">▸ <tspan class="em">为什么不用 RTC 备份寄存器</tspan> —— 写它在 PWR_CR1.DBP 没置位时会<tspan class="em">静默什么都不做</tspan>，编译器和 HAL 返回值都不会告诉你。以太网上传路径就是这么静默坏掉的：</tspan>
+    <tspan x="220" dy="24">　 iap_auth 的 nonce 计数器把 DBP 清了，几毫秒后那次标志写入就没落地，板子直接重启回 app。<tspan class="em">普通内存没有这种隐藏门。</tspan></tspan>
+    <tspan x="220" dy="24">▸ 另外三个理由：不需要初始化（USB / 以太网 / FMC 都还没起来就能读）；<tspan class="em">生命周期正好</tspan> —— RAM 扛热复位但不扛掉电，而「进一次上传模式」正是热复位范围的请求；不依赖 VBAT。</tspan>
+    <tspan x="220" dy="24">▸ 两个链接脚本的 RAM_D3 都从 0x38000020 开始 ⇒ 链接器<tspan class="em">不可能</tspan>把东西放进那 32 字节。这是保证，不是约定。</tspan>
+  </text>
+  <text class="t-ref" x="220" y="498">IAPServer/IAP_boot_handoff.h:1-45</text>
+
+  <rect class="card amber" x="200" y="546" width="1080" height="176" rx="10"/>
+  <text class="t-h ink-amber" x="220" y="576">⚠ 不对称是刻意接受的，不是缺口</text>
+  <text class="t-b" x="220" y="604">
+    <tspan x="220">① 和 ② 靠物理接触，③ 靠密码学。<tspan class="em">给 ② 加认证在物理上不可能</tspan> —— 波特率信号没有回程通道。</tspan>
+    <tspan x="220" dy="24">这条不对称被写进文档，就是为了<tspan class="em">不被后来的人当成 bug 去"修"</tspan>。</tspan>
+    <tspan x="220" dy="28">还有一条已记账的可用性怪癖：<tspan class="em">iap_auth 的 nonce 是单个全局变量，同时只能有一个挑战在飞</tspan>。CDC 和以太网并发请求挑战时，</tspan>
+    <tspan x="220" dy="24">后者会冲掉前者的 nonce，让前一个会话的 flash 认证失败。<tspan class="em">是可用性问题，不是安全洞</tspan> —— nonce 不可能被双重消费，也不可能在被覆盖后仍被接受。</tspan>
+  </text>
+  <text class="t-ref" x="220" y="710">SECURITY.md:127-136</text>
+</svg>
+</section>
+
+<!-- ═══════════════════════ 5 ═══════════════════════ -->
+<section>
+<h2 id="r5"><span class="no">参考 5</span>启动决策链 · server_decide()</h2>
+<p class="lede">上电之后，「跳不跳进 app」这个问题是怎么被回答的。顺序有讲究：<b>两次读必须先发生</b>，哪怕结论早就定了。</p>
+<svg class="dia" viewBox="0 0 1460 940" xmlns="http://www.w3.org/2000/svg">
+
+  <rect class="card" x="30" y="20" width="620" height="66" rx="10"/>
+  <text class="t-b" x="48" y="46">
+    <tspan x="48"><tspan class="em">s_boot0_held = boot0Pressed</tspan> —— 整个会话记住</tspan>
+    <tspan x="48" dy="21" class="t-s">takeown 要知道操作者当时在现场，而命令从网络到达时按键早松开了</tspan>
+  </text>
+
+  <path class="edge" d="M340,86 L340,110" marker-end="url(#ah)"/>
+  <rect class="card" x="30" y="118" width="620" height="46" rx="10"/>
+  <text class="t-b" x="48" y="146">bootloader_state_init()　扫一遍 journal，跑 SHA-256 自检</text>
+
+  <path class="edge" d="M340,164 L340,188" marker-end="url(#ah)"/>
+  <rect class="card blue" x="30" y="196" width="620" height="66" rx="10"/>
+  <text class="t-b" x="48" y="222">
+    <tspan x="48"><tspan class="em">owner_slot_report()</tspan> —— 每次启动都打，只读</tspan>
+    <tspan x="48" dy="21" class="t-s">板子信任哪把根，绝不能只在有人恰好在看的时候才可见</tspan>
+  </text>
+
+  <path class="edge" d="M340,262 L340,286" marker-end="url(#ah)"/>
+  <rect class="card amber" x="30" y="294" width="620" height="88" rx="10"/>
+  <text class="t-b" x="48" y="320">
+    <tspan x="48"><tspan class="em">req = boot_handoff_take()</tspan> —— 必须在这里，不能挪后</tspan>
+    <tspan x="48" dy="21" class="t-s">它同时是读并清 RCC-&gt;RSR 的地方，所以要跑在任何人看复位原因之前</tspan>
+    <tspan x="48" dy="21" class="t-s">而且它<tspan class="em">消费</tspan>那条记录 ⇒ 一个陈旧请求永远不可能把板子钉在这里</tspan>
+  </text>
+
+  <path class="edge" d="M340,382 L340,406" marker-end="url(#ah)"/>
+  <rect class="card green" x="30" y="414" width="620" height="132" rx="10"/>
+  <text class="t-h2 ink-green" x="48" y="442">算 app_signature_valid</text>
+  <text class="t-b" x="48" y="468">
+    <tspan x="48">自检过了 <tspan class="em">且</tspan> 有 metadata <tspan class="em">且</tspan> 0 &lt; app_size ≤ 1792 KiB</tspan>
+    <tspan x="48" dy="21">　⇒ 现算 app 区 SHA-256 ⇒ iap_cert_verify_image()</tspan>
+    <tspan x="48" dy="24" class="t-s">⚠ 这里<tspan class="em">连 cert 的 root_sig 一起重验</tspan>，不只验叶签名 ——</tspan>
+    <tspan x="48" dy="21" class="t-s">这才是 setowner 交接能<tspan class="em">追溯作废</tspan>旧 owner 认证过的固件的原因</tspan>
+  </text>
+
+  <path class="edge" d="M650,480 L700,480" marker-end="url(#ah)"/>
+  <rect class="card" x="708" y="440" width="330" height="80" rx="10"/>
+  <text class="t-b" x="726" y="466">
+    <tspan x="726">bootloader_state_set_app_valid()</tspan>
+    <tspan x="726" dy="21" class="t-s">⇒ 决定 UDP 身份报 BOOTLD 还是</tspan>
+    <tspan x="726" dy="19" class="t-s">　 <tspan class="em">BOOTLD-INVALID</tspan>，以及启动蜂鸣</tspan>
+  </text>
+
+  <!-- 分支 -->
+  <path class="edge" d="M340,546 L340,578" marker-end="url(#ah)"/>
+  <rect class="band" x="30" y="586" width="1400" height="330" rx="12"/>
+  <text class="t-h" x="48" y="616">然后才做决定，优先级从上到下</text>
+
+  <rect class="card amber" x="48" y="632" width="1364" height="62" rx="8"/>
+  <text class="t-b" x="66" y="656">
+    <tspan x="66"><tspan class="em">boot0Pressed？</tspan>　⇒ <tspan class="t-mono em">IAP_ALL</tspan>　"BOOT0 held"</tspan>
+    <tspan x="66" dy="21" class="t-s">物理逃生口<tspan class="em">赢过一切</tspan> —— 交接请求没有投票权，签名结果也没有。上面那两次读仍然必须发生过：一次是为了消费请求，一次是为了蜂鸣和身份串。</tspan>
+  </text>
+
+  <rect class="card" x="48" y="704" width="1364" height="86" rx="8"/>
+  <text class="t-b" x="66" y="728">
+    <tspan x="66">否则看 <tspan class="em">req</tspan>：</tspan>
+    <tspan x="66" dy="21"><tspan class="t-mono">BOOT_REQ_CDC</tspan> ⇒ <tspan class="t-mono em">IAP_CDC</tspan>　　<tspan class="t-mono">BOOT_REQ_ETH</tspan> ⇒ <tspan class="t-mono em">IAP_ETHERNET</tspan>　　<tspan class="t-mono">BOOT_REQ_ALL</tspan> ⇒ <tspan class="t-mono em">IAP_ALL</tspan></tspan>
+    <tspan x="66" dy="21" class="t-s">最后那个是「有人要上传，但记录没说走哪条通道」 —— <tspan class="em">两条全开，不猜</tspan>。猜错一条比全开更糟。</tspan>
+  </text>
+
+  <rect class="card red" x="48" y="800" width="672" height="98" rx="8"/>
+  <text class="t-b" x="66" y="824">
+    <tspan x="66">都没有，而且 <tspan class="em">app 签名无效</tspan></tspan>
+    <tspan x="66" dy="21">⇒ <tspan class="t-mono em">IAP_ALL</tspan>　"no valid application"</tspan>
+    <tspan x="66" dy="21" class="t-s">打印 App signature invalid or absent</tspan>
+    <tspan x="66" dy="19" class="t-s">记一条 BOOT_VERIFY_FAIL，<tspan class="em">但同一串失败只记第一次</tspan></tspan>
+  </text>
+
+  <rect class="card green" x="740" y="800" width="672" height="98" rx="8"/>
+  <text class="t-b" x="758" y="824">
+    <tspan x="758">都没有，而且 <tspan class="em">app 签名有效</tspan></tspan>
+    <tspan x="758" dy="21">⇒ <tspan class="t-mono em">IAP_NONE</tspan>　"APP Mod ..."</tspan>
+    <tspan x="758" dy="21" class="t-s">跳转进 app。这是唯一会离开 bootloader 的出口。</tspan>
+  </text>
+  <text class="t-ref" x="1412" y="616" text-anchor="end">IAP_server.c:490-608 · docs/design/JOURNAL.md「拿它决定跳不跳」</text>
+</svg>
+</section>
+
+<!-- ═══════════════════════ 6 ═══════════════════════ -->
+<section>
+<h2 id="r6"><span class="no">参考 6</span>这些东西都住在哪 · flash 与内存布局</h2>
+<p class="lede">H743 的擦除粒度是<b>整个 128K 扇区，没有更小的</b>。所以任何要独立生命周期的区域，最少 128K —— 除非它寄生在一个已经被占用、但没用满的扇区里。</p>
+<svg class="dia" viewBox="0 0 1460 880" xmlns="http://www.w3.org/2000/svg">
+
+  <text class="t-h" x="30" y="34">内部 Flash · 2 MiB @ 0x08000000</text>
+
+  <!-- sector 0 -->
+  <rect class="card violet" x="30" y="52" width="300" height="120" rx="8"/>
+  <text class="t-h2 ink-violet" x="46" y="78">bootloader 代码</text>
+  <text class="t-b" x="46" y="102">
+    <tspan x="46" class="t-mono">0x08000000 · 120 KiB</tspan>
+    <tspan x="46" dy="21" class="t-s">链接脚本只拿 120K，不是 128K</tspan>
+    <tspan x="46" dy="19" class="t-s">内置根公钥在这里的 rodata 里</tspan>
+  </text>
+  <rect class="card green" x="334" y="52" width="196" height="120" rx="8"/>
+  <text class="t-h2 ink-green" x="350" y="78">owner 记录区</text>
+  <text class="t-b" x="350" y="102">
+    <tspan x="350" class="t-mono">0x0801E000 · 8 KiB</tspan>
+    <tspan x="350" dy="21" class="t-s">51 条 × 160 字节</tspan>
+    <tspan x="350" dy="19" class="t-s"><tspan class="em">只追加，永不擦除</tspan></tspan>
+  </text>
+  <path class="thin" d="M30,180 L530,180 M30,176 L30,190 M530,176 L530,190"/>
+  <text class="t-s ink-muted" x="280" y="206" text-anchor="middle">同一个 128 KiB 扇区（扇区 0）· 净增 0 扇区</text>
+
+  <!-- app -->
+  <rect class="card blue" x="546" y="52" width="560" height="120" rx="8"/>
+  <text class="t-h2 ink-blue" x="562" y="78">app 区</text>
+  <text class="t-b" x="562" y="102">
+    <tspan x="562" class="t-mono">0x08020000 … 0x081DFFFF · 1792 KiB</tspan>
+    <tspan x="562" dy="21" class="t-s">IAP_APP_MAX_SIZE = IAP_STATE_SECTOR_ADDR − IAP_APP_ADDRESS</tspan>
+    <tspan x="562" dy="19" class="t-s">Step 1 每次启动现算这块的 SHA-256</tspan>
+  </text>
+
+  <!-- state -->
+  <rect class="card amber" x="1110" y="52" width="320" height="120" rx="8"/>
+  <text class="t-h2 ink-amber" x="1126" y="78">state 扇区 · journal</text>
+  <text class="t-b" x="1126" y="102">
+    <tspan x="1126" class="t-mono">0x081E0000 · 128 KiB</tspan>
+    <tspan x="1126" dy="21" class="t-s">4096 格 × 32 字节</tspan>
+    <tspan x="1126" dy="19" class="t-s"><tspan class="em">全代码唯一会擦的地方</tspan></tspan>
+  </text>
+
+  <!-- 为什么不放 state -->
+  <rect class="band" x="30" y="230" width="690" height="230" rx="12"/>
+  <text class="t-h" x="48" y="260">owner 区为什么<tspan class="em">不能</tspan>放进 state 扇区</text>
+  <text class="t-b" x="48" y="288">
+    <tspan x="48"><tspan class="em">因为 journal_reclaim() 会整扇区擦掉。</tspan></tspan>
+    <tspan x="48" dy="24">搬出来再写回的话，掉电窗口 = 一次擦除耗时；</tspan>
+    <tspan x="48" dy="22">丢了就<tspan class="em">静默</tspan>退回默认根 —— 没有任何东西会报警。</tspan>
+    <tspan x="48" dy="28">三个候选比过：</tspan>
+    <tspan x="48" dy="24">▸ 现有 state 扇区 ⇒ ❌ 上面那条</tspan>
+    <tspan x="48" dy="22">▸ 新开专用扇区 ⇒ 可行，但白付 128K</tspan>
+    <tspan x="48" dy="22">▸ <tspan class="em">bootloader 扇区尾部 ⇒ ✅ 净增 0 扇区</tspan></tspan>
+  </text>
+  <text class="t-ref" x="48" y="446">docs/design/OWNERSHIP.md「owner 记录区」</text>
+
+  <rect class="band" x="740" y="230" width="690" height="230" rx="12"/>
+  <text class="t-h" x="758" y="260">那片空地为什么天然可用</text>
+  <text class="t-b" x="758" y="288">
+    <tspan x="758">ST-Link 烧 bootloader 时整扇区被擦过一次，</tspan>
+    <tspan x="758" dy="24">镜像之后的字节<tspan class="em">全是 0xFF</tspan> —— 正好是一片可追加的空地。</tspan>
+    <tspan x="758" dy="28">⚠ 代价：<tspan class="em">ST-Link 重烧 bootloader = 所有权重置</tspan>。</tspan>
+    <tspan x="758" dy="22">语义上对（能 ST-Link 的人本来就能恢复出厂），</tspan>
+    <tspan x="758" dy="22">但和「bootloader 与 app 必须捆绑升级」叠加 ⇒</tspan>
+    <tspan x="758" dy="22">换 bootloader 的人要<tspan class="em">同时重传 app 并重新认领</tspan>。</tspan>
+    <tspan x="758" dy="28">⚠ 要改 <tspan class="t-mono">FLASH LENGTH</tspan> 之前先读 CUBEMX-RULES.md ——</tspan>
+    <tspan x="758" dy="22">写回 128K 链接器就会把代码放进这 8K。</tspan>
+  </text>
+
+  <!-- RAM -->
+  <text class="t-h" x="30" y="514">RAM 与外部存储</text>
+
+  <rect class="card" x="30" y="532" width="450" height="150" rx="10"/>
+  <text class="t-h2" x="48" y="558">外部 SDRAM · 暂存区</text>
+  <text class="t-b" x="48" y="584">
+    <tspan x="48" class="t-mono">0xC0000000 · 2 MiB（芯片 64 MiB）</tspan>
+    <tspan x="48" dy="24">收到的镜像<tspan class="em">先落这里并在这里验签</tspan>，</tspan>
+    <tspan x="48" dy="22">app 区只在镜像已知为好之后才被擦。</tspan>
+    <tspan x="48" dy="26">⚠ 这个地址<tspan class="em">刻意不在任何链接脚本的</tspan></tspan>
+    <tspan x="48" dy="22"><tspan class="em">MEMORY 块里</tspan> ⇒ 工具链不可能把东西放这。</tspan>
+  </text>
+  <text class="t-ref" x="48" y="670">Core/Inc/IAP_config.h:28-38</text>
+
+  <rect class="card" x="496" y="532" width="450" height="150" rx="10"/>
+  <text class="t-h2" x="514" y="558">SRAM4（D3 域）· 交接记录</text>
+  <text class="t-b" x="514" y="584">
+    <tspan x="514" class="t-mono">0x38000000 · 32 字节，魔数 "PLC!"</tspan>
+    <tspan x="514" dy="24">32 字节 32 字节对齐 = 一条 M7 cache line，</tspan>
+    <tspan x="514" dy="22">正好是那些维护调用的粒度。</tspan>
+    <tspan x="514" dy="26">同样<tspan class="em">是保证不是约定</tspan>：两个链接脚本的</tspan>
+    <tspan x="514" dy="22">RAM_D3 都从 0x38000020 开始。</tspan>
+  </text>
+  <text class="t-ref" x="514" y="670">IAPServer/IAP_boot_handoff.h:38-45</text>
+
+  <rect class="card amber" x="962" y="532" width="468" height="150" rx="10"/>
+  <text class="t-h2 ink-amber" x="980" y="558">RTC 备份寄存器 · ⚠ 三仓共享</text>
+  <text class="t-b" x="980" y="584">
+    <tspan x="980"><tspan class="t-mono em">DR1</tspan> nonce 计数器（跨掉电存活）</tspan>
+    <tspan x="980" dy="22"><tspan class="t-mono em">DR3</tspan> VBAT 见证值 —— <tspan class="em">不是 DR2</tspan>，DR2 被 app</tspan>
+    <tspan x="980" dy="22">　　占了，<tspan class="em">撞过车，而且双向都坏</tspan></tspan>
+    <tspan x="980" dy="26">⚠ <tspan class="em">撤销状态绝不要放这里</tspan> —— 一个连「谁占</tspan>
+    <tspan x="980" dy="22">了哪个」都要翻代码才知道的资源，不该承载</tspan>
+    <tspan x="980" dy="22">安全关键状态。分配表在 ARCHITECTURE.md。</tspan>
+  </text>
+  <text class="t-ref" x="980" y="670">iap_auth.c:29-51</text>
+
+  <!-- 地雷 -->
+  <rect class="card red" x="30" y="706" width="1400" height="140" rx="10"/>
+  <text class="t-h ink-red" x="48" y="736">⚠ 一颗不会编译报错的地雷：RESERVED_TAIL_SECTORS</text>
+  <text class="t-b" x="48" y="764">
+    <tspan x="48">owner 区寄生在 bootloader 已占的扇区里，<tspan class="em">根本不增加尾部扇区</tspan>，所以这条路恰好绕开了它。但真要加尾部扇区的人得知道：</tspan>
+    <tspan x="48" dy="24"><tspan class="em">三处地址守卫全部锚在 IAP_STATE_SECTOR_ADDR 上，一个都不看 RESERVED_TAIL_SECTORS。</tspan></tspan>
+    <tspan x="48" dy="24">⇒ 改那个常量<tspan class="em">保护不了任何东西</tspan>，只会静默弄坏 reclaim，<tspan class="em">而且不会编译报错</tspan>。</tspan>
+  </text>
+  <text class="t-ref" x="48" y="836">Core/Inc/usbd_cdc_flash.h:74-76 · docs/design/OWNERSHIP.md</text>
+</svg>
+</section>
+
+<!-- ═══════════════════════ 7 ═══════════════════════ -->
+<section>
+<h2 id="r7"><span class="no">参考 7</span>三个 on-flash 格式 · 字节级</h2>
+<p class="lede">这些尺寸<b>就是 on-flash 格式</b> —— 多一个 padding 字节，已经写进去的每条记录的每个字段就全部错位。所以用 <code>_Static_assert</code> 让它编译失败，而不是运行时才发现。</p>
+<svg class="dia" viewBox="0 0 1460 1130" xmlns="http://www.w3.org/2000/svg">
+
+  <!-- owner record -->
+  <text class="t-h" x="30" y="34">owner_record_t · 160 字节 = 5 × 32 字节 flash word</text>
+  <text class="t-s ink-muted" x="30" y="56">flash word 32 字节是 H7 的写入粒度下限，不能再小</text>
+
+  <rect class="card violet" x="30" y="70" width="7.5" height="56"/>
+  <rect class="card violet" x="37.5" y="70" width="7.5" height="56"/>
+  <rect class="card violet" x="45" y="70" width="15" height="56"/>
+  <rect class="card blue" x="60" y="70" width="30" height="56"/>
+  <rect class="card blue" x="90" y="70" width="30" height="56"/>
+  <rect class="card green" x="120" y="70" width="480" height="56"/>
+  <rect class="card amber" x="600" y="70" width="90" height="56"/>
+  <rect class="card red" x="690" y="70" width="480" height="56"/>
+  <rect class="card" x="1170" y="70" width="60" height="56"/>
+
+  <text class="t-s" x="360" y="103" text-anchor="middle">root_pubkey · 64 B · secp256r1 X‖Y</text>
+  <text class="t-s" x="645" y="97" text-anchor="middle">uid · 12 B</text>
+  <text class="t-s" x="930" y="103" text-anchor="middle">prev_sig · 64 B · 上一代根对前 88 字节的签名</text>
+  <text class="t-s" x="1200" y="97" text-anchor="middle">rsvd 8</text>
+
+  <text class="t-ref" x="30" y="146">0 type 'O'</text>
+  <text class="t-ref" x="30" y="162">1 slots 5</text>
+  <text class="t-ref" x="30" y="178">2 format_ver <tspan class="em">2</tspan></text>
+  <text class="t-ref" x="150" y="146">4 generation</text>
+  <text class="t-ref" x="150" y="162">8 flags · bit0 = cleared</text>
+  <text class="t-ref" x="605" y="146">76 HAL_GetUIDw2‖w1‖w0</text>
+  <text class="t-ref" x="695" y="146">88</text>
+  <text class="t-ref" x="1175" y="146">152</text>
+
+  <!-- signed prefix bracket -->
+  <path class="edge" d="M30,196 L690,196 M30,190 L30,204 M690,190 L690,204"/>
+  <text class="t-b" x="360" y="220" text-anchor="middle">
+    <tspan class="em">OWNER_SIGNED_PREFIX_LEN = 88</tspan> · 签名覆盖到这里
+  </text>
+
+  <rect class="card amber" x="710" y="186" width="720" height="112" rx="8"/>
+  <text class="t-b" x="728" y="212">
+    <tspan x="728">⚠ <tspan class="em">uid 必须落在签名覆盖范围内。不覆盖等于没绑</tspan> —— 签名管不到的字段谁都能改。</tspan>
+    <tspan x="728" dy="22">这也是它放在 prev_sig <tspan class="em">之前</tspan>、而不是塞进尾部 reserved 的原因：reserved 在偏移 152，<tspan class="em">在签名之外</tspan>。</tspan>
+    <tspan x="728" dy="22">没有它，一块已认领板子的记录字节整段拷到另一块空白板上，会被当成首次认领接受。</tspan>
+    <tspan x="728" dy="22"><tspan class="em">v1 没有兼容路径</tspan>：见 format_ver ≠ 2 直接判无效。现场没有 v1 记录，所以是硬切不是迁移。</tspan>
+  </text>
+
+  <!-- cert -->
+  <text class="t-h" x="30" y="352">iap_cert_t · 132 字节 · 无 parser，固定偏移</text>
+
+  <rect class="card green" x="30" y="368" width="581.8" height="56"/>
+  <rect class="card blue" x="611.8" y="368" width="36.4" height="56"/>
+  <rect class="card red" x="648.2" y="368" width="581.8" height="56"/>
+
+  <text class="t-s" x="320" y="401" text-anchor="middle">leaf_pubkey · 64 B</text>
+  <text class="t-s" x="939" y="401" text-anchor="middle">root_sig · 64 B · 根对 sha256(前 68 字节) 的签名</text>
+  <text class="t-ref" x="30" y="444">0</text>
+  <text class="t-ref" x="590" y="444">64 serial（u32 LE）</text>
+  <text class="t-ref" x="653" y="444">68</text>
+
+  <path class="edge" d="M30,462 L648,462 M30,456 L30,470 M648,456 L648,470"/>
+  <text class="t-b" x="339" y="486" text-anchor="middle"><tspan class="em">IAP_CERT_SIGNED_LEN = 68</tspan></text>
+
+  <rect class="card" x="710" y="452" width="720" height="90" rx="8"/>
+  <text class="t-b" x="728" y="478">
+    <tspan x="728">serial <tspan class="em">只有在 C12 撤销存在时才有意义</tspan>，今天它只是被存下来。</tspan>
+    <tspan x="728" dy="22"><tspan class="em">自签证书固定用 0xFFFFFFFF，不吃号</tspan>：编号存在的意义是「将来能被撤销点名」，</tspan>
+    <tspan x="728" dy="22">而根没法把自己撤销掉。共用一个计数器会让撤销周一发的同事，一并作废管理员周五传的固件。</tspan>
+  </text>
+
+  <!-- metadata -->
+  <text class="t-h" x="30" y="596">iap_fw_metadata_t · 248 字节 · 占 8 个 journal 格（IAP_METADATA_SLOTS = 8）</text>
+
+  <rect class="card blue" x="30" y="612" width="19.35" height="56"/>
+  <rect class="card violet" x="49.35" y="612" width="154.8" height="56"/>
+  <rect class="card red" x="204.15" y="612" width="309.7" height="56"/>
+  <rect class="card green" x="513.85" y="612" width="638.7" height="56"/>
+  <rect class="card" x="1152.55" y="612" width="77.4" height="56"/>
+
+  <text class="t-s" x="127" y="645" text-anchor="middle">sha256 · 32 B</text>
+  <text class="t-s" x="359" y="645" text-anchor="middle">signature · 64 B</text>
+  <text class="t-s" x="833" y="645" text-anchor="middle"><tspan class="em">cert · 132 B · 整张存进来</tspan></text>
+  <text class="t-s" x="1191" y="645" text-anchor="middle">rsvd 16</text>
+  <text class="t-ref" x="30" y="688">0 app_size</text>
+
+  <rect class="card green" x="30" y="706" width="690" height="140" rx="8"/>
+  <text class="t-h2 ink-green" x="48" y="732">为什么存整张证书，而不是缓存叶公钥</text>
+  <text class="t-b" x="48" y="758">
+    <tspan x="48">因为每次启动要<tspan class="em">重验 root_sig</tspan>。缓存叶公钥会让</tspan>
+    <tspan x="48" dy="22">「换 owner 追溯作废固件」这条性质<tspan class="em">静默失效</tspan>。</tspan>
+    <tspan x="48" dy="26">M 记录从 4 格涨到 8 格，就是为了这个。</tspan>
+    <tspan x="48" dy="22">一次更新因此占 9 格：8 格 metadata + 1 格日志</tspan>
+    <tspan x="48" dy="22">⇒ 约 455 次更新触发一次回收。</tspan>
+  </text>
+
+  <rect class="card" x="740" y="706" width="690" height="140" rx="8"/>
+  <text class="t-h2" x="758" y="732">一个写进去但没人读的字段</text>
+  <text class="t-b" x="758" y="758">
+    <tspan x="758"><tspan class="t-mono">meta.sha256</tspan> 写进去了，但<tspan class="em">全代码没有任何地方读它</tspan>。</tspan>
+    <tspan x="758" dy="26"><tspan class="em">不是 bug</tspan> —— 签名已经绑定了哈希，再比一次存的</tspan>
+    <tspan x="758" dy="22">副本不增加任何安全性。将来要给工具加个核对用</tspan>
+    <tspan x="758" dy="22">的命令，字段现成就在。（2026-08-16 核实）</tspan>
+  </text>
+
+  <!-- 日志格 -->
+  <text class="t-h" x="30" y="900">日志记录 · 1 格 = 32 字节</text>
+  <rect class="card amber" x="30" y="916" width="1400" height="80" rx="8"/>
+  <text class="t-b" x="48" y="944">
+    <tspan x="48">字段：<tspan class="t-mono">event</tspan> · <tspan class="t-mono">method</tspan>（哪条通道）· <tspan class="t-mono">peer_ip</tspan>（<tspan class="em">只有 TCP 有，CDC 恒为 0</tspan>）· <tspan class="t-mono">tick_ms</tspan> · <tspan class="t-mono">auth_counter</tspan> · <tspan class="t-mono">detail</tspan> · <tspan class="t-mono em">prev_hash</tspan></tspan>
+    <tspan x="48" dy="24"><tspan class="t-mono">auth_counter</tspan> 把一条 AUTH_FAIL / SIG_FAIL <tspan class="em">系到某一次具体的挑战尝试上</tspan>，而不只是「某个时刻发生过一次失败」。</tspan>
+  </text>
+
+  <rect class="card red" x="30" y="1012" width="1400" height="98" rx="8"/>
+  <text class="t-h ink-red" x="48" y="1042">⚠ 文档漂移：JOURNAL.md 里 M 记录还写着 4 格</text>
+  <text class="t-b" x="48" y="1070">
+    <tspan x="48">同一份文件里 <tspan class="t-mono">docs/design/JOURNAL.md</tspan> 的类型表说 8 格，但上电扫描树和写入流程图仍写着「'M'（4格）」「剩余格子 &lt; 4」「追加 M 记录（4格）」。</tspan>
+    <tspan x="48" dy="24">代码是 <tspan class="t-mono em">IAP_METADATA_SLOTS 8U</tspan>（bootloader_state.h:48）。<tspan class="em">本图按代码画。</tspan>那三处该改，不在本次范围。</tspan>
+  </text>
+</svg>
+</section>
+
+<!-- ═══════════════════════ 8 ═══════════════════════ -->
+<section>
+<h2 id="r8"><span class="no">参考 8</span>owner 记录链怎么被解析 · 以及为什么不是「代号最大者胜」</h2>
+<p class="lede">这是整套东西真正安全的地方。选错解析规则，任何能往 flash 追加字节的人都能夺权。</p>
+<svg class="dia" viewBox="0 0 1460 800" xmlns="http://www.w3.org/2000/svg">
+
+  <rect class="card red" x="30" y="20" width="690" height="230" rx="10"/>
+  <text class="t-h ink-red" x="48" y="50">❌ 如果按「代号最大的那条有效记录胜」</text>
+  <text class="t-b" x="48" y="78">
+    <tspan x="48">任何能往那片区域追加字节的人，只要写一条</tspan>
+    <tspan x="48" dy="24"><tspan class="em">代号很大、prev_sig 全 0</tspan> 的记录，就夺权成功。</tspan>
+    <tspan x="48" dy="28">而「能往 flash 写字节」在<tspan class="em">出厂状态下等于成立</tspan> ——</tspan>
+    <tspan x="48" dy="22">谁都能签一个 sketch，sketch 里就能写 flash。</tspan>
+    <tspan x="48" dy="28">⚠ 这不是理论问题，是这个规则<tspan class="em">必须</tspan>被否掉的原因。</tspan>
+  </text>
+  <text class="t-ref" x="48" y="236">owner_slot.c:118-150 的头注释</text>
+
+  <rect class="card green" x="740" y="20" width="690" height="230" rx="10"/>
+  <text class="t-h ink-green" x="758" y="50">✅ 实际规则：从最老往新逐条走，一条不过就停</text>
+  <text class="t-b" x="758" y="78">
+    <tspan x="758">resolve_chain()：从第一条开始，每条都必须被</tspan>
+    <tspan x="758" dy="24"><tspan class="em">上一条的根</tspan>签过、代号必须正好 +1、uid 必须是本板。</tspan>
+    <tspan x="758" dy="28"><tspan class="em">失败不跳过，直接停。</tspan>停在哪，生效的就是哪一条。</tspan>
+    <tspan x="758" dy="28">⇒ 攻击者追加的那条无签名高代号记录，<tspan class="em">走不到</tspan>，</tspan>
+    <tspan x="758" dy="22">板子认的仍然是链上最后一条合法记录。</tspan>
+  </text>
+  <text class="t-ref" x="758" y="236">owner_slot.c:151-240</text>
+
+  <!-- 链图 -->
+  <text class="t-h" x="30" y="300">一条正常的链，和攻击者能做到的事</text>
+
+  <rect class="card green" x="30" y="320" width="200" height="110" rx="8"/>
+  <text class="t-h2 ink-green" x="46" y="346">G1 · 认领</text>
+  <text class="t-b" x="46" y="370">
+    <tspan x="46" class="t-s">generation 1</tspan>
+    <tspan x="46" dy="20" class="t-s">prev_sig 全 0</tspan>
+    <tspan x="46" dy="20" class="t-s"><tspan class="em">TOFU</tspan> · 门控 = BOOT0</tspan>
+  </text>
+
+  <path class="edge" d="M230,375 L286,375" marker-end="url(#ah)"/>
+  <text class="t-edge" x="258" y="366" text-anchor="middle">G1 签</text>
+
+  <rect class="card green" x="294" y="320" width="200" height="110" rx="8"/>
+  <text class="t-h2 ink-green" x="310" y="346">G2 · 换主人</text>
+  <text class="t-b" x="310" y="370">
+    <tspan x="310" class="t-s">generation 2</tspan>
+    <tspan x="310" dy="20" class="t-s">prev_sig = G1 根的签名</tspan>
+    <tspan x="310" dy="20" class="t-s">无 BOOT0，可远程</tspan>
+  </text>
+
+  <path class="edge" d="M494,375 L550,375" marker-end="url(#ah)"/>
+  <text class="t-edge" x="522" y="366" text-anchor="middle">G2 签</text>
+
+  <rect class="card green" x="558" y="320" width="200" height="110" rx="8"/>
+  <text class="t-h2 ink-green" x="574" y="346">G3 · 再换</text>
+  <text class="t-b" x="574" y="370">
+    <tspan x="574" class="t-s">generation 3</tspan>
+    <tspan x="574" dy="20" class="t-s">prev_sig = G2 根的签名</tspan>
+    <tspan x="574" dy="20" class="t-s"><tspan class="em">← 当前生效</tspan></tspan>
+  </text>
+
+  <path class="thin" d="M758,375 L814,375" stroke-dasharray="5 4"/>
+
+  <rect class="card red" x="822" y="320" width="230" height="110" rx="8"/>
+  <text class="t-h2 ink-red" x="838" y="346">攻击者追加的 G99</text>
+  <text class="t-b" x="838" y="370">
+    <tspan x="838" class="t-s">generation 99</tspan>
+    <tspan x="838" dy="20" class="t-s">prev_sig 全 0 或伪造</tspan>
+    <tspan x="838" dy="20" class="t-s"><tspan class="em">代号不是 4 ⇒ 链在 G3 就停</tspan></tspan>
+  </text>
+
+  <rect class="card" x="1076" y="320" width="354" height="110" rx="8"/>
+  <text class="t-b" x="1094" y="346">
+    <tspan x="1094">⇒ <tspan class="em">R2：换 owner 必须由当前 owner 根签名。</tspan></tspan>
+    <tspan x="1094" dy="22">挡住已认领板子被夺走，<tspan class="em">包括被有 flash</tspan></tspan>
+    <tspan x="1094" dy="22"><tspan class="em">写权限的代码夺走</tspan>。这是真保证。</tspan>
+  </text>
+
+  <!-- 无签名三处 -->
+  <rect class="band" x="30" y="460" width="690" height="150" rx="12"/>
+  <text class="t-h" x="48" y="490">无签名只在三种情况下被允许</text>
+  <text class="t-b" x="48" y="518">
+    <tspan x="48"><tspan class="t-mono em">first</tspan> —— 链上第一条，没有前任能签它（TOFU）</tspan>
+    <tspan x="48" dy="24"><tspan class="t-mono em">cleared</tspan> —— 恢复出厂那条，门控是纯物理动作</tspan>
+    <tspan x="48" dy="24"><tspan class="t-mono em">prev_cleared</tspan> —— cleared 之后的重新认领，同上</tspan>
+    <tspan x="48" dy="26" class="t-s">三种都<tspan class="em">靠物理门控替代密码学门控</tspan>，没有第四种。</tspan>
+  </text>
+
+  <rect class="band" x="740" y="460" width="690" height="150" rx="12"/>
+  <text class="t-h" x="758" y="490">写入这片区域的五道保护</text>
+  <text class="t-b" x="758" y="518">
+    <tspan x="758">▸ <tspan class="em">写前先验签</tspan>，不是等下次启动再拒 ⇒ 不白烧掉不可回收的槽</tspan>
+    <tspan x="758" dy="22">▸ <tspan class="em">写后重扫确认生效</tspan> ⇒ 不会「写了但链上不生效」</tspan>
+    <tspan x="758" dy="22">▸ <tspan class="em">body 先写、header 最后写</tspan> ⇒ 掉电撕裂不出「看起来有效」的记录</tspan>
+    <tspan x="758" dy="22">▸ <tspan class="em">撕裂的槽跨过不复用</tspan>（复用要擦，而唯一可擦单元是正在执行的扇区）</tspan>
+    <tspan x="758" dy="22">▸ <tspan class="em">槽满即拒</tspan>，报 owner record area is full</tspan>
+  </text>
+
+  <!-- 回落 -->
+  <rect class="card blue" x="30" y="642" width="1400" height="136" rx="10"/>
+  <text class="t-h ink-blue" x="48" y="672">owner_slot_root() 的三条回落</text>
+  <text class="t-b" x="48" y="700">
+    <tspan x="48">▸ 槽<tspan class="em">从没写过</tspan>（全 0xFF）　▸ 链尾那条是 <tspan class="em">cleared</tspan>　▸ 链在中途<tspan class="em">断了</tspan>　—— 这三种都回落到编译进来的 <tspan class="t-mono">fw_public_key</tspan></tspan>
+    <tspan x="48" dy="24">否则返回链上最后一条有效记录的 <tspan class="t-mono">root_pubkey</tspan>。<tspan class="em">fw_verify / iap_auth / getpubkey 三个调用点全部走它</tspan>，没有一个直接用 fw_public_key。</tspan>
+    <tspan x="48" dy="24">⚠ 这一条是实测抓出来的：M1 step 4 验收时「认领后用旧密钥签的 app 仍然能启动」，因为当时验的是编译进来的那把 ——<tspan class="em">认领会变成纯表演</tspan>。</tspan>
+  </text>
+  <text class="t-ref" x="48" y="768">owner_slot.c:292-303 · fw_verify.c:20-36</text>
+</svg>
+</section>
+
+<!-- ═══════════════════════ 9 ═══════════════════════ -->
+<section>
+<h2 id="r9"><span class="no">参考 9</span>nonce 与防重放 · 没有硬件随机数怎么办</h2>
+<p class="lede">这块板子的 HAL_RNG 没有配置。所以防重放靠的是 <b>唯一性，不是不可预测性</b> —— 攻击者真正需要而且永远拿不到的东西是叶子私钥，不是下一个 nonce 的值。</p>
+<svg class="dia" viewBox="0 0 1460 740" xmlns="http://www.w3.org/2000/svg">
+
+  <text class="t-h" x="30" y="34">16 字节 nonce 的构成</text>
+
+  <rect class="card blue" x="30" y="52" width="300" height="60" rx="6"/>
+  <rect class="card green" x="330" y="52" width="300" height="60" rx="6"/>
+  <rect class="card amber" x="630" y="52" width="300" height="60" rx="6"/>
+  <rect class="card" x="930" y="52" width="300" height="60" rx="6"/>
+
+  <text class="t-h2 ink-blue" x="180" y="78" text-anchor="middle">counter · 4 B</text>
+  <text class="t-s" x="180" y="98" text-anchor="middle">存 RTC 备份寄存器 DR1</text>
+  <text class="t-h2 ink-green" x="480" y="78" text-anchor="middle">UID w0 · 4 B</text>
+  <text class="t-s" x="480" y="98" text-anchor="middle">本板唯一，跨设备不撞</text>
+  <text class="t-h2 ink-amber" x="780" y="78" text-anchor="middle">HAL_GetTick() · 4 B</text>
+  <text class="t-s" x="780" y="98" text-anchor="middle">本次启动内递增</text>
+  <text class="t-h2 ink-muted" x="1080" y="78" text-anchor="middle">0 · 4 B</text>
+  <text class="t-s" x="1080" y="98" text-anchor="middle">保留</text>
+
+  <rect class="card violet" x="30" y="140" width="690" height="240" rx="10"/>
+  <text class="t-h ink-violet" x="48" y="170">counter 为什么必须跨掉电存活</text>
+  <text class="t-b" x="48" y="198">
+    <tspan x="48">如果它每次上电归零，攻击者只要<tspan class="em">断电重启板子</tspan>，</tspan>
+    <tspan x="48" dy="24">就能让板子重新发出一个<tspan class="em">它之前发过的 nonce</tspan> ——</tspan>
+    <tspan x="48" dy="22">于是一条截获过的 flash 命令可以被原样重放。</tspan>
+    <tspan x="48" dy="28">⇒ 计数器存在 <tspan class="t-mono em">RTC 备份寄存器 DR1</tspan>，靠 VBAT 存活。</tspan>
+    <tspan x="48" dy="28">另有一个<tspan class="em">见证值存 DR3</tspan>：备份域整个丢失过的话，</tspan>
+    <tspan x="48" dy="22">启动时明说 <tspan class="t-mono">replay protection is weakened</tspan>，</tspan>
+    <tspan x="48" dy="22">而不是<tspan class="em">静默</tspan>地少一层保护。</tspan>
+  </text>
+  <text class="t-ref" x="48" y="366">iap_auth.c:29-64 · 142-168</text>
+
+  <rect class="card red" x="740" y="140" width="690" height="240" rx="10"/>
+  <text class="t-h ink-red" x="758" y="170">⚠ 见证值为什么是 DR3 而不是 DR2</text>
+  <text class="t-b" x="758" y="198">
+    <tspan x="758"><tspan class="em">DR2 被 app 侧占了，撞过车，而且双向都坏。</tspan></tspan>
+    <tspan x="758" dy="28">RTC 备份寄存器是<tspan class="em">三个仓库共享、且没有任何机制</tspan></tspan>
+    <tspan x="758" dy="22"><tspan class="em">统一分配</tspan>的资源。一个连「谁占了哪个」都要靠翻代码</tspan>
+    <tspan x="758" dy="22">才知道的地方，不该承载安全关键状态。</tspan>
+    <tspan x="758" dy="28">⇒ 所以撤销状态<tspan class="em">刻意不放</tspan>备份域，尽管它看着很合适</tspan>
+    <tspan x="758" dy="22">（掉电能活、不用擦扇区）。分配表在 ARCHITECTURE.md，</tspan>
+    <tspan x="758" dy="22"><tspan class="em">认领任何一个之前先看那里。</tspan></tspan>
+  </text>
+
+  <!-- 四条性质 -->
+  <text class="t-h" x="30" y="428">挑战的四条性质</text>
+
+  <rect class="card green" x="30" y="446" width="340" height="130" rx="8"/>
+  <text class="t-h2 ink-green" x="48" y="472">一次性</text>
+  <text class="t-b" x="48" y="498">
+    <tspan x="48"><tspan class="em">无论验成功还是失败</tspan>，</tspan>
+    <tspan x="48" dy="22">这个 nonce 都被消费掉。</tspan>
+    <tspan x="48" dy="24" class="t-s">失败也消费，是为了不给</tspan>
+    <tspan x="48" dy="19" class="t-s">攻击者拿同一个 nonce 反复试的机会</tspan>
+  </text>
+
+  <rect class="card green" x="386" y="446" width="340" height="130" rx="8"/>
+  <text class="t-h2 ink-green" x="404" y="472">TTL 30 秒</text>
+  <text class="t-b" x="404" y="498">
+    <tspan x="404">发出超过 30 秒的挑战</tspan>
+    <tspan x="404" dy="22">一律不再接受。</tspan>
+    <tspan x="404" dy="24" class="t-s">把「截获一个签名后慢慢用」</tspan>
+    <tspan x="404" dy="19" class="t-s">的窗口压到半分钟</tspan>
+  </text>
+
+  <rect class="card violet" x="742" y="446" width="340" height="130" rx="8"/>
+  <text class="t-h2 ink-violet" x="760" y="472">自检没过就一律拒</text>
+  <text class="t-b" x="760" y="498">
+    <tspan x="760">SHA-256 自检失败时，</tspan>
+    <tspan x="760" dy="22">不拿一个已知坏的原语算摘要。</tspan>
+    <tspan x="760" dy="24" class="t-s">宁可拒绝一切，也不给出一个</tspan>
+    <tspan x="760" dy="19" class="t-s">不知道对不对的「通过」</tspan>
+  </text>
+
+  <rect class="card amber" x="1098" y="446" width="332" height="130" rx="8"/>
+  <text class="t-h2 ink-amber" x="1116" y="472">⚠ 全局单 nonce</text>
+  <text class="t-b" x="1116" y="498">
+    <tspan x="1116">同时只能一个挑战在飞。</tspan>
+    <tspan x="1116" dy="22">CDC + 以太网并发会互相冲掉。</tspan>
+    <tspan x="1116" dy="24" class="t-s">可用性怪癖，<tspan class="em">不是安全洞</tspan> ——</tspan>
+    <tspan x="1116" dy="19" class="t-s">nonce 不可能被双重消费</tspan>
+  </text>
+
+  <!-- 签名消息 -->
+  <rect class="card blue" x="30" y="606" width="1400" height="112" rx="10"/>
+  <text class="t-h ink-blue" x="48" y="636">签名到底盖在什么上面</text>
+  <text class="t-b" x="48" y="664">
+    <tspan x="48"><tspan class="t-mono em">sha256( nonce ‖ "flash &lt;size&gt; &lt;crc32hex&gt; &lt;signature_hex&gt;" )</tspan> —— 命令文本被<tspan class="em">逐字节重建</tspan>后参与签名，所以改动其中任何一个参数都会让签名失效。</tspan>
+    <tspan x="48" dy="24"><tspan class="em">证书刻意不折进签名消息</tspan>：它不是秘密、不是会话相关，自身的有效性由 root_sig 锚定。把它塞进去只会让消息更长，不增加任何保证。</tspan>
+    <tspan x="48" dy="24">⚠ 两步都必须做：<tspan class="em">一张有效证书不说明谁签了这个 nonce；某个叶子的有效签名不说明那个叶子被认证过。</tspan></tspan>
+  </text>
+</svg>
+</section>
+
+<!-- ═══════════════════════ 10 ═══════════════════════ -->
+<section>
+<h2 id="r10"><span class="no">参考 10</span>BOOT0 手势时间轴 · 一次按压，三个结果</h2>
+<p class="lede">恢复出厂<b>不是另起一个手势</b>，是现有那次按压的自然延长。十秒离 1.5 秒的判定点足够远，没人会因为「多按一会儿以防万一」而误触。</p>
+<svg class="dia" viewBox="0 0 1460 470" xmlns="http://www.w3.org/2000/svg">
+
+  <!-- 轴 -->
+  <path class="edge" d="M60,120 L1400,120" marker-end="url(#ah)"/>
+  <text class="t-ref" x="60" y="146">0 s · 复位</text>
+
+  <!-- 继电器窗口 -->
+  <rect class="card blue" x="60" y="60" width="180" height="44" rx="6"/>
+  <text class="t-s ink-blue" x="150" y="80" text-anchor="middle">继电器依次咔哒</text>
+  <text class="t-s ink-blue" x="150" y="97" text-anchor="middle">3 × 500 ms</text>
+
+  <path class="thin" d="M240,50 L240,190"/>
+  <text class="t-h2" x="252" y="170">1.5 s · 判定点</text>
+  <text class="t-s ink-muted" x="252" y="190">这一刻读一次引脚</text>
+
+  <path class="thin" d="M700,50 L700,190"/>
+  <text class="t-h2" x="712" y="170">10 s · 武装</text>
+  <text class="t-s ink-muted" x="712" y="190">三下快咔哒 = 已武装</text>
+
+  <path class="thin" d="M1180,50 L1180,190"/>
+  <text class="t-h2" x="1192" y="170">30 s · 判定卡键</text>
+  <text class="t-s ink-muted" x="1192" y="190">按键卡死或线短路</text>
+
+  <!-- 三个结果 -->
+  <rect class="card" x="60" y="226" width="420" height="200" rx="10"/>
+  <text class="t-h2" x="78" y="252">判定点<tspan class="em">没按下</tspan> ⇒ NONE</text>
+  <text class="t-b" x="78" y="278">
+    <tspan x="78">正常启动，按 Step 1 的验签结果</tspan>
+    <tspan x="78" dy="22">决定跳 app 还是留在 bootloader。</tspan>
+    <tspan x="78" dy="28">⚠ 判定是「<tspan class="em">1.5 秒那一刻按键是否</tspan></tspan>
+    <tspan x="78" dy="22"><tspan class="em">按下</tspan>」，<tspan class="em">不是</tspan>「按住了 1.5 秒」。</tspan>
+    <tspan x="78" dy="22">继电器咔哒期间根本不看引脚 ——</tspan>
+    <tspan x="78" dy="22">全程按住只是<tspan class="em">确保覆盖那一瞬间</tspan>的</tspan>
+    <tspan x="78" dy="22">实用办法，横幅提示的就是这个。</tspan>
+  </text>
+
+  <rect class="card amber" x="500" y="226" width="420" height="200" rx="10"/>
+  <text class="t-h2 ink-amber" x="518" y="252">1.5 s 按下、10 s 前松手 ⇒ UPLOAD</text>
+  <text class="t-b" x="518" y="278">
+    <tspan x="518">⇒ <tspan class="t-mono em">IAP_ALL</tspan>，CDC + 以太网全开。</tspan>
+    <tspan x="518" dy="28"><tspan class="em">按下的那一刻决定就定了</tspan> —— 后面</tspan>
+    <tspan x="518" dy="22">发生什么都改不了它，只能<tspan class="em">再加上</tspan></tspan>
+    <tspan x="518" dy="22">一个恢复出厂。</tspan>
+    <tspan x="518" dy="28">同时 latch <tspan class="t-mono">s_boot0_held</tspan>，供整个</tspan>
+    <tspan x="518" dy="22">会话里的 takeown 使用。</tspan>
+    <tspan x="518" dy="24" class="t-s">⚠ 超过 30 s 仍未松手 ⇒ 也当 UPLOAD</tspan>
+  </text>
+
+  <rect class="card red" x="940" y="226" width="460" height="200" rx="10"/>
+  <text class="t-h2 ink-red" x="958" y="252">按过 10 s 再松手 ⇒ FACTORY_RESET</text>
+  <text class="t-b" x="958" y="278">
+    <tspan x="958">追加一条 cleared 记录 ⇒ 回落公开根。</tspan>
+    <tspan x="958" dy="28"><tspan class="em">用声音不用灯</tspan>：这板子没有通用 LED，</tspan>
+    <tspan x="958" dy="22">而且通常装在柜子里没人看得见。</tspan>
+    <tspan x="958" dy="28">⚠ <tspan class="em">顺序有讲究</tspan>：owner_slot_factory_reset()</tspan>
+    <tspan x="958" dy="22">必须在 server_decide() <tspan class="em">之前</tspan>调 —— 否则</tspan>
+    <tspan x="958" dy="22">这次启动的日志会描述<tspan class="em">刚被扔掉的所有权</tspan>，</tspan>
+    <tspan x="958" dy="22">而这恰恰是唯一肯定有人在读日志的那次启动。</tspan>
+  </text>
+
+  <text class="t-ref" x="60" y="456">Core/Src/main.c:164-253（常量 177 · 182 · 状态机 209-253）· 调用顺序 main.c:347-365</text>
+</svg>
+</section>
+
+<!-- ═══════════════════════ 11 ═══════════════════════ -->
+<section>
+<h2 id="r11"><span class="no">参考 11</span>日志与取证 · 以及为什么规则全都偏向保住 metadata</h2>
+<p class="lede"><b>journal 不是日志系统，是出生证明的存放处。</b>事件日志只是搭便车住在同一个扇区。下面每条规则只有从这个前提出发才讲得通。</p>
+<svg class="dia" viewBox="0 0 1460 780" xmlns="http://www.w3.org/2000/svg">
+
+  <rect class="card green" x="30" y="20" width="690" height="200" rx="10"/>
+  <text class="t-h ink-green" x="48" y="50">链式防篡改</text>
+  <text class="t-b" x="48" y="78">
+    <tspan x="48">每条日志存的哈希，覆盖<tspan class="em">上一条记录的完整原始字节</tspan>。</tspan>
+    <tspan x="48" dy="24">⇒ 删掉或改掉中间任何一条，<tspan class="em">后面整条链都对不上</tspan>。</tspan>
+    <tspan x="48" dy="28">截断到 96 位（12 字节）是为了给其他字段留空间。</tspan>
+    <tspan x="48" dy="22">96 位对「<tspan class="em">能不能察觉被动过</tspan>」足够 —— 它不需要抗</tspan>
+    <tspan x="48" dy="22">碰撞到密码学签名那个级别。</tspan>
+  </text>
+  <text class="t-ref" x="48" y="206">bootloader_state.h:108-121 · docs/design/JOURNAL.md:39</text>
+
+  <rect class="card blue" x="740" y="20" width="690" height="200" rx="10"/>
+  <text class="t-h ink-blue" x="758" y="50">认证失败只记在 RAM 里</text>
+  <text class="t-b" x="758" y="78">
+    <tspan x="758">最近 32 条被拒的认证尝试（method · peer_ip · tick），</tspan>
+    <tspan x="758" dy="24">加一个自启动以来的总计数。<tspan class="em">刻意不落 flash。</tspan></tspan>
+    <tspan x="758" dy="28"><tspan class="em">为什么</tspan>：未认证的调用者<tspan class="em">必须完全碰不到 flash</tspan>，</tspan>
+    <tspan x="758" dy="22">否则一串被拒的命令就能磨损 state 扇区、逼出 reclaim。</tspan>
+    <tspan x="758" dy="22">掉电即失 —— 这和同类设备的做法一致。</tspan>
+  </text>
+  <text class="t-ref" x="758" y="206">bootloader_state.h:135-153</text>
+
+  <!-- 擦除规则 -->
+  <rect class="band" x="30" y="248" width="690" height="230" rx="12"/>
+  <text class="t-h" x="48" y="278">写 metadata：<tspan class="em">全代码唯一会擦的地方</tspan></text>
+  <text class="t-b" x="48" y="306">
+    <tspan x="48">剩余格子不够 或 格式认不出 ⇒ journal_reclaim() 整扇区擦。</tspan>
+    <tspan x="48" dy="28"><tspan class="em">为什么只有这里能擦</tspan>：这一刻新镜像<tspan class="em">已经写进 app 区了</tspan>，</tspan>
+    <tspan x="48" dy="22">旧证明描述的东西已经不存在 —— 擦掉它不损失任何有效信息。</tspan>
+    <tspan x="48" dy="28">而且在这里掉电，最坏结果是「需要重刷」，<tspan class="em">而这个结论从擦</tspan></tspan>
+    <tspan x="48" dy="22"><tspan class="em">app 区的那一刻起就已经成立了</tspan>。</tspan>
+    <tspan x="48" dy="24">⇒ reclaim <tspan class="em">不引入任何新的失败模式</tspan>。换到别处擦就不成立。</tspan>
+  </text>
+
+  <rect class="band" x="740" y="248" width="690" height="230" rx="12"/>
+  <text class="t-h" x="758" y="278">写日志：<tspan class="em">满了也绝不擦</tspan></text>
+  <text class="t-b" x="758" y="306">
+    <tspan x="758">账本满了 ⇒ 丢掉这条事件，计数 +1，打印一行。<tspan class="em">不擦</tspan>。</tspan>
+    <tspan x="758" dy="28"><tspan class="em">理由</tspan>：擦一次只为记一行日志，会连带烧掉<tspan class="em">当前有效的</tspan></tspan>
+    <tspan x="758" dy="22"><tspan class="em">metadata</tspan> —— 等于拿「app 还能不能启动」去换一行日志。</tspan>
+    <tspan x="758" dy="28">⚠ 代价要知道：格式认不出的时候，「检测到旧格式」<tspan class="em">这件事</tspan></tspan>
+    <tspan x="758" dy="22"><tspan class="em">本身也写不进日志</tspan>。要等下一次成功上传、reclaim 之后才有</tspan>
+    <tspan x="758" dy="22">痕迹 ⇒ <tspan class="em">事后查得到「擦过一次」，查不到「从哪次启动开始报的」</tspan>。</tspan>
+  </text>
+
+  <!-- 八个事件 -->
+  <text class="t-h" x="30" y="530">八种事件 · 为什么要分这么细</text>
+  <rect class="card" x="30" y="548" width="1400" height="120" rx="10"/>
+  <text class="t-b" x="48" y="576">
+    <tspan x="48"><tspan class="t-mono">1 UPDATE_OK</tspan>　<tspan class="t-mono">2 CRC_FAIL</tspan>　<tspan class="t-mono">3 SIG_FAIL</tspan>　<tspan class="t-mono">4 AUTH_FAIL</tspan>　<tspan class="t-mono">5 OVERFLOW_ABORT</tspan>　<tspan class="t-mono">6 BOOT_VERIFY_FAIL</tspan>　<tspan class="t-mono">7 JOURNAL_RECLAIMED</tspan>　<tspan class="t-mono">8 FLASH_WRITE_FAIL</tspan></tspan>
+    <tspan x="48" dy="26"><tspan class="t-mono em">8</tspan> 和 <tspan class="t-mono em">3</tspan> 分开是刻意的：<tspan class="em">镜像是好的，flash 写坏了</tspan> —— 这两件事的诊断方向完全不同，合成一个就等于把两类故障混成一类。</tspan>
+    <tspan x="48" dy="24">「读不到 metadata」现象都是停在 bootloader，但<tspan class="em">出厂空板 / 换了新 bootloader / 上传中断</tspan>三种原因完全不同，<tspan class="em">日志能把它们区分开，这是刻意设计的</tspan>。</tspan>
+  </text>
+
+  <rect class="card amber" x="30" y="690" width="1400" height="76" rx="10"/>
+  <text class="t-b" x="48" y="718">
+    <tspan x="48">⚠ <tspan class="em">启动验签失败只记一连串里的第一次。</tspan>这条路不需要任何凭证 —— 每次上电都记，等于让<tspan class="em">任何有电源开关的人</tspan>把日志刷满，</tspan>
+    <tspan x="48" dy="24">把更早的真实证据挤出去。记第一次，就够回答「从什么时候开始不对的」。</tspan>
+  </text>
+</svg>
+</section>
+
+<!-- ═══════════════════════ 12 ═══════════════════════ -->
+<section>
+<h2 id="r12"><span class="no">参考 12</span>边界 · 挡得住什么、挡不住什么、明确不做什么</h2>
+<p class="lede">这一节是<b>拿来对着看的清单</b>，不是待办。每条「不做」都是主动决定，不是遗漏 —— 混淆这两者会让人去"修"一个刻意的取舍。</p>
+<svg class="dia" viewBox="0 0 1460 1000" xmlns="http://www.w3.org/2000/svg">
+
+  <!-- R1-R4 -->
+  <text class="t-h" x="30" y="34">四条规则，各自挡住什么、挡不住什么</text>
+
+  <rect class="card" x="30" y="52" width="1400" height="42" rx="6"/>
+  <text class="t-h2" x="48" y="79">R1 · 认领必须按住 BOOT0</text>
+  <text class="t-b ink-green" x="500" y="79">✅ 挡住远程顺手接管出厂板子</text>
+  <text class="t-b ink-red" x="900" y="79">❌ 挡不住出厂状态下上传恶意 sketch 直接写这片区域</text>
+
+  <rect class="card green" x="30" y="102" width="1400" height="42" rx="6"/>
+  <text class="t-h2 ink-green" x="48" y="129">R2 · 换 owner 必须由当前 owner 根签名</text>
+  <text class="t-b ink-green" x="500" y="129">✅ 挡住已认领板子被夺走，<tspan class="em">包括被有 flash 写权限的代码夺走</tspan></text>
+  <text class="t-b ink-muted" x="1130" y="129">这一条是真保证</text>
+
+  <rect class="card" x="30" y="152" width="1400" height="42" rx="6"/>
+  <text class="t-h2" x="48" y="179">R3 · 恢复出厂必须物理动作</text>
+  <text class="t-b ink-green" x="500" y="179">✅ 挡住远程把别人的板子降级回公开根</text>
+  <text class="t-b ink-red" x="900" y="179">❌ 挡不住有物理接触的人恢复出厂后接管</text>
+
+  <rect class="card" x="30" y="202" width="1400" height="42" rx="6"/>
+  <text class="t-h2" x="48" y="229">R4 · 撤销永不能撤到一个有效根都不剩</text>
+  <text class="t-b ink-green" x="500" y="229">✅ 挡住把自己撤成永久变砖</text>
+  <text class="t-b ink-muted" x="900" y="229">反面教材：ESP32 Secure Boot v2 的 aggressive revoke</text>
+
+  <rect class="card amber" x="30" y="256" width="1400" height="60" rx="8"/>
+  <text class="t-b" x="48" y="282">
+    <tspan x="48">R3 挡不住的那条<tspan class="em">必须接受</tspan> —— keys/README.md 已把「防不住手里拿着板子的人」写成设计前提。</tspan>
+    <tspan x="48" dy="22">反过来<tspan class="em">不给恢复出厂</tspan>，客户丢了根就是永久变砖，而他恰恰没有 ST-Link。</tspan>
+  </text>
+
+  <!-- 借鉴与避坑 -->
+  <text class="t-h" x="30" y="360">抄了谁、避开了谁</text>
+
+  <rect class="card green" x="30" y="378" width="690" height="176" rx="10"/>
+  <text class="t-h2 ink-green" x="48" y="404">✅ 抄的</text>
+  <text class="t-b" x="48" y="430">
+    <tspan x="48">▸ <tspan class="em">Setup / User Mode 的术语和状态机</tspan> ← UEFI Secure Boot</tspan>
+    <tspan x="48" dy="24">　 独立推出来的，事后才发现撞上了 ⇒ 直接借术语，读者有现成心智模型</tspan>
+    <tspan x="48" dy="24">▸ <tspan class="em">每次启动常驻告警</tspan>（不是一次性提示）← Android Verified Boot</tspan>
+    <tspan x="48" dy="24">▸ <tspan class="em">物理存在由固件在交权前判定</tspan> ← Chromebook</tspan>
+    <tspan x="48" dy="22" class="t-s">　 但 Chromebook 背后有 TPM，这里没有 ⇒ 只能借做法，借不了保证</tspan>
+  </text>
+
+  <rect class="card red" x="740" y="378" width="690" height="176" rx="10"/>
+  <text class="t-h2 ink-red" x="758" y="404">❌ 避开的</text>
+  <text class="t-b" x="758" y="430">
+    <tspan x="758">▸ <tspan class="em">Android 的「追加一把根」</tspan>（OEM 根 + 用户根并存）</tspan>
+    <tspan x="758" dy="24">　 Android 的 OEM 根私钥<tspan class="em">保密</tspan>，多信任一把不掉安全性。</tspan>
+    <tspan x="758" dy="24">　 我们的默认根私钥是<tspan class="em">公开的</tspan> ⇒ <tspan class="em">只能覆盖，不能追加</tspan>。</tspan>
+    <tspan x="758" dy="26">▸ <tspan class="em">ESP32 的 aggressive revoke</tspan></tspan>
+    <tspan x="758" dy="22" class="t-s">　 官方文档自己写着可能 brick the device permanently</tspan>
+  </text>
+
+  <!-- 明确不做 -->
+  <text class="t-h" x="30" y="598">明确不做 · 每条都是主动决定</text>
+
+  <rect class="card" x="30" y="616" width="460" height="150" rx="10"/>
+  <text class="t-h2" x="48" y="642">Flash 写保护 WRP</text>
+  <text class="t-b" x="48" y="668">
+    <tspan x="48">2026-09-04 定：<tspan class="em">厂商不设，客户自决</tspan>。</tspan>
+    <tspan x="48" dy="22">它是唯一能阻止 flash 写原语覆盖</tspan>
+    <tspan x="48" dy="22">bootloader 或其内置根的手段，</tspan>
+    <tspan x="48" dy="22">但清除它要物理 SWD + 重烧 + 重锁</tspan>
+    <tspan x="48" dy="22">⇒ <tspan class="em">太锋利，不适合出厂默认</tspan>。</tspan>
+  </text>
+
+  <rect class="card" x="506" y="616" width="460" height="150" rx="10"/>
+  <text class="t-h2" x="524" y="642">按单张证书撤销（C12）</text>
+  <text class="t-b" x="524" y="668">
+    <tspan x="524">serial 字段已经留好了。</tspan>
+    <tspan x="524" dy="22">在<tspan class="em">有真实场景把「根私钥不用换」</tspan></tspan>
+    <tspan x="524" dy="22"><tspan class="em">这条需求顶上来之前，不做</tspan>。</tspan>
+    <tspan x="524" dy="26">今天的撤销粒度就是「全部」——</tspan>
+    <tspan x="524" dy="22">换根，旧根签的一切当场失效。</tspan>
+  </text>
+
+  <rect class="card" x="982" y="616" width="448" height="150" rx="10"/>
+  <text class="t-h2" x="1000" y="642">每板生产密钥</text>
+  <text class="t-b" x="1000" y="668">
+    <tspan x="1000"><tspan class="em">已退役</tspan>，不是推后。</tspan>
+    <tspan x="1000" dy="26">共享秘密方案整个删掉了 ——</tspan>
+    <tspan x="1000" dy="22">签名挑战不需要共享密钥，</tspan>
+    <tspan x="1000" dy="22"><tspan class="em">板子上没有任何东西值得被提取</tspan>。</tspan>
+    <tspan x="1000" dy="24" class="t-s">⇒ 没有第二个秘密可替换了</tspan>
+  </text>
+
+  <!-- 剩下的洞 -->
+  <rect class="card red" x="30" y="790" width="690" height="190" rx="10"/>
+  <text class="t-h ink-red" x="48" y="820">剩下的真洞 · 知道但还没堵</text>
+  <text class="t-b" x="48" y="848">
+    <tspan x="48">▸ <tspan class="em">bootloader 自身的完整性</tspan> —— 上面所有验签都建立在</tspan>
+    <tspan x="48" dy="22">　「bootloader 没被换掉」这个假设上，目前只靠「没人去改」撑着</tspan>
+    <tspan x="48" dy="24">▸ <tspan class="em">认证失败没有退避或锁定</tspan> —— 只对 discovery 限了流</tspan>
+    <tspan x="48" dy="24">▸ <tspan class="em">TCP 连接层没有资源保护</tspan> —— 只有 lwIP PCB 数量的天然上限</tspan>
+    <tspan x="48" dy="24">▸ <tspan class="em">日志只写 flash，不主动上报</tspan></tspan>
+    <tspan x="48" dy="24">▸ <tspan class="em">追溯不到人</tspan> —— 日志能看到「哪次尝试」，看不到「是谁」</tspan>
+  </text>
+
+  <rect class="card amber" x="740" y="790" width="690" height="190" rx="10"/>
+  <text class="t-h ink-amber" x="758" y="820">最要紧的一条不是代码问题</text>
+  <text class="t-b" x="758" y="848">
+    <tspan x="758"><tspan class="em">出厂前认领每一块板子。</tspan></tspan>
+    <tspan x="758" dy="26">上面所有机制<tspan class="em">保护不了一块还信着公开根的板子</tspan>，</tspan>
+    <tspan x="758" dy="22">而厂商<tspan class="em">也修不了这件事</tspan> —— 他轮换出来的还是一把必须</tspan>
+    <tspan x="758" dy="22">公开的钥匙。</tspan>
+    <tspan x="758" dy="26">⇒ 这是<tspan class="em">运维步骤，不是代码改动</tspan>。</tspan>
+    <tspan x="758" dy="26">厂商真正欠客户的只有两件，而代码已经做到了：</tspan>
+    <tspan x="758" dy="22"><tspan class="em">告诉客户板子不设防</tspan> + <tspan class="em">给一条不用 ST-Link 的加固路</tspan>。</tspan>
+  </text>
+</svg>
+</section>
+
+</div></div></div>
+
+<script>
+  var stage = document.getElementById('stage');
+  var sizer = document.getElementById('sizer');
+  var sheet = document.getElementById('sheet');
+  var rng = document.getElementById('rng');
+  var pct = document.getElementById('pct');
+  var scale = 1, natW = 1500, natH = 0;
+
+  function measure() {
+    sheet.style.transform = 'none';
+    sizer.style.width = ''; sizer.style.height = '';
+    natW = sheet.offsetWidth;
+    natH = sheet.offsetHeight;
+  }
+  function apply() {
+    sheet.style.transform = 'scale(' + scale + ')';
+    sizer.style.width = (natW * scale) + 'px';
+    sizer.style.height = (natH * scale) + 'px';
+    pct.textContent = Math.round(scale * 100) + '%';
+    rng.value = Math.round(scale * 100);
+  }
+  function setScale(s) {
+    scale = Math.min(3, Math.max(0.25, s));
+    apply();
+  }
+  function fit() { setScale(stage.clientWidth / (natW + 24)); }
+
+  document.getElementById('in').onclick = function () { setScale(scale * 1.2); };
+  document.getElementById('out').onclick = function () { setScale(scale / 1.2); };
+  document.getElementById('one').onclick = function () { setScale(1); };
+  document.getElementById('fit').onclick = fit;
+  rng.oninput = function () { setScale(rng.value / 100); };
+
+  stage.addEventListener('wheel', function (e) {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    setScale(scale * (e.deltaY < 0 ? 1.12 : 1 / 1.12));
+  }, { passive: false });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.key === '+' || e.key === '=') setScale(scale * 1.2);
+    else if (e.key === '-') setScale(scale / 1.2);
+    else if (e.key === '0') setScale(1);
+    else if (e.key === 'f') fit();
+  });
+
+  /* nav built from the section headings so the two can never drift */
+  (function () {
+    var nav = document.getElementById('nav');
+    var hs = document.querySelectorAll('h2[id]');
+    for (var i = 0; i < hs.length; i++) {
+      (function (h) {
+        var no = h.querySelector('.no');
+        var label = (no ? no.textContent.trim() + ' · ' : '')
+                  + h.textContent.replace(no ? no.textContent : '', '')
+                      .replace(/\s+/g, ' ').trim();
+        var a = document.createElement('a');
+        a.textContent = label;
+        a.href = '#' + h.id;
+        a.onclick = function (e) {
+          e.preventDefault();
+          stage.scrollTop = h.offsetTop * scale - 12;
+        };
+        nav.appendChild(a);
+      })(hs[i]);
+    }
+  })();
+
+  measure();
+  fit();
+  window.addEventListener('resize', function () {
+    var was = scale;
+    measure();
+    setScale(was);
+  });
+</script>
