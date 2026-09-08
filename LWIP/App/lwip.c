@@ -46,12 +46,21 @@ static void ethernet_addr_status_updated(struct netif *netif)
   if (addr == 0u) {
     printf("[NET] Address lost\n");
   } else {
+#if defined(PORTTOOL_ENABLE) && PORTTOOL_ENABLE
+    /* No IAP server in this image, and the tool's own port is a session
+     * parameter that can change - so the eth frame reports it, not this line. */
+    printf("[NET] IP %s, MAC %02X:%02X:%02X:%02X:%02X:%02X\n",
+           ip4addr_ntoa(netif_ip4_addr(netif)),
+           netif->hwaddr[0], netif->hwaddr[1], netif->hwaddr[2],
+           netif->hwaddr[3], netif->hwaddr[4], netif->hwaddr[5]);
+#else
     printf("[NET] IP %s, MAC %02X:%02X:%02X:%02X:%02X:%02X,"
            " IAP server reachable on port %d\n",
            ip4addr_ntoa(netif_ip4_addr(netif)),
            netif->hwaddr[0], netif->hwaddr[1], netif->hwaddr[2],
            netif->hwaddr[3], netif->hwaddr[4], netif->hwaddr[5],
            OPENPLC_SERVER_PORT);
+#endif
   }
 }
 /* USER CODE END 0 */

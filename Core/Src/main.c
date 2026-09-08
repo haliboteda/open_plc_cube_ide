@@ -96,8 +96,25 @@
 #include "bringup_test.h"
 #endif
 
+/* Port test tool: the PC-driven instrument panel for the terminals. It also
+ * reaches every entry above through pt.handover, so it is the one to turn on
+ * when the choice is not already made. Turn it on the same way as the others,
+ * by defining the symbol in the project's preprocessor settings. */
+#ifndef PORTTOOL_ENABLE
+#define PORTTOOL_ENABLE 0
+#endif
+#if PORTTOOL_ENABLE
+#include "porttool/porttool.h"
+/* The symbol is set by hand rather than by a build configuration, so the one
+ * failure mode is shipping an image with it left on: that board never reaches
+ * the IAP server and cannot be updated over USB or Ethernet. Say so in the
+ * build log, where it is impossible to miss. */
+#warning "PORTTOOL_ENABLE=1: this image is the hardware test tool, NOT a bootloader. It never starts the IAP server."
+#endif
+
 #if (KNX_TEST_ENABLE + CAN_TEST_ENABLE + CAN_SOAK_TEST_ENABLE \
-     + CAN_SCOPE_TEST_ENABLE + CAN_ECHO_TEST_ENABLE + RS485_TEST_ENABLE + BRINGUP_TEST_ENABLE) > 1
+     + CAN_SCOPE_TEST_ENABLE + CAN_ECHO_TEST_ENABLE + RS485_TEST_ENABLE \
+     + BRINGUP_TEST_ENABLE + PORTTOOL_ENABLE) > 1
 #error "Only one bring-up test can run: none of them return. Pick one."
 #endif
 /* USER CODE END Includes */
@@ -317,6 +334,13 @@ int main(void)
   Enable_RX_RS232();   /* the MAX3221 stays in shutdown until this pin is high */
   MX_UART4_Init();
 
+#if PORTTOOL_ENABLE
+  /* Takes the board for the whole session and never returns, so the BOOT0
+   * gesture, the start decision, the jump to app and the IAP server below are
+   * all unreachable in this image. UART4 is up by this point, which is all the
+   * tool needs: it is both its command channel and its log. */
+  PortTool_Run();
+#endif
 #if KNX_TEST_ENABLE
   KNX_Test_Run();   /* v0.1.3-testcase branch only; never returns */
 #endif
