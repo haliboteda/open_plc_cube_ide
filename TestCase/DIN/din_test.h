@@ -11,10 +11,8 @@
 //   PB5  PC6  PB6  PB7  PH10  PH11  PI5  PI6
 //
 // All eight are plain high-impedance inputs - nothing driven, and no internal
-// pull-up or pull-down. Each of these lines already carries an external 10k
-// pull-up to +3V3 through a 50R series resistor and shares its node with an
-// LM339LV open-collector comparator output (see docs/design/HARDWARE-FACTS.md),
-// so an internal pull would fight the board and distort the reading.
+// pull-up or pull-down. The pin table and the reasoning behind that live in
+// TestCase/common/port_din.h, shared with the port tool.
 //
 // One line per second with the level of every pin.
 //
@@ -24,8 +22,9 @@
 #define TESTCASE_DIN_TEST_H_
 
 #include <stdint.h>
+#include "port_din.h"
 
-#define DIN_TEST_PINS 8
+#define DIN_TEST_PINS PORT_DIN_COUNT
 
 void DIN_Test_Init(void);
 void DIN_Test_Tick(uint32_t now_ms);

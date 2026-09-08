@@ -20,9 +20,18 @@
 //   vendor driver sources    -> Drivers/STM32H7xx_HAL_Driver/        (CubeMX)
 //   MPU access to 0xC0000000 -> MPU_Config() region 0, SubRegionDisable 0xC7
 //
-// Consequence: every entry point below must run AFTER MX_FMC_Init(), which in
-// main.c means Phase 2. They check hsdram1.State and bail out with a clear
-// message rather than poking a dead controller.
+// Consequence: the controller has to be up before any of this touches
+// 0xC0000000. Every entry point below therefore checks hsdram1.State and, if
+// the controller is not ready, calls MX_FMC_Init() itself before going on.
+//
+// ⚠️ That on-demand call is not decoration. The port tool reaches these from
+// main.c's Phase 1, where only clocks, GPIO and UART4 are up - MX_FMC_Init()
+// does not run until Phase 2, which this image never reaches. Without it every
+// SDRAM entry reported "not_initialised" and the three handover targets were
+// dead ends (found 2026-09-07, before the first bench run).
+//
+// MPU region 0 is open for 0xC0000000 in both phases: main.c calls
+// MPU_Config() before either.
 //
 // The timing values and the command sequence were never reverse-engineered
 // here - they came from a known-working sibling firmware for the same Bridge
@@ -75,8 +84,56 @@
 //       A matching CRC32 proves the written bytes survived the round trip
 //       through the physical SDRAM byte-for-byte.
 
+// Three entry points below are the exception to "all three run forever": they
+// perform one pass, fill in what they measured and return. They exist for
+// pt.run, where the PC applies the limit - so they report numbers and no
+// verdict.
+//
+//   SDRAM_Test_Probe()          - bring-up, data bus, address bus.
+//   SDRAM_Test_SweepOnce()      - the whole 64MiB, four patterns, with the
+//       mismatch count, where the first one was and how long each half took.
+//       This is the "SDRAM stress test, zero errors" the production test
+//       guide asks for at stations 6 and 10.
+//   SDRAM_Test_RetentionOnce()  - one write/wait/read-back cycle, so the PC
+//       decides how many cycles a station runs instead of the firmware
+//       looping forever.
+
 #ifndef INC_SDRAM_TEST_H_
 #define INC_SDRAM_TEST_H_
+
+#include <stdint.h>
+
+typedef struct {
+    uint32_t base;       /* where the window is mapped */
+    uint32_t size_bytes; /* the size the driver was built for */
+    uint8_t  ready;      /* the FMC controller was already brought up */
+    uint8_t  databus_ok; /* all 16 data lines independent */
+    uint8_t  addrbus_ok; /* no shorted, open or aliased address line */
+} sdram_probe_t;
+
+typedef struct {
+    uint8_t  ready;            /* the FMC controller was already brought up */
+    uint32_t patterns;         /* how many whole-array patterns were run */
+    uint32_t words_each;       /* 32-bit words touched per pattern */
+    uint32_t mismatches;       /* summed over every pattern */
+    uint32_t first_bad_offset; /* byte offset of the first mismatch */
+    uint32_t first_bad_pattern;/* the pattern that saw it */
+    uint32_t write_ms;         /* summed over every pattern */
+    uint32_t verify_ms;
+} sdram_sweep_t;
+
+typedef struct {
+    uint8_t  ready;
+    uint32_t checked;          /* random addresses written and read back */
+    uint32_t failed;
+    uint32_t wait_ms;          /* how long the data was left sitting */
+    uint32_t first_bad_addr;
+    uint32_t seed;             /* which address set this cycle used */
+} sdram_retention_t;
+
+void SDRAM_Test_Probe(sdram_probe_t *out);
+int  SDRAM_Test_SweepOnce(sdram_sweep_t *out);
+int  SDRAM_Test_RetentionOnce(sdram_retention_t *out);
 
 void SDRAM_Test_Capacity(void);
 void SDRAM_Test_Retention(void);

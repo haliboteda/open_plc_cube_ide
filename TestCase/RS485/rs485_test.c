@@ -3,15 +3,18 @@
 // RS485 bring-up - see rs485_test.h.
 
 #include "rs485_test.h"
+#include "port_rs485.h"
 #include "main.h"
 #include <stdio.h>
 #include <string.h>
 
-#define RS485_BAUD          115200U
-#define RS485_DIR_PORT      GPIOD
-#define RS485_DIR_PIN       GPIO_PIN_4
-#define RS485_TX_PIN        GPIO_PIN_5
-#define RS485_RX_PIN        GPIO_PIN_6
+/* The transceiver itself is driven through TestCase/common/port_rs485.*, which
+ * the port tool shares. Only this case's own timings stay here. */
+#define RS485_BAUD          PORT_RS485_DEFAULT_BAUD
+#define RS485_DIR_PORT      PORT_RS485_DIR_PORT
+#define RS485_DIR_PIN       PORT_RS485_DIR_PIN
+#define RS485_TX_PIN        PORT_RS485_TX_PIN
+#define RS485_RX_PIN        PORT_RS485_RX_PIN
 
 #define RS485_BANNER_MS     3000U
 /* 0x55 bytes ahead of the banner: alternating bits give the scope a clean
@@ -30,25 +33,12 @@
 #define RS485_D3_SPACE_MS   4000U
 #define RS485_D3_OFF_MS     2000U
 
-static UART_HandleTypeDef huart_rs485;
-
-/* PD4 drives /RE and DE at once: high = transmit, low = receive. */
-static void RS485_DriveEnable(int on)
-{
-    HAL_GPIO_WritePin(RS485_DIR_PORT, RS485_DIR_PIN,
-                      on ? GPIO_PIN_SET : GPIO_PIN_RESET);
-}
-
 static void RS485_Send(const uint8_t *data, uint16_t len)
 {
-    RS485_DriveEnable(1);
-    /* HAL_UART_Transmit returns only after TC, so the last bit is on the wire
-     * before the driver is turned off. */
-    HAL_StatusTypeDef st = HAL_UART_Transmit(&huart_rs485, (uint8_t *)data, len, 200);
+    int st = PortRs485_Send(data, len);
     if (st != HAL_OK) {
-        printf("[RS485] HAL_UART_Transmit returned %d\r\n", (int)st);
+        printf("[RS485] HAL_UART_Transmit returned %d\r\n", st);
     }
-    RS485_DriveEnable(0);
 }
 
 /* Phase R1: nothing needs to be attached. Both pins are driven as plain GPIO
@@ -81,46 +71,12 @@ static void RS485_Phase_PinLevel(void)
 
 static int RS485_Init(void)
 {
+    /* R1 drives PD4/PD5 as plain GPIO, so it has to run before they are muxed
+     * to the alternate function. */
     __HAL_RCC_GPIOD_CLK_ENABLE();
-    __HAL_RCC_USART2_CLK_ENABLE();
-
     RS485_Phase_PinLevel();
 
-    GPIO_InitTypeDef gpio = {0};
-
-    gpio.Mode  = GPIO_MODE_OUTPUT_PP;
-    gpio.Pull  = GPIO_NOPULL;
-    gpio.Speed = GPIO_SPEED_FREQ_LOW;
-    gpio.Pin   = RS485_DIR_PIN;
-    HAL_GPIO_Init(RS485_DIR_PORT, &gpio);
-    RS485_DriveEnable(0);
-
-    gpio.Mode      = GPIO_MODE_AF_PP;
-    gpio.Pull      = GPIO_NOPULL;
-    gpio.Speed     = GPIO_SPEED_FREQ_HIGH;
-    gpio.Alternate = GPIO_AF7_USART2;
-    gpio.Pin       = RS485_TX_PIN;
-    HAL_GPIO_Init(RS485_DIR_PORT, &gpio);
-
-    /* RO goes high-Z when /RE is driven high, so the pull-up is what makes an
-     * off receiver read as an idle line instead of as noise. D1 depends on it. */
-    gpio.Pull = GPIO_PULLUP;
-    gpio.Pin  = RS485_RX_PIN;
-    HAL_GPIO_Init(RS485_DIR_PORT, &gpio);
-
-    huart_rs485.Instance                    = USART2;
-    huart_rs485.Init.BaudRate               = RS485_BAUD;
-    huart_rs485.Init.WordLength             = UART_WORDLENGTH_8B;
-    huart_rs485.Init.StopBits               = UART_STOPBITS_1;
-    huart_rs485.Init.Parity                 = UART_PARITY_NONE;
-    huart_rs485.Init.Mode                   = UART_MODE_TX_RX;
-    huart_rs485.Init.HwFlowCtl              = UART_HWCONTROL_NONE;
-    huart_rs485.Init.OverSampling           = UART_OVERSAMPLING_16;
-    huart_rs485.Init.OneBitSampling         = UART_ONE_BIT_SAMPLE_DISABLE;
-    huart_rs485.Init.ClockPrescaler         = UART_PRESCALER_DIV1;
-    huart_rs485.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-
-    if (HAL_UART_Init(&huart_rs485) != HAL_OK) {
+    if (!PortRs485_Init(RS485_BAUD)) {
         printf("[RS485] HAL_UART_Init FAILED\r\n");
         return 0;
     }
@@ -136,7 +92,7 @@ static uint32_t RS485_CountRx(uint32_t ms)
     uint32_t n  = 0;
     uint8_t  b;
     while ((HAL_GetTick() - t0) < ms) {
-        if (HAL_UART_Receive(&huart_rs485, &b, 1, 0) == HAL_OK) {
+        if (PortRs485_RecvByte(&b)) {
             n++;
         }
     }
@@ -150,11 +106,11 @@ static void RS485_Phase_DirReach(void)
 {
     printf("[D1 ] hold PD4 HIGH %lu ms - host must keep sending\r\n",
            (unsigned long)RS485_PROBE_MS);
-    RS485_DriveEnable(1);
+    PortRs485_DriveEnable(1);
     uint32_t hi = RS485_CountRx(RS485_PROBE_MS);
 
     printf("[D1 ] hold PD4 LOW  %lu ms\r\n", (unsigned long)RS485_PROBE_MS);
-    RS485_DriveEnable(0);
+    PortRs485_DriveEnable(0);
     uint32_t lo = RS485_CountRx(RS485_PROBE_MS);
 
     printf("[D1 ] rx while HIGH=%lu  rx while LOW=%lu\r\n",
@@ -173,18 +129,17 @@ static void RS485_Phase_DirReach(void)
 static void RS485_Phase_HoldAndSend(void)
 {
     printf("[D2 ] PD4 held HIGH, sending %d frames back to back\r\n", RS485_D2_FRAMES);
-    RS485_DriveEnable(1);
+    PortRs485_DriveEnable(1);
     for (int i = 0; i < RS485_D2_FRAMES; i++) {
         char line[48];
         int n = snprintf(line, sizeof(line), "RS485 D2 BURST %d\r\n", i);
-        HAL_StatusTypeDef st = HAL_UART_Transmit(&huart_rs485, (uint8_t *)line,
-                                                 (uint16_t)n, 200);
+        int st = PortRs485_SendRaw((const uint8_t *)line, (uint16_t)n);
         if (st != HAL_OK) {
-            printf("[D2 ] HAL_UART_Transmit returned %d on frame %d\r\n", (int)st, i);
+            printf("[D2 ] HAL_UART_Transmit returned %d on frame %d\r\n", st, i);
         }
         HAL_Delay(100);
     }
-    RS485_DriveEnable(0);
+    PortRs485_DriveEnable(0);
     printf("[D2 ] done - check the adapter\r\n");
 }
 
@@ -210,7 +165,7 @@ static void RS485_Phase_MeterSquare(void)
            (unsigned long)RS485_D3_OFF_MS);
 
     for (;;) {
-        RS485_DriveEnable(1);
+        PortRs485_DriveEnable(1);
         HAL_GPIO_WritePin(RS485_DIR_PORT, RS485_TX_PIN, GPIO_PIN_SET);
         printf("[D3 ] mark  (long,  %lu ms)\r\n", (unsigned long)RS485_D3_MARK_MS);
         HAL_Delay(RS485_D3_MARK_MS);
@@ -219,7 +174,7 @@ static void RS485_Phase_MeterSquare(void)
         printf("[D3 ] space (mid,   %lu ms)\r\n", (unsigned long)RS485_D3_SPACE_MS);
         HAL_Delay(RS485_D3_SPACE_MS);
 
-        RS485_DriveEnable(0);
+        PortRs485_DriveEnable(0);
         printf("[D3 ] off   (short, %lu ms)\r\n", (unsigned long)RS485_D3_OFF_MS);
         HAL_Delay(RS485_D3_OFF_MS);
     }
@@ -261,7 +216,7 @@ void RS485_Test_Run(void)
         uint32_t now = HAL_GetTick();
 
         uint8_t b;
-        if (HAL_UART_Receive(&huart_rs485, &b, 1, 0) == HAL_OK) {
+        if (PortRs485_RecvByte(&b)) {
             if (rx_len < RS485_RX_MAX) {
                 rx[rx_len++] = b;
             }

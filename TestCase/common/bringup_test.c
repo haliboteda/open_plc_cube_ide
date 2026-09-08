@@ -11,6 +11,7 @@
 #include "DIN/din_test.h"
 #include "ADC/adc_test.h"
 #include "DAC/dac_test.h"
+#include "port_vref.h"
 
 #include <stdio.h>
 
@@ -33,52 +34,6 @@ static const char *const case_names[CASE_COUNT] = {
 };
 
 static int      case_enabled[CASE_COUNT];
-
-/* This board has no external voltage reference - the Bridge BOM contains no
- * reference IC at all - so VREF+ carries nothing but its decoupling and the
- * ADC and DAC have no reference until the MCU's own VREFBUF drives that pin.
- * Nothing in this project ever enabled it, which is why every analog reading
- * was garbage and the DAC outputs sat near zero.
- *
- * Scale 0 (about 2.5 V) is the pick: VDDA is 3.3 V so it is allowed, and the
- * Analog In front end divides by 0.2494, which puts a 0-10 V terminal swing at
- * 0-2.494 V - full scale on a 2.5 V reference almost exactly.
- *
- * Driving VREF+ would be wrong if the pin were tied to a supply rail, but it
- * is not: VREFINT reads full scale, which can only happen with VREF+ below
- * 1.216 V, so the pin is floating rather than held at 3V3. */
-static void BringUp_EnableVrefBuf(void)
-{
-    /* VREFBUF sits on APB4 and has its own clock gate. Without it the CSR
-     * writes below are silently dropped and the block stays at 0x00000000. */
-    __HAL_RCC_VREF_CLK_ENABLE();
-    __HAL_RCC_SYSCFG_CLK_ENABLE();
-
-    HAL_SYSCFG_VREFBUF_VoltageScalingConfig(SYSCFG_VREFBUF_VOLTAGE_SCALE0);
-    HAL_SYSCFG_VREFBUF_HighImpedanceConfig(SYSCFG_VREFBUF_HIGH_IMPEDANCE_DISABLE);
-    SET_BIT(VREFBUF->CSR, VREFBUF_CSR_ENVR);
-
-    /* Start-up is dominated by whatever decoupling sits on VREF+, which is not
-     * documented for this board, so allow far more than the datasheet typical. */
-    uint32_t start = HAL_GetTick();
-    while ((VREFBUF->CSR & VREFBUF_CSR_VRR) == 0U) {
-        if ((HAL_GetTick() - start) > 100U) {
-            printf("[VREF] VREFBUF not ready after 100 ms - CSR=0x%08lX\r\n",
-                   (unsigned long)VREFBUF->CSR);
-            return;
-        }
-    }
-    /* VRR can assert well before the output has actually settled - measuring
-     * right after it gave 2493 mV on one boot and 2763 mV on the next, and
-     * that error would multiply into every ADC reading, every temperature and
-     * every DAC code. Give the buffer and whatever decoupling is on VREF+ a
-     * fixed settling window before anyone reads it. */
-    uint32_t ready_ms = HAL_GetTick() - start;
-    HAL_Delay(20);
-
-    printf("[VREF] VREFBUF on, scale 0 (nominal 2.5 V), VRR after %lu ms,"
-           " settled for 20 ms\r\n", (unsigned long)ready_ms);
-}
 
 static void BringUp_PrintHelp(void)
 {
@@ -143,7 +98,7 @@ void BringUp_Test_Run(void)
     Relay_Test_Init();
 
     /* Before both analog inits: they measure and use the reference it sets up. */
-    BringUp_EnableVrefBuf();
+    PortVref_Enable();
 
     if (!ADC_Test_Init()) {
         printf("[BRINGUP] ADC init FAILED - cases 3 and 11 disabled\r\n");

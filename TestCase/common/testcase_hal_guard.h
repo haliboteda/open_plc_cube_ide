@@ -27,12 +27,18 @@
  * sdmmc.h or fdcan.h is a reliable "this is a real peripheral now" signal.
  *
  * Include this FIRST in every TestCase file that fakes a HAL module.
+ *
+ * ⚠️ Skipped when PORTTOOL_HOST_TEST is defined -- case H4 compiles some of
+ * these files natively, and a host toolchain has headers of its own with these
+ * names. mingw ships an <adc.h> (Windows Application Data Corruption), so the
+ * check fired there and claimed CubeMX had gained an ADC peripheral. There is
+ * no CubeMX on the host, so there is nothing for this to decide.
  */
 
 #ifndef TESTCASE_HAL_GUARD_H_
 #define TESTCASE_HAL_GUARD_H_
 
-#if defined(__has_include)
+#if defined(__has_include) && !defined(PORTTOOL_HOST_TEST)
 
 #if __has_include("adc.h")
 #error "ADC is a real CubeMX peripheral now (Core/Inc/adc.h exists). Delete the local copies TestCase/stm32h7xx_hal_adc.c/.h, stm32h7xx_hal_adc_ex.c/.h and stm32h7xx_ll_adc.h; drop the '#define HAL_ADC_MODULE_ENABLED' from adc_test.c; then rework adc_test.c to only USE the peripheral (check hadc.State instead of initialising it). Same treatment sdram_test.c got when FMC was enabled -- see the notes at the top of sdram_test.h."

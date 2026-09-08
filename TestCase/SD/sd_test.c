@@ -281,92 +281,265 @@ static uint32_t SD_Test_Crc32(const uint8_t *data, uint32_t len)
 
 /* ---- Public entry point 2/2: write + read back + integrity check ----- */
 
-void SD_Test_FileIntegrity(void)
+/* One write/read/verify round, filled in for whoever asked.
+ *
+ * This is the body the forever loop below used to hold inline. It was pulled
+ * out so pt.run can perform exactly one round and come back with numbers - the
+ * PC decides whether they are acceptable (../../docs/design/DECISIONS.md 22),
+ * which a loop that prints PASS and sleeps five seconds cannot support. */
+static int SD_Test_IntegrityRound(sd_integrity_t *out)
 {
     static uint8_t write_buf[SD_TEST_FILE_SIZE];
     static uint8_t read_buf[SD_TEST_FILE_SIZE];
-    uint32_t rng_state = HAL_GetTick() | 1U;
+    static uint32_t rng_state;
 
-    printf("SDCARD_TEST: file integrity test - write/read/verify %s (%u bytes)\r\n",
-           SD_TEST_FILE_NAME, (unsigned)SD_TEST_FILE_SIZE);
+    FRESULT fr;
+    FIL fil;
+    UINT bytes_done = 0;
+    uint32_t i;
+    int ok = 1;
 
-    if (!SD_Test_Bringup()) {
-        printf("SDCARD_TEST: FAIL reason=bringup\r\n");
-        for (;;) { HAL_Delay(1000); }
+    if (rng_state == 0U) {
+        rng_state = HAL_GetTick() | 1U;
     }
 
+    out->bytes     = SD_TEST_FILE_SIZE;
+    out->mounted   = 0;
+    out->wrote     = 0;
+    out->read_back = 0;
+    out->identical = 0;
+    out->write_crc = 0;
+    out->read_crc  = 0;
+    out->fresult   = 0;
+
+    fr = f_mount(&sd_test_fs, sd_test_path, 1);
+    out->fresult = (int)fr;
+    if (fr != FR_OK) {
+        printf("SDCARD_TEST: f_mount FAILED (FRESULT=%d)\r\n", (int)fr);
+        if (fr == FR_NO_FILESYSTEM) {
+            /* The one failure here that is not the board's fault, and the one
+             * a station will hit: this FatFs is built without exFAT
+             * (_FS_EXFAT 0 in ffconf.h), and any card over 32 GB ships
+             * exFAT-formatted. Naming it beats leaving an operator with a
+             * number. Seen 2026-09-08 with a 60 GB card that identified
+             * perfectly and then would not mount. */
+            printf("SDCARD_TEST: no FAT filesystem - this build has no exFAT "
+                   "support, so the card must be FAT16/FAT32\r\n");
+        }
+        return 0;
+    }
+    out->mounted = 1;
+
+    for (i = 0; i < SD_TEST_FILE_SIZE; i++) {
+        write_buf[i] = (uint8_t)SD_Test_Rand(&rng_state);
+    }
+    out->write_crc = SD_Test_Crc32(write_buf, SD_TEST_FILE_SIZE);
+
+    fr = f_open(&fil, SD_TEST_FILE_NAME, FA_CREATE_ALWAYS | FA_WRITE);
+    if (fr != FR_OK) {
+        printf("SDCARD_TEST: FAIL reason=f_open_write (FRESULT=%d)\r\n", (int)fr);
+        out->fresult = (int)fr;
+        ok = 0;
+    } else {
+        fr = f_write(&fil, write_buf, SD_TEST_FILE_SIZE, &bytes_done);
+        f_close(&fil);
+        if (fr != FR_OK || bytes_done != SD_TEST_FILE_SIZE) {
+            printf("SDCARD_TEST: FAIL reason=f_write (FRESULT=%d, wrote %u/%u)\r\n",
+                   (int)fr, (unsigned)bytes_done, (unsigned)SD_TEST_FILE_SIZE);
+            out->fresult = (int)fr;
+            ok = 0;
+        } else {
+            out->wrote = 1;
+        }
+    }
+
+    if (ok) {
+        fr = f_open(&fil, SD_TEST_FILE_NAME, FA_READ);
+        if (fr != FR_OK) {
+            printf("SDCARD_TEST: FAIL reason=f_open_read (FRESULT=%d)\r\n", (int)fr);
+            out->fresult = (int)fr;
+            ok = 0;
+        } else {
+            memset(read_buf, 0, SD_TEST_FILE_SIZE);
+            fr = f_read(&fil, read_buf, SD_TEST_FILE_SIZE, &bytes_done);
+            f_close(&fil);
+            if (fr != FR_OK || bytes_done != SD_TEST_FILE_SIZE) {
+                printf("SDCARD_TEST: FAIL reason=f_read (FRESULT=%d, read %u/%u)\r\n",
+                       (int)fr, (unsigned)bytes_done, (unsigned)SD_TEST_FILE_SIZE);
+                out->fresult = (int)fr;
+                ok = 0;
+            } else {
+                out->read_back = 1;
+            }
+        }
+    }
+
+    if (ok) {
+        out->read_crc = SD_Test_Crc32(read_buf, SD_TEST_FILE_SIZE);
+        if (memcmp(write_buf, read_buf, SD_TEST_FILE_SIZE) != 0 ||
+            out->read_crc != out->write_crc) {
+            printf("SDCARD_TEST: INTEGRITY FAIL - write_crc=0x%08lX read_crc=0x%08lX\r\n",
+                   (unsigned long)out->write_crc, (unsigned long)out->read_crc);
+            ok = 0;
+        } else {
+            out->identical = 1;
+        }
+    }
+    return ok;
+}
+
+/* Shared by both entry points: the card and the FatFs driver have to be up
+ * before a round can run. */
+static int SD_Test_MountReady(void)
+{
+    if (!SD_Test_Bringup()) {
+        printf("SDCARD_TEST: FAIL reason=bringup\r\n");
+        return 0;
+    }
     if (!sd_test_driver_linked) {
         if (FATFS_LinkDriver(&sd_test_driver, sd_test_path) != 0) {
             printf("SDCARD_TEST: FAIL reason=fatfs_link_driver\r\n");
-            for (;;) { HAL_Delay(1000); }
+            return 0;
         }
         sd_test_driver_linked = 1;
     }
+    return 1;
+}
+
+void SD_Test_Probe(sd_probe_t *out)
+{
+    HAL_SD_CardInfoTypeDef info = {0};
+
+    if (out == NULL) {
+        return;
+    }
+    SD_Test_DetectPinInit();
+    out->detected = (uint8_t)(SD_Test_IsCardDetected() ? 1 : 0);
+    out->ready = (uint8_t)(SD_Test_Bringup() ? 1 : 0);
+    out->block_count = 0;
+    out->block_size = 0;
+    out->capacity_mib = 0;
+    out->card_type = 0;
+    out->version_2x = 0;
+    out->card_class = 0;
+
+    if (!out->ready) {
+        return;
+    }
+    HAL_SD_GetCardInfo(&hsd1, &info);
+    out->block_count = info.LogBlockNbr;
+    out->block_size  = info.LogBlockSize;
+    out->capacity_mib = (uint32_t)(((uint64_t)info.LogBlockNbr * info.LogBlockSize) /
+                                   (1024UL * 1024UL));
+    out->card_type   = info.CardType;
+    out->version_2x  = (uint8_t)((info.CardVersion == CARD_V2_X) ? 1 : 0);
+    out->card_class  = info.Class;
+}
+
+int SD_Test_IntegrityOnce(sd_integrity_t *out)
+{
+    sd_integrity_t local;
+
+    if (out == NULL) {
+        out = &local;
+    }
+    if (!SD_Test_MountReady()) {
+        out->bytes = SD_TEST_FILE_SIZE;
+        out->mounted = 0;
+        out->wrote = 0;
+        out->read_back = 0;
+        out->identical = 0;
+        out->write_crc = 0;
+        out->read_crc = 0;
+        out->fresult = -1;
+        return 0;
+    }
+    return SD_Test_IntegrityRound(out);
+}
+
+/* Enough rounds that a card with a bad block or a flaky bus has to show it,
+ * while still finishing inside a station's takt time. At 4 KiB a round that
+ * is 256 KiB written and 256 KiB read back, every byte verified twice - once
+ * against the buffer, once against the CRC. */
+#define SD_TEST_STRESS_PASSES 64U
+
+int SD_Test_StressOnce(sd_stress_t *out)
+{
+    sd_stress_t local;
+    uint32_t start;
+    uint32_t i;
+
+    if (out == NULL) {
+        out = &local;
+    }
+    memset(out, 0, sizeof(*out));
+    out->bytes_each = SD_TEST_FILE_SIZE;
+    out->passes     = SD_TEST_STRESS_PASSES;
+
+    if (!SD_Test_MountReady()) {
+        /* Nothing was attempted, so passes is 0 - not the 64 that were
+         * planned. Reporting the plan would say "64 attempted, 0 passed" about
+         * a card that was never touched, and the whole point of these numbers
+         * is that repair can tell a dead card from a dead bus. */
+        out->passes  = 0;
+        out->fresult = -1;
+        return 0;
+    }
+    printf("SDCARD_TEST: stress - %u rounds of %u bytes write/read/verify\r\n",
+           (unsigned)SD_TEST_STRESS_PASSES, (unsigned)SD_TEST_FILE_SIZE);
+
+    start = HAL_GetTick();
+    for (i = 0; i < SD_TEST_STRESS_PASSES; i++) {
+        sd_integrity_t r;
+        int round_ok = SD_Test_IntegrityRound(&r);
+
+        /* mounted comes from the round, not from the SD bring-up above: those
+         * are two different questions, and reporting bring-up here while
+         * sd.integrity reports f_mount under the same field name would make
+         * one word mean two things across two targets. Seen on the board
+         * 2026-09-08 with an exFAT card - bring-up succeeded, f_mount did
+         * not, and the reply said mounted=1. */
+        out->mounted = r.mounted;
+
+        if (round_ok) {
+            out->passed++;
+            out->bytes_total += r.bytes;
+        } else {
+            out->fresult = r.fresult;
+            if (out->first_bad_pass == 0U) {
+                out->first_bad_pass = i + 1U;
+            }
+            /* A card that has stopped answering will fail every remaining
+             * round the same way, and each one costs a FatFs timeout. One
+             * failure is the answer; grinding through 63 more is not. */
+            out->passes = i + 1U;
+            break;
+        }
+    }
+    out->elapsed_ms = HAL_GetTick() - start;
+
+    return out->first_bad_pass == 0U;
+}
+
+void SD_Test_FileIntegrity(void)
+{
+    printf("SDCARD_TEST: file integrity test - write/read/verify %s (%u bytes)\r\n",
+           SD_TEST_FILE_NAME, (unsigned)SD_TEST_FILE_SIZE);
+
+    if (!SD_Test_MountReady()) {
+        for (;;) { HAL_Delay(1000); }
+    }
 
     for (;;) {
-        FRESULT fr;
-        FIL fil;
-        UINT bytes_done;
-        uint32_t i;
-        uint32_t write_crc;
-        uint32_t read_crc;
-        int ok = 1;
+        sd_integrity_t r;
 
-        fr = f_mount(&sd_test_fs, sd_test_path, 1);
-        if (fr != FR_OK) {
-            printf("SDCARD_TEST: f_mount FAILED (FRESULT=%d) - retrying in 1s\r\n", (int)fr);
+        if (SD_Test_IntegrityRound(&r)) {
+            printf("SDCARD_TEST: PASS - %u bytes written and read back identical, "
+                   "CRC32=0x%08lX\r\n",
+                   (unsigned)r.bytes, (unsigned long)r.write_crc);
+        } else if (!r.mounted) {
             HAL_Delay(1000);
             continue;
-        }
-
-        for (i = 0; i < SD_TEST_FILE_SIZE; i++) {
-            write_buf[i] = (uint8_t)SD_Test_Rand(&rng_state);
-        }
-        write_crc = SD_Test_Crc32(write_buf, SD_TEST_FILE_SIZE);
-
-        fr = f_open(&fil, SD_TEST_FILE_NAME, FA_CREATE_ALWAYS | FA_WRITE);
-        if (fr != FR_OK) {
-            printf("SDCARD_TEST: FAIL reason=f_open_write (FRESULT=%d)\r\n", (int)fr);
-            ok = 0;
-        } else {
-            fr = f_write(&fil, write_buf, SD_TEST_FILE_SIZE, &bytes_done);
-            f_close(&fil);
-            if (fr != FR_OK || bytes_done != SD_TEST_FILE_SIZE) {
-                printf("SDCARD_TEST: FAIL reason=f_write (FRESULT=%d, wrote %u/%u)\r\n",
-                       (int)fr, (unsigned)bytes_done, (unsigned)SD_TEST_FILE_SIZE);
-                ok = 0;
-            }
-        }
-
-        if (ok) {
-            fr = f_open(&fil, SD_TEST_FILE_NAME, FA_READ);
-            if (fr != FR_OK) {
-                printf("SDCARD_TEST: FAIL reason=f_open_read (FRESULT=%d)\r\n", (int)fr);
-                ok = 0;
-            } else {
-                memset(read_buf, 0, SD_TEST_FILE_SIZE);
-                fr = f_read(&fil, read_buf, SD_TEST_FILE_SIZE, &bytes_done);
-                f_close(&fil);
-                if (fr != FR_OK || bytes_done != SD_TEST_FILE_SIZE) {
-                    printf("SDCARD_TEST: FAIL reason=f_read (FRESULT=%d, read %u/%u)\r\n",
-                           (int)fr, (unsigned)bytes_done, (unsigned)SD_TEST_FILE_SIZE);
-                    ok = 0;
-                }
-            }
-        }
-
-        if (ok) {
-            read_crc = SD_Test_Crc32(read_buf, SD_TEST_FILE_SIZE);
-            if (memcmp(write_buf, read_buf, SD_TEST_FILE_SIZE) != 0 || read_crc != write_crc) {
-                printf("SDCARD_TEST: INTEGRITY FAIL - write_crc=0x%08lX read_crc=0x%08lX\r\n",
-                       (unsigned long)write_crc, (unsigned long)read_crc);
-                ok = 0;
-            }
-        }
-
-        if (ok) {
-            printf("SDCARD_TEST: PASS - %u bytes written and read back identical, CRC32=0x%08lX\r\n",
-                   (unsigned)SD_TEST_FILE_SIZE, (unsigned long)write_crc);
         }
 
         HAL_Delay(5000);

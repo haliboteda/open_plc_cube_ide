@@ -230,8 +230,46 @@
 // To run it, main.c calls KNX_Test_Run() right after MX_UART4_Init(), guarded
 // by KNX_TEST_ENABLE. Runs forever (does not return).
 
+// The KNX_Test_Session* calls below are the exception to "runs forever": they
+// perform one step and return, so the port tool can drive KNX from its command
+// loop. The capture and bit-engine ISRs above are what actually keep the
+// timing; a session only starts them and drains what they queued.
+
 #ifndef TESTCASE_KNX_KNX_TEST_H_
 #define TESTCASE_KNX_KNX_TEST_H_
+
+#include <stdint.h>
+
+typedef struct {
+    uint8_t  bus;            /* 0 OK, 1 dead, 2 odd - knx_bus_t */
+    uint8_t  vcc_ok;
+    uint8_t  bus_ok;
+    uint8_t  rx_idle;
+
+    uint32_t pulses;         /* rising edges the capture ISR has seen */
+    uint32_t dropped;        /* pulses the decoder was too slow to take */
+
+    /* Active pulse width, microseconds. min/max keep their reset sentinels
+     * until something is measured, so "nothing arrived" is distinguishable
+     * from "measured zero". count says which. */
+    uint32_t w_min, w_max, w_avg, w_count;
+
+    /* Delay from our own transmit edge to the pulse that came back. */
+    uint32_t d_min, d_max, d_avg, d_count;
+
+    uint32_t ms_since_edge;
+} knx_session_stats_t;
+
+int  KNX_Test_SessionInit(void);
+void KNX_Test_SessionStatsReset(void);
+
+/* ⚠️ Spins for about 1.35 ms while the bit engine walks the character. */
+int  KNX_Test_SessionSendChar(uint8_t b);
+
+/* 1 when a character closed. Never blocks. */
+int  KNX_Test_SessionPollChar(uint8_t *out, uint8_t *framing_ok);
+
+void KNX_Test_SessionStats(knx_session_stats_t *out);
 
 void KNX_Test_Run(void);
 

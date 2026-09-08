@@ -12,6 +12,7 @@
 #include "main.h"
 #include "fmc.h"      /* hsdram1 -- the FMC/SDRAM is a real peripheral now */
 #include <stdio.h>
+#include <string.h>
 
 #define SDRAM_BASE_ADDR   0xC0000000UL
 #define SDRAM_SIZE_BYTES  0x04000000UL /* 64 MiB = 512Mbit AS4C32M16SB-7BIN */
@@ -51,13 +52,27 @@ static int SDRAM_Test_Bringup(void)
     printf("SDRAM_TEST: FMC Bank1 @ 0x%08lX, %lu MiB (AS4C32M16SB-7BIN)\r\n",
            (unsigned long)SDRAM_BASE_ADDR, (unsigned long)(SDRAM_SIZE_BYTES / (1024UL * 1024UL)));
 
+    /* The port tool image reaches these tests from main.c's Phase 1, where
+     * MX_FMC_Init() has not run yet - only clocks, GPIO and UART4 are up. So
+     * bring the controller up on demand rather than reporting a dead one.
+     *
+     * This asks CubeMX's own init to run; it does not reimplement it. The
+     * timings, the chip power-up sequence and the pin map all stay in fmc.c,
+     * which is still their single source. MPU region 0 is already open for
+     * 0xC0000000 by this point (main.c calls MPU_Config() before either
+     * phase), so the window is addressable as soon as the controller is up. */
+    if (hsdram1.State != HAL_SDRAM_STATE_READY) {
+        printf("SDRAM_TEST: controller not up yet, running MX_FMC_Init()\r\n");
+        MX_FMC_Init();
+    }
+
     if (hsdram1.State != HAL_SDRAM_STATE_READY) {
         printf("SDRAM_TEST: FAIL reason=not_initialised (state=%u) - "
-               "MX_FMC_Init() has not run, or it failed\r\n",
+               "MX_FMC_Init() ran and the controller is still not ready\r\n",
                (unsigned)hsdram1.State);
         return 0;
     }
-    printf("SDRAM_TEST: controller ready, power-up sequence already done by MX_FMC_Init()\r\n");
+    printf("SDRAM_TEST: controller ready, power-up sequence done by MX_FMC_Init()\r\n");
     return 1;
 }
 
@@ -146,11 +161,15 @@ static int SDRAM_Test_AddressBus(void)
     return ok;
 }
 
-/* ---- Optional full-range sweep: 0x00/0xFF/0x55/0xAA over all 64MiB ---- */
+/* ---- Full-range sweep: 0x00/0xFF/0x55/0xAA over all 64MiB -------------
+ *
+ * `acc` is optional. With it the caller gets the numbers as well as the
+ * verdict, which is what SDRAM_Test_SweepOnce() reports to the PC; without it
+ * the prose on the log line is the whole result, which is what the handover
+ * entry has always done. */
 
-#if SDRAM_TEST_RUN_FULL_SWEEP
-
-static int SDRAM_Test_FullSweepPattern(uint32_t pattern32, const char *label)
+static int SDRAM_Test_FullSweepPattern(uint32_t pattern32, const char *label,
+                                       sdram_sweep_t *acc)
 {
     volatile uint32_t *mem = (volatile uint32_t *)SDRAM_BASE_ADDR;
     uint32_t words = SDRAM_SIZE_BYTES / 4U;
@@ -177,6 +196,18 @@ static int SDRAM_Test_FullSweepPattern(uint32_t pattern32, const char *label)
     }
     read_ms = HAL_GetTick() - start;
 
+    if (acc != NULL) {
+        acc->patterns++;
+        acc->words_each = words;
+        acc->write_ms  += write_ms;
+        acc->verify_ms += read_ms;
+        if (mismatches > 0U && acc->mismatches == 0U) {
+            acc->first_bad_offset  = first_bad_offset;
+            acc->first_bad_pattern = pattern32;
+        }
+        acc->mismatches += mismatches;
+    }
+
     if (mismatches == 0U) {
         printf("SDRAM_TEST: full sweep %s OK (write %lums, verify %lums)\r\n",
                label, (unsigned long)write_ms, (unsigned long)read_ms);
@@ -187,17 +218,68 @@ static int SDRAM_Test_FullSweepPattern(uint32_t pattern32, const char *label)
     return 0;
 }
 
-static int SDRAM_Test_FullSweep(void)
+static int SDRAM_Test_FullSweep(sdram_sweep_t *acc)
 {
     int ok = 1;
-    ok &= SDRAM_Test_FullSweepPattern(0x00000000UL, "0x00");
-    ok &= SDRAM_Test_FullSweepPattern(0xFFFFFFFFUL, "0xFF");
-    ok &= SDRAM_Test_FullSweepPattern(0x55555555UL, "0x55");
-    ok &= SDRAM_Test_FullSweepPattern(0xAAAAAAAAUL, "0xAA");
+    ok &= SDRAM_Test_FullSweepPattern(0x00000000UL, "0x00", acc);
+    ok &= SDRAM_Test_FullSweepPattern(0xFFFFFFFFUL, "0xFF", acc);
+    ok &= SDRAM_Test_FullSweepPattern(0x55555555UL, "0x55", acc);
+    ok &= SDRAM_Test_FullSweepPattern(0xAAAAAAAAUL, "0xAA", acc);
     return ok;
 }
 
-#endif /* SDRAM_TEST_RUN_FULL_SWEEP */
+/* ---- Public entry point: the same checks, reported as numbers ---------
+ *
+ * Same three checks the capacity entry runs, but it returns, and it reports
+ * what it measured instead of a verdict. The verdict belongs to the PC (see
+ * ../../docs/design/DECISIONS.md 22), which is what lets a production limit
+ * change without reflashing.
+ *
+ * The prose above still goes out on the log line: this is what a person reads
+ * while watching, and dropping it would make the machine-readable path harder
+ * to debug than the one it replaces. */
+
+void SDRAM_Test_Probe(sdram_probe_t *out)
+{
+    if (out == NULL) {
+        return;
+    }
+
+    out->base = SDRAM_BASE_ADDR;
+    out->size_bytes = SDRAM_SIZE_BYTES;
+    out->ready = SDRAM_Test_Bringup() ? 1 : 0;
+    out->databus_ok = 0;
+    out->addrbus_ok = 0;
+
+    if (!out->ready) {
+        return;
+    }
+
+    out->databus_ok = SDRAM_Test_DataBus() ? 1 : 0;
+    out->addrbus_ok = SDRAM_Test_AddressBus() ? 1 : 0;
+}
+
+/* The whole array, four patterns, as numbers. This is the stress pass the
+ * production test guide asks for at stations 6 and 10 ("recognise 64 MB,
+ * stress test zero errors"), and it takes tens of seconds - the PC's timeout
+ * for it has to allow for that. */
+
+int SDRAM_Test_SweepOnce(sdram_sweep_t *out)
+{
+    sdram_sweep_t local;
+
+    if (out == NULL) {
+        out = &local;
+    }
+    memset(out, 0, sizeof(*out));
+
+    out->ready = SDRAM_Test_Bringup() ? 1 : 0;
+    if (!out->ready) {
+        return 0;
+    }
+
+    return SDRAM_Test_FullSweep(out) && out->mismatches == 0U;
+}
 
 /* ---- Public entry point 1/3: how big is it really? -------------------- */
 
@@ -219,7 +301,7 @@ void SDRAM_Test_Capacity(void)
     ok = SDRAM_Test_DataBus();
     ok &= SDRAM_Test_AddressBus();
 #if SDRAM_TEST_RUN_FULL_SWEEP
-    ok &= SDRAM_Test_FullSweep();
+    ok &= SDRAM_Test_FullSweep(NULL);
 #endif
 
     if (ok) {
@@ -253,9 +335,85 @@ static uint32_t SDRAM_Test_Signature(uint32_t address)
     return address ^ 0xDEADBEEFUL;
 }
 
-void SDRAM_Test_Retention(void)
+#define SDRAM_TEST_RETENTION_WAIT_MS 5000U
+
+/* One cycle: write the signatures, let them sit, read them back. `rng_state`
+ * carries across calls so each cycle picks a different address set. */
+
+static void SDRAM_Test_RetentionCycle(uint32_t *rng_state, sdram_retention_t *out)
 {
     static uint32_t addresses[SDRAM_TEST_NUM_RANDOM_ADDR];
+    uint32_t i;
+
+    out->seed    = *rng_state;
+    out->checked = SDRAM_TEST_NUM_RANDOM_ADDR;
+    out->failed  = 0;
+    out->wait_ms = SDRAM_TEST_RETENTION_WAIT_MS;
+    out->first_bad_addr = 0;
+
+    printf("SDRAM_TEST: retention cycle - rng_seed=0x%08lX\r\n", (unsigned long)out->seed);
+
+    for (i = 0; i < SDRAM_TEST_NUM_RANDOM_ADDR; i++) {
+        uint32_t word_index = SDRAM_Test_Rand(rng_state) % (SDRAM_SIZE_BYTES / 4U);
+        uint32_t address = SDRAM_BASE_ADDR + (word_index * 4U);
+        addresses[i] = address;
+        *(volatile uint32_t *)address = SDRAM_Test_Signature(address);
+    }
+
+    printf("SDRAM_TEST: written, waiting 5s (proves auto-refresh keeps cells alive)...\r\n");
+    HAL_Delay(SDRAM_TEST_RETENTION_WAIT_MS);
+
+    for (i = 0; i < SDRAM_TEST_NUM_RANDOM_ADDR; i++) {
+        uint32_t address = addresses[i];
+        uint32_t expected = SDRAM_Test_Signature(address);
+        uint32_t actual = *(volatile uint32_t *)address;
+        if (actual != expected) {
+            printf("SDRAM_TEST: RETENTION FAIL @ 0x%08lX: expected 0x%08lX got 0x%08lX\r\n",
+                   (unsigned long)address, (unsigned long)expected, (unsigned long)actual);
+            if (out->failed == 0U) {
+                out->first_bad_addr = address;
+            }
+            out->failed++;
+        }
+    }
+
+    if (out->failed == 0U) {
+        printf("SDRAM_TEST: retention PASS - all %u addresses correct after 5s\r\n",
+               (unsigned)SDRAM_TEST_NUM_RANDOM_ADDR);
+    } else {
+        printf("SDRAM_TEST: retention FAIL - %lu/%u addresses lost data (refresh not working?)\r\n",
+               (unsigned long)out->failed, (unsigned)SDRAM_TEST_NUM_RANDOM_ADDR);
+    }
+}
+
+/* One cycle and back to the command loop, so a station decides how many
+ * cycles to run instead of the firmware looping forever. */
+
+int SDRAM_Test_RetentionOnce(sdram_retention_t *out)
+{
+    static uint32_t rng_state;
+    sdram_retention_t local;
+
+    if (out == NULL) {
+        out = &local;
+    }
+    memset(out, 0, sizeof(*out));
+
+    if (rng_state == 0U) {
+        rng_state = HAL_GetTick() | 1U; /* xorshift needs a non-zero seed */
+    }
+
+    out->ready = SDRAM_Test_Bringup() ? 1 : 0;
+    if (!out->ready) {
+        return 0;
+    }
+
+    SDRAM_Test_RetentionCycle(&rng_state, out);
+    return out->failed == 0U;
+}
+
+void SDRAM_Test_Retention(void)
+{
     uint32_t rng_state = HAL_GetTick() | 1U; /* xorshift needs a non-zero seed */
 
     printf("SDRAM_TEST: retention test - write %u random addresses, wait 5s, read back\r\n",
@@ -267,40 +425,9 @@ void SDRAM_Test_Retention(void)
     }
 
     for (;;) {
-        uint32_t i;
-        uint32_t fail_count = 0;
+        sdram_retention_t r;
 
-        printf("SDRAM_TEST: retention cycle - rng_seed=0x%08lX\r\n", (unsigned long)rng_state);
-
-        for (i = 0; i < SDRAM_TEST_NUM_RANDOM_ADDR; i++) {
-            uint32_t word_index = SDRAM_Test_Rand(&rng_state) % (SDRAM_SIZE_BYTES / 4U);
-            uint32_t address = SDRAM_BASE_ADDR + (word_index * 4U);
-            addresses[i] = address;
-            *(volatile uint32_t *)address = SDRAM_Test_Signature(address);
-        }
-
-        printf("SDRAM_TEST: written, waiting 5s (proves auto-refresh keeps cells alive)...\r\n");
-        HAL_Delay(5000);
-
-        for (i = 0; i < SDRAM_TEST_NUM_RANDOM_ADDR; i++) {
-            uint32_t address = addresses[i];
-            uint32_t expected = SDRAM_Test_Signature(address);
-            uint32_t actual = *(volatile uint32_t *)address;
-            if (actual != expected) {
-                printf("SDRAM_TEST: RETENTION FAIL @ 0x%08lX: expected 0x%08lX got 0x%08lX\r\n",
-                       (unsigned long)address, (unsigned long)expected, (unsigned long)actual);
-                fail_count++;
-            }
-        }
-
-        if (fail_count == 0U) {
-            printf("SDRAM_TEST: retention PASS - all %u addresses correct after 5s\r\n",
-                   (unsigned)SDRAM_TEST_NUM_RANDOM_ADDR);
-        } else {
-            printf("SDRAM_TEST: retention FAIL - %lu/%u addresses lost data (refresh not working?)\r\n",
-                   (unsigned long)fail_count, (unsigned)SDRAM_TEST_NUM_RANDOM_ADDR);
-        }
-
+        SDRAM_Test_RetentionCycle(&rng_state, &r);
         HAL_Delay(1000);
     }
 }

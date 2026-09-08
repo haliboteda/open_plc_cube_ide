@@ -60,6 +60,54 @@
 #ifndef INC_SD_TEST_H_
 #define INC_SD_TEST_H_
 
+// SD_Test_Probe(), SD_Test_IntegrityOnce() and SD_Test_StressOnce() are the
+// exception to "both run forever": they perform one pass, report what they
+// measured and return. They exist for pt.run, where the PC applies the limit -
+// so they report numbers and no verdict.
+//
+// SD_Test_StressOnce() is SD_Test_IntegrityOnce() repeated: the production
+// test guide asks for an "SD read/write stress test" at stations 6 and 10, and
+// one 4 KiB round is a functional check, not a stress one.
+
+#include <stdint.h>
+
+typedef struct {
+    uint8_t  detected;     /* the PE6 detect pin, before any bus traffic */
+    uint8_t  ready;        /* identification succeeded */
+    uint32_t block_count;
+    uint32_t block_size;
+    uint32_t capacity_mib;
+    uint32_t card_type;
+    uint8_t  version_2x;
+    uint32_t card_class;
+} sd_probe_t;
+
+typedef struct {
+    uint8_t  mounted;
+    uint8_t  wrote;
+    uint8_t  read_back;
+    uint8_t  identical;    /* the bytes came back the same AND the CRCs match */
+    uint32_t bytes;
+    uint32_t write_crc;
+    uint32_t read_crc;
+    int      fresult;      /* the last FRESULT; 0 is FR_OK, -1 never mounted */
+} sd_integrity_t;
+
+typedef struct {
+    uint8_t  mounted;
+    uint32_t passes;        /* write/read/verify rounds attempted */
+    uint32_t passed;        /* rounds that came back identical */
+    uint32_t bytes_each;
+    uint32_t bytes_total;   /* written, and read again, so traffic is 2x this */
+    uint32_t elapsed_ms;
+    uint32_t first_bad_pass;/* 0 when nothing failed; 1-based otherwise */
+    int      fresult;       /* the last FRESULT seen; -1 never mounted */
+} sd_stress_t;
+
+void SD_Test_Probe(sd_probe_t *out);
+int  SD_Test_IntegrityOnce(sd_integrity_t *out);
+int  SD_Test_StressOnce(sd_stress_t *out);
+
 void SD_Test_Info(void);
 void SD_Test_FileIntegrity(void);
 

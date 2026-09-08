@@ -8,6 +8,7 @@
 #define HAL_FDCAN_MODULE_ENABLED
 
 #include "can_test.h"
+#include "port_can.h"
 #include "main.h"
 #include <stdio.h>
 #include <inttypes.h>
@@ -22,22 +23,9 @@
 
 /* --- Bit timing --------------------------------------------------------- */
 
-/* Valid only while the kernel clock is HSE. 1 + Seg1 + Seg2 = tq per bit, and
- * HSE / (prescaler * tq) is the bit rate exactly, with no rounding. */
-typedef struct {
-	uint32_t bps;
-	uint16_t prescaler;
-	uint16_t seg1;
-	uint16_t seg2;
-	uint16_t sjw;
-} can_timing_t;
-
-static const can_timing_t CAN_TIMINGS[] = {
-	{  125000u, 1u, 174u, 25u, 4u },
-	{  250000u, 1u,  87u, 12u, 4u },
-	{  500000u, 1u,  43u,  6u, 4u },
-	{ 1000000u, 1u,  21u,  3u, 3u },
-};
+/* Bit timings, FIFO sizes and the peripheral handle now live in
+ * TestCase/common/port_can.c, so the port tool session and this test
+ * configure FDCAN1 the same way by construction. */
 
 #define CAN_RATE_INDEX          2u   /* 500 kbit/s */
 
@@ -50,61 +38,26 @@ static const can_timing_t CAN_TIMINGS[] = {
 #define CAN_NORMAL_EVERY_MS   1000u   /* P4 transmit cadence */
 #define CAN_ROUND_GAP_MS      2000u
 
-/* --- Message RAM -------------------------------------------------------- */
-
-/* 32 frames of slack between the bus and the console: a frame at 500 kbit/s is
- * about 110 us and one console line costs 5 ms at 115200 baud, so the FIFO is
- * what keeps a burst from being lost while printing. HAL caps FIFO0 at 64
- * elements and TxBuffers + TxFifoQueue at 32. */
-#define CAN_RX_FIFO_ELMTS       32u
-#define CAN_TX_FIFO_ELMTS        8u
-
 #define CAN_TEST_ID          0x123u
-#define CAN_ENDN_EXPECT   0x87654321u   /* FDCAN_ENDN reads this when alive */
+#define PORT_CAN_ENDN_EXPECT   0x87654321u   /* FDCAN_ENDN reads this when alive */
 
-static FDCAN_HandleTypeDef s_h;
-static uint8_t             s_rate = CAN_RATE_INDEX;
 
-/* can_open() reads this. DISABLE is what every phase of CAN_Test_Run() wants:
- * a lone node gets no acknowledge, and retrying would bury the symptom. The
- * scope run turns it on to keep the TX pin busy. */
-static FunctionalState     s_auto_retx = DISABLE;
+/* The phases below choose a mode and leave the rate and the retransmit policy
+ * to these two, exactly as the file's own statics used to. */
+static uint8_t s_rate = PORT_CAN_RATE_DEFAULT;
+static int     s_auto_retx;
 
-/* --- Small helpers ------------------------------------------------------ */
-
-static uint32_t can_dlc(uint8_t len)
+static HAL_StatusTypeDef can_open_(uint32_t mode)
 {
-	static const uint32_t DLC[9] = {
-		FDCAN_DLC_BYTES_0, FDCAN_DLC_BYTES_1, FDCAN_DLC_BYTES_2,
-		FDCAN_DLC_BYTES_3, FDCAN_DLC_BYTES_4, FDCAN_DLC_BYTES_5,
-		FDCAN_DLC_BYTES_6, FDCAN_DLC_BYTES_7, FDCAN_DLC_BYTES_8
-	};
-	return DLC[(len > 8u) ? 8u : len];
+	return PortCan_Open(s_rate, mode, s_auto_retx) ? HAL_OK : HAL_ERROR;
 }
 
-static uint8_t can_dlc_to_len(uint32_t dlc)
+static uint8_t can_len_of_(uint32_t dlc)
 {
 	return (uint8_t) ((dlc > FDCAN_DLC_BYTES_8) ? 8u : dlc);
 }
 
-static const char *can_clk_name(void)
-{
-	switch (__HAL_RCC_GET_FDCAN_SOURCE()) {
-	case RCC_FDCANCLKSOURCE_HSE:  return "HSE";
-	case RCC_FDCANCLKSOURCE_PLL:  return "PLL1Q";
-	case RCC_FDCANCLKSOURCE_PLL2: return "PLL2Q";
-	default:                      return "unknown";
-	}
-}
-
-/* Only HSE is ever selected here. The other two report 0 on purpose, so a
- * wrong selection shows up as an obviously bogus rate instead of a plausible
- * one. */
-static uint32_t can_clk_hz(void)
-{
-	return (__HAL_RCC_GET_FDCAN_SOURCE() == RCC_FDCANCLKSOURCE_HSE)
-	     ? (uint32_t) HSE_VALUE : 0u;
-}
+/* --- Small helpers ------------------------------------------------------ */
 
 static const char *can_mode_name(uint32_t mode)
 {
@@ -148,123 +101,13 @@ static const char *can_activity_name(uint32_t act)
 /* Nothing in this project configures the FDCAN kernel clock, so it sits at its
  * reset default (FDCANSEL = 00 = PLL1Q, which SystemClock_Config leaves at
  * 400 MHz). Select HSE before touching the peripheral. */
-static uint8_t can_clock_init(void)
-{
-	RCC_PeriphCLKInitTypeDef p = { 0 };
-
-	p.PeriphClockSelection = RCC_PERIPHCLK_FDCAN;
-	p.FdcanClockSelection  = RCC_FDCANCLKSOURCE_HSE;
-	if (HAL_RCCEx_PeriphCLKConfig(&p) != HAL_OK) {
-		printf("** CAN: FDCAN kernel clock select FAILED\r\n");
-		return 0u;
-	}
-	__HAL_RCC_FDCAN_CLK_ENABLE();
-	return 1u;
-}
-
-static void can_gpio_init(void)
-{
-	GPIO_InitTypeDef g = { 0 };
-
-	__HAL_RCC_GPIOB_CLK_ENABLE();
-	__HAL_RCC_GPIOI_CLK_ENABLE();
-
-	g.Mode      = GPIO_MODE_AF_PP;
-	g.Pull      = GPIO_NOPULL;
-	g.Speed     = GPIO_SPEED_FREQ_LOW;
-	g.Alternate = CAN_PIN_AF;
-
-	g.Pin = CAN_TX_PIN;
-	HAL_GPIO_Init(CAN_TX_PORT, &g);
-	g.Pin = CAN_RX_PIN;
-	HAL_GPIO_Init(CAN_RX_PORT, &g);
-}
-
 /* --- Peripheral open / close -------------------------------------------- */
-
-static HAL_StatusTypeDef can_open(uint32_t mode)
-{
-	const can_timing_t *t = &CAN_TIMINGS[s_rate];
-
-	s_h.Instance                  = FDCAN1;
-	s_h.Init.FrameFormat          = FDCAN_FRAME_CLASSIC;
-	s_h.Init.Mode                 = mode;
-	s_h.Init.AutoRetransmission   = s_auto_retx;
-	s_h.Init.TransmitPause        = DISABLE;
-	s_h.Init.ProtocolException    = DISABLE;
-	s_h.Init.NominalPrescaler     = t->prescaler;
-	s_h.Init.NominalSyncJumpWidth = t->sjw;
-	s_h.Init.NominalTimeSeg1      = t->seg1;
-	s_h.Init.NominalTimeSeg2      = t->seg2;
-	s_h.Init.DataPrescaler        = 1u;   /* classic CAN: data phase unused */
-	s_h.Init.DataSyncJumpWidth    = 1u;
-	s_h.Init.DataTimeSeg1         = 1u;
-	s_h.Init.DataTimeSeg2         = 1u;
-	s_h.Init.MessageRAMOffset     = 0u;
-	s_h.Init.StdFiltersNbr        = 0u;   /* the global filter takes everything */
-	s_h.Init.ExtFiltersNbr        = 0u;
-	s_h.Init.RxFifo0ElmtsNbr      = CAN_RX_FIFO_ELMTS;
-	s_h.Init.RxFifo0ElmtSize      = FDCAN_DATA_BYTES_8;
-	s_h.Init.RxFifo1ElmtsNbr      = 0u;
-	s_h.Init.RxFifo1ElmtSize      = FDCAN_DATA_BYTES_8;
-	s_h.Init.RxBuffersNbr         = 0u;
-	s_h.Init.RxBufferSize         = FDCAN_DATA_BYTES_8;
-	s_h.Init.TxEventsNbr          = 0u;
-	s_h.Init.TxBuffersNbr         = 0u;
-	s_h.Init.TxFifoQueueElmtsNbr  = CAN_TX_FIFO_ELMTS;
-	s_h.Init.TxFifoQueueMode      = FDCAN_TX_FIFO_OPERATION;
-	s_h.Init.TxElmtSize           = FDCAN_DATA_BYTES_8;
-
-	if (HAL_FDCAN_Init(&s_h) != HAL_OK) {
-		printf("   HAL_FDCAN_Init FAILED\r\n");
-		return HAL_ERROR;
-	}
-
-	/* No ID filter at all: during bring-up the question is whether anything
-	 * arrived, not whether the expected ID arrived. */
-	if (HAL_FDCAN_ConfigGlobalFilter(&s_h, FDCAN_ACCEPT_IN_RX_FIFO0,
-	                                 FDCAN_ACCEPT_IN_RX_FIFO0,
-	                                 FDCAN_FILTER_REMOTE,
-	                                 FDCAN_FILTER_REMOTE) != HAL_OK) {
-		printf("   HAL_FDCAN_ConfigGlobalFilter FAILED\r\n");
-		return HAL_ERROR;
-	}
-
-	if (HAL_FDCAN_Start(&s_h) != HAL_OK) {
-		printf("   HAL_FDCAN_Start FAILED\r\n");
-		return HAL_ERROR;
-	}
-	return HAL_OK;
-}
-
-static void can_close(void)
-{
-	(void) HAL_FDCAN_Stop(&s_h);
-	(void) HAL_FDCAN_DeInit(&s_h);
-}
 
 /* --- Transmit / receive ------------------------------------------------- */
 
-static HAL_StatusTypeDef can_send(uint32_t id, const uint8_t *d, uint8_t len)
-{
-	FDCAN_TxHeaderTypeDef tx = { 0 };
-
-	tx.Identifier          = id;
-	tx.IdType              = FDCAN_STANDARD_ID;
-	tx.TxFrameType         = FDCAN_DATA_FRAME;
-	tx.DataLength          = can_dlc(len);
-	tx.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
-	tx.BitRateSwitch       = FDCAN_BRS_OFF;
-	tx.FDFormat            = FDCAN_CLASSIC_CAN;
-	tx.TxEventFifoControl  = FDCAN_NO_TX_EVENTS;
-	tx.MessageMarker       = 0u;
-
-	return HAL_FDCAN_AddMessageToTxFifoQ(&s_h, &tx, d);
-}
-
 static void can_print_frame(const FDCAN_RxHeaderTypeDef *h, const uint8_t *d)
 {
-	uint8_t len = can_dlc_to_len(h->DataLength);
+	uint8_t len = can_len_of_(h->DataLength);
 
 	printf("[%8" PRIu32 " ms]  RX  id=0x%03" PRIX32 "  %s  %s  len=%u  data=",
 	       HAL_GetTick(), h->Identifier,
@@ -285,8 +128,8 @@ static uint32_t can_drain(uint8_t print)
 	uint8_t  d[8];
 	uint32_t n = 0u;
 
-	while (HAL_FDCAN_GetRxFifoFillLevel(&s_h, FDCAN_RX_FIFO0) != 0u) {
-		if (HAL_FDCAN_GetRxMessage(&s_h, FDCAN_RX_FIFO0, &h, d) != HAL_OK) {
+	while (HAL_FDCAN_GetRxFifoFillLevel(PortCan_Handle(), FDCAN_RX_FIFO0) != 0u) {
+		if (HAL_FDCAN_GetRxMessage(PortCan_Handle(), FDCAN_RX_FIFO0, &h, d) != HAL_OK) {
 			break;
 		}
 		n++;
@@ -306,8 +149,8 @@ static uint32_t can_status_report(void)
 	FDCAN_ProtocolStatusTypeDef ps;
 	FDCAN_ErrorCountersTypeDef  ec;
 
-	(void) HAL_FDCAN_GetProtocolStatus(&s_h, &ps);
-	(void) HAL_FDCAN_GetErrorCounters(&s_h, &ec);
+	(void) HAL_FDCAN_GetProtocolStatus(PortCan_Handle(), &ps);
+	(void) HAL_FDCAN_GetErrorCounters(PortCan_Handle(), &ec);
 
 	printf("   status: last error = %s   activity = %s\r\n",
 	       can_lec_name(ps.LastErrorCode), can_activity_name(ps.Activity));
@@ -344,7 +187,7 @@ static void can_diagnose(const char *phase, uint32_t lec, uint32_t sent,
 		       "   This error on its own does NOT mean the board is broken - if "
 		       "P2 passed,\r\n"
 		       "   the transmit and receive chain is already proven.\r\n",
-		       CAN_TIMINGS[s_rate].bps);
+		       PortCan_RateBps(s_rate));
 		break;
 
 	case FDCAN_PROTOCOL_ERROR_BIT1:
@@ -393,7 +236,7 @@ static void can_diagnose(const char *phase, uint32_t lec, uint32_t sent,
 		       "     3. if only long cable runs fail, this is where termination "
 		       "starts\r\n"
 		       "        to matter - see the JP7 note in can_test.h\r\n",
-		       can_lec_name(lec), CAN_TIMINGS[s_rate].bps);
+		       can_lec_name(lec), PortCan_RateBps(s_rate));
 		break;
 
 	case FDCAN_PROTOCOL_ERROR_NONE:
@@ -432,28 +275,32 @@ static void can_diagnose(const char *phase, uint32_t lec, uint32_t sent,
 
 static void can_p0_report(void)
 {
-	const can_timing_t *t = &CAN_TIMINGS[s_rate];
-	uint32_t hz   = can_clk_hz();
-	uint32_t tq   = 1u + t->seg1 + t->seg2;
+	uint16_t prescaler = 0, seg1 = 0, seg2 = 0, sjw = 0;
+	uint32_t bps  = PortCan_RateBps(s_rate);
+	uint32_t hz   = PortCan_ClockHz();
+	uint32_t tq;
+
+	(void) PortCan_Timing(s_rate, &prescaler, &seg1, &seg2, &sjw);
+	tq = 1u + seg1 + seg2;
 	uint32_t endn = FDCAN1->ENDN;
 	uint32_t crel = FDCAN1->CREL;
 
 	printf("\r\n--- P0: peripheral and configuration ---\r\n");
 
 	printf("   FDCAN1 ENDN = 0x%08" PRIX32 " (%s)   CREL = 0x%08" PRIX32 "\r\n",
-	       endn, (endn == CAN_ENDN_EXPECT) ? "alive" : "WRONG - not clocked?",
+	       endn, (endn == PORT_CAN_ENDN_EXPECT) ? "alive" : "WRONG - not clocked?",
 	       crel);
 
-	printf("   kernel clock: %s = %" PRIu32 " Hz\r\n", can_clk_name(), hz);
+	printf("   kernel clock: %s = %" PRIu32 " Hz\r\n", PortCan_ClockName(), hz);
 	printf("   bit timing:   %" PRIu32 " bit/s = prescaler %u, Seg1 %u, Seg2 %u,"
 	       " SJW %u  ->  %" PRIu32 " tq/bit\r\n",
-	       t->bps, (unsigned) t->prescaler, (unsigned) t->seg1,
-	       (unsigned) t->seg2, (unsigned) t->sjw, tq);
+	       bps, (unsigned) prescaler, (unsigned) seg1,
+	       (unsigned) seg2, (unsigned) sjw, tq);
 
 	if (hz != 0u) {
-		uint32_t actual = hz / ((uint32_t) t->prescaler * tq);
+		uint32_t actual = hz / ((uint32_t) prescaler * tq);
 		printf("   -> actual %" PRIu32 " bit/s, %s\r\n", actual,
-		       (actual == t->bps) ? "exact" : "** MISMATCH **");
+		       (actual == bps) ? "exact" : "** MISMATCH **");
 	}
 
 	printf("   pins: FDCAN1_TX = PB9 -> U8 pin 2,  FDCAN1_RX = PI9 <- U8 pin 3\r\n");
@@ -482,9 +329,9 @@ static void can_loopback(const char *name, uint32_t mode)
 	printf("\r\n--- %s: %s, %u frames ---\r\n", name, can_mode_name(mode),
 	       (unsigned) CAN_FRAMES_PER_LOOPBACK);
 
-	if (can_open(mode) != HAL_OK) {
+	if (can_open_(mode) != HAL_OK) {
 		printf("   cannot open the peripheral - skipping\r\n");
-		can_close();
+		PortCan_Close();
 		return;
 	}
 
@@ -496,7 +343,7 @@ static void can_loopback(const char *name, uint32_t mode)
 			payload[b] = (uint8_t) (((uint32_t) i << 4) | b);
 		}
 
-		if (can_send((uint32_t) (CAN_TEST_ID + i), payload, 8u) != HAL_OK) {
+		if (PortCan_Send((uint32_t) (CAN_TEST_ID + i), payload, 8u) != HAL_OK) {
 			printf("   frame %u: the TX FIFO refused it\r\n", (unsigned) i);
 			continue;
 		}
@@ -504,7 +351,7 @@ static void can_loopback(const char *name, uint32_t mode)
 
 		start = HAL_GetTick();
 		while ((HAL_GetTick() - start) < CAN_RX_WAIT_MS) {
-			if (HAL_FDCAN_GetRxFifoFillLevel(&s_h, FDCAN_RX_FIFO0) != 0u) {
+			if (HAL_FDCAN_GetRxFifoFillLevel(PortCan_Handle(), FDCAN_RX_FIFO0) != 0u) {
 				break;
 			}
 		}
@@ -513,7 +360,7 @@ static void can_loopback(const char *name, uint32_t mode)
 
 	lec = can_status_report();
 	can_diagnose(name, lec, sent, got);
-	can_close();
+	PortCan_Close();
 }
 
 /* --- P3: listen only ---------------------------------------------------- */
@@ -528,8 +375,8 @@ static void can_p3_listen(void)
 	printf("   Send something from the analyser now; every frame prints as it "
 	       "arrives.\r\n");
 
-	if (can_open(FDCAN_MODE_BUS_MONITORING) != HAL_OK) {
-		can_close();
+	if (can_open_(FDCAN_MODE_BUS_MONITORING) != HAL_OK) {
+		PortCan_Close();
 		return;
 	}
 
@@ -548,7 +395,7 @@ static void can_p3_listen(void)
 
 	lec = can_status_report();
 	can_diagnose("P3", lec, 0u, got);
-	can_close();
+	PortCan_Close();
 }
 
 /* --- P4: normal mode against a real node -------------------------------- */
@@ -566,8 +413,8 @@ static void can_p4_normal(void)
 	       "error. That\r\n"
 	       "   is expected, not a fault.\r\n");
 
-	if (can_open(FDCAN_MODE_NORMAL) != HAL_OK) {
-		can_close();
+	if (can_open_(FDCAN_MODE_NORMAL) != HAL_OK) {
+		PortCan_Close();
 		return;
 	}
 
@@ -579,7 +426,7 @@ static void can_p4_normal(void)
 			lastTx += CAN_NORMAL_EVERY_MS;
 			payload[4] = counter++;
 
-			if (can_send(CAN_TEST_ID, payload, 8u) == HAL_OK) {
+			if (PortCan_Send(CAN_TEST_ID, payload, 8u) == HAL_OK) {
 				sent++;
 				printf("[%8" PRIu32 " ms]  TX  id=0x%03X  data= DE AD BE EF "
 				       "%02X 00 00 00\r\n", HAL_GetTick(),
@@ -594,7 +441,7 @@ static void can_p4_normal(void)
 
 	lec = can_status_report();
 	can_diagnose("P4", lec, sent, got);
-	can_close();
+	PortCan_Close();
 }
 
 /* --- Soak: receive and print; transmitting is optional ------------------- */
@@ -621,8 +468,8 @@ static uint32_t can_soak_drain(void)
 	uint32_t n = 0u;
 
 	while ((n < CAN_SOAK_DRAIN_MAX)
-	       && (HAL_FDCAN_GetRxFifoFillLevel(&s_h, FDCAN_RX_FIFO0) != 0u)) {
-		if (HAL_FDCAN_GetRxMessage(&s_h, FDCAN_RX_FIFO0, &h, d) != HAL_OK) {
+	       && (HAL_FDCAN_GetRxFifoFillLevel(PortCan_Handle(), FDCAN_RX_FIFO0) != 0u)) {
+		if (HAL_FDCAN_GetRxMessage(PortCan_Handle(), FDCAN_RX_FIFO0, &h, d) != HAL_OK) {
 			break;
 		}
 		n++;
@@ -637,7 +484,7 @@ static void can_soak_counters(uint32_t *tec, uint32_t *rec)
 {
 	FDCAN_ErrorCountersTypeDef ec;
 
-	(void) HAL_FDCAN_GetErrorCounters(&s_h, &ec);
+	(void) HAL_FDCAN_GetErrorCounters(PortCan_Handle(), &ec);
 	*tec = ec.TxErrorCnt;
 	*rec = ec.RxErrorCnt;
 }
@@ -648,11 +495,11 @@ static void can_soak_open_or_retry(const char *what)
 {
 	uint32_t attempt = 0u;
 
-	while (can_open(FDCAN_MODE_NORMAL) != HAL_OK) {
+	while (can_open_(FDCAN_MODE_NORMAL) != HAL_OK) {
 		attempt++;
 		printf("** CAN: %s FAILED (attempt %" PRIu32 ") - retrying in %u ms\r\n",
 		       what, attempt, (unsigned) CAN_SOAK_EVERY_MS);
-		can_close();
+		PortCan_Close();
 		HAL_Delay(CAN_SOAK_EVERY_MS);
 	}
 	if (attempt != 0u) {
@@ -670,7 +517,7 @@ void CAN_Test_Soak_Run(void)
 	printf("   FDCAN1 on PB9/PI9 through U8 (ISO1044BDR, isolated); the bus "
 	       "side is powered by U7\r\n");
 	printf("   %s, classic CAN, standard IDs, %" PRIu32 " bit/s\r\n",
-	       can_mode_name(FDCAN_MODE_NORMAL), CAN_TIMINGS[s_rate].bps);
+	       can_mode_name(FDCAN_MODE_NORMAL), PortCan_RateBps(s_rate));
 #if CAN_SOAK_TX_ENABLE
 	printf("   transmits id=0x%03X every %u ms and prints every frame that "
 	       "arrives\r\n", (unsigned) CAN_SOAK_ID,
@@ -685,10 +532,10 @@ void CAN_Test_Soak_Run(void)
 	printf("   terminals: CAN_H = J10 pin 1 (C08/A08), CAN_L = J10 pin 2 "
 	       "(C07/A07),\r\n              CAN_GND = J11 pin 4 (A09)\r\n");
 
-	if (can_clock_init() == 0u) {
+	if (PortCan_Init() == 0u) {
 		printf("** CAN: no kernel clock - nothing below is meaningful\r\n");
 	}
-	can_gpio_init();
+	(void)PortCan_Init();
 
 	can_soak_open_or_retry("start");
 
@@ -705,7 +552,7 @@ void CAN_Test_Soak_Run(void)
 
 #if CAN_SOAK_TX_ENABLE
 			payload[3] = counter++;
-			if (can_send(CAN_SOAK_ID, payload, 8u) == HAL_OK) {
+			if (PortCan_Send(CAN_SOAK_ID, payload, 8u) == HAL_OK) {
 				sent++;
 			} else {
 				printf("[%8" PRIu32 " ms]  TX rejected - the transmit FIFO is "
@@ -724,22 +571,22 @@ void CAN_Test_Soak_Run(void)
 			       " REC=%" PRIu32 "  fifo=%" PRIu32 "\r\n", HAL_GetTick(),
 			       (unsigned) CAN_SOAK_ID, (unsigned) payload[3], sent, got,
 			       tec, rec,
-			       HAL_FDCAN_GetRxFifoFillLevel(&s_h, FDCAN_RX_FIFO0));
+			       HAL_FDCAN_GetRxFifoFillLevel(PortCan_Handle(), FDCAN_RX_FIFO0));
 #else
 			printf("[%8" PRIu32 " ms]  listening,  rcvd=%" PRIu32 "  TEC=%"
 			       PRIu32 " REC=%" PRIu32 "  fifo=%" PRIu32 "\r\n",
 			       HAL_GetTick(), got, tec, rec,
-			       HAL_FDCAN_GetRxFifoFillLevel(&s_h, FDCAN_RX_FIFO0));
+			       HAL_FDCAN_GetRxFifoFillLevel(PortCan_Handle(), FDCAN_RX_FIFO0));
 			(void) sent;
 #endif
 
-			(void) HAL_FDCAN_GetProtocolStatus(&s_h, &ps);
+			(void) HAL_FDCAN_GetProtocolStatus(PortCan_Handle(), &ps);
 			if (ps.BusOff != 0u) {
 				recoveries++;
 				printf("   BUS_OFF after %" PRIu32 " frames - nobody is "
 				       "acknowledging. Restarting FDCAN1 (recovery #%" PRIu32
 				       ")\r\n", sent, recoveries);
-				can_close();
+				PortCan_Close();
 				can_soak_open_or_retry("restart");
 			}
 		}
@@ -770,14 +617,14 @@ static HAL_StatusTypeDef can_echo_reply(const FDCAN_RxHeaderTypeDef *rx,
 	tx.Identifier          = rx->Identifier;
 	tx.IdType              = rx->IdType;          /* answer on what came in */
 	tx.TxFrameType         = FDCAN_DATA_FRAME;
-	tx.DataLength          = can_dlc(len);
+	tx.DataLength          = PortCan_Dlc(len);
 	tx.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
 	tx.BitRateSwitch       = FDCAN_BRS_OFF;
 	tx.FDFormat            = FDCAN_CLASSIC_CAN;
 	tx.TxEventFifoControl  = FDCAN_NO_TX_EVENTS;
 	tx.MessageMarker       = 0u;
 
-	return HAL_FDCAN_AddMessageToTxFifoQ(&s_h, &tx, d);
+	return HAL_FDCAN_AddMessageToTxFifoQ(PortCan_Handle(), &tx, d);
 }
 
 void CAN_Test_Echo_Run(void)
@@ -787,7 +634,7 @@ void CAN_Test_Echo_Run(void)
 	printf("\r\n=== CAN echo (TestCase/CAN) ===\r\n");
 	printf("   FDCAN1 on PB9/PI9 through U8, %s, classic CAN, %" PRIu32
 	       " bit/s\r\n", can_mode_name(FDCAN_MODE_NORMAL),
-	       CAN_TIMINGS[s_rate].bps);
+	       PortCan_RateBps(s_rate));
 	printf("   Transmits nothing on its own. Every frame that arrives is "
 	       "printed, its\r\n"
 	       "   payload is incremented as one big-endian number, and the "
@@ -796,10 +643,10 @@ void CAN_Test_Echo_Run(void)
 	printf("   A status line every %u s says the board is still alive.\r\n",
 	       (unsigned) (CAN_ECHO_ALIVE_MS / 1000u));
 
-	if (can_clock_init() == 0u) {
+	if (PortCan_Init() == 0u) {
 		printf("** CAN: no kernel clock - nothing below is meaningful\r\n");
 	}
-	can_gpio_init();
+	(void)PortCan_Init();
 	can_soak_open_or_retry("start");
 
 	lastAlive = HAL_GetTick();
@@ -807,15 +654,15 @@ void CAN_Test_Echo_Run(void)
 		FDCAN_RxHeaderTypeDef h;
 		uint8_t d[8];
 
-		while (HAL_FDCAN_GetRxFifoFillLevel(&s_h, FDCAN_RX_FIFO0) != 0u) {
+		while (HAL_FDCAN_GetRxFifoFillLevel(PortCan_Handle(), FDCAN_RX_FIFO0) != 0u) {
 			uint8_t len;
 
-			if (HAL_FDCAN_GetRxMessage(&s_h, FDCAN_RX_FIFO0, &h, d) != HAL_OK) {
+			if (HAL_FDCAN_GetRxMessage(PortCan_Handle(), FDCAN_RX_FIFO0, &h, d) != HAL_OK) {
 				break;
 			}
 			got++;
 			can_print_frame(&h, d);
-			len = can_dlc_to_len(h.DataLength);
+			len = can_len_of_(h.DataLength);
 
 			if (h.RxFrameType != FDCAN_DATA_FRAME) {
 				printf("            remote frame - nothing to increment, no "
@@ -852,12 +699,12 @@ void CAN_Test_Echo_Run(void)
 			       PRIu32 "  TEC=%" PRIu32 " REC=%" PRIu32 "\r\n",
 			       HAL_GetTick(), got, replied, tec, rec);
 
-			(void) HAL_FDCAN_GetProtocolStatus(&s_h, &ps);
+			(void) HAL_FDCAN_GetProtocolStatus(PortCan_Handle(), &ps);
 			if (ps.BusOff != 0u) {
 				recoveries++;
 				printf("   BUS_OFF - restarting FDCAN1 (recovery #%" PRIu32
 				       ")\r\n", recoveries);
-				can_close();
+				PortCan_Close();
 				can_soak_open_or_retry("restart");
 			}
 		}
@@ -900,7 +747,7 @@ static void can_scope_pin_toggle(uint32_t ms)
 	}
 
 	HAL_GPIO_WritePin(CAN_TX_PORT, CAN_TX_PIN, GPIO_PIN_SET);
-	can_gpio_init();
+	(void)PortCan_Init();
 }
 
 /* Transmits back to back for the whole window instead of one frame per second.
@@ -918,9 +765,9 @@ static void can_scope_blast(uint32_t mode, uint32_t ms, const char *step,
 	       step, can_mode_name(mode), (unsigned) (ms / 1000u));
 	printf("    %s\r\n", expect);
 
-	if (can_open(mode) != HAL_OK) {
+	if (can_open_(mode) != HAL_OK) {
 		printf("    could not start\r\n");
-		can_close();
+		PortCan_Close();
 		return;
 	}
 
@@ -928,16 +775,16 @@ static void can_scope_blast(uint32_t mode, uint32_t ms, const char *step,
 	while ((HAL_GetTick() - start) < ms) {
 		FDCAN_ProtocolStatusTypeDef ps;
 
-		while (can_send(CAN_SCOPE_ID, PAYLOAD, 8u) == HAL_OK) {
+		while (PortCan_Send(CAN_SCOPE_ID, PAYLOAD, 8u) == HAL_OK) {
 			sent++;
 		}
 		(void) can_drain(0u);
 
-		(void) HAL_FDCAN_GetProtocolStatus(&s_h, &ps);
+		(void) HAL_FDCAN_GetProtocolStatus(PortCan_Handle(), &ps);
 		if (ps.BusOff != 0u) {
 			offs++;
-			can_close();
-			if (can_open(mode) != HAL_OK) {
+			PortCan_Close();
+			if (can_open_(mode) != HAL_OK) {
 				printf("    restart FAILED\r\n");
 				return;
 			}
@@ -947,7 +794,7 @@ static void can_scope_blast(uint32_t mode, uint32_t ms, const char *step,
 	can_soak_counters(&tec, &rec);
 	printf("    queued %" PRIu32 " frames, TEC=%" PRIu32 " REC=%" PRIu32
 	       ", bus-off %" PRIu32 " times\r\n", sent, tec, rec, offs);
-	can_close();
+	PortCan_Close();
 }
 
 void CAN_Test_Scope_Run(void)
@@ -959,10 +806,10 @@ void CAN_Test_Scope_Run(void)
 	printf("   Three steps repeat forever; each one prints what to expect "
 	       "before it runs.\r\n");
 
-	if (can_clock_init() == 0u) {
+	if (PortCan_Init() == 0u) {
 		printf("** CAN: no kernel clock - nothing below is meaningful\r\n");
 	}
-	can_gpio_init();
+	(void)PortCan_Init();
 
 	for (;;) {
 		can_scope_pin_toggle(CAN_SCOPE_GPIO_MS);
@@ -970,19 +817,19 @@ void CAN_Test_Scope_Run(void)
 		/* Loop back mode ignores acknowledge errors, so this transmits
 		 * continuously with no second node and never reaches bus-off. The
 		 * frames are still driven on the TX pin. */
-		s_auto_retx = DISABLE;
+		s_auto_retx = 0;
 		can_scope_blast(FDCAN_MODE_EXTERNAL_LOOPBACK, CAN_SCOPE_BLAST_MS, "[2]",
 		                "Expect continuous CAN traffic at PB9: 3.3 V idle, "
 		                "brief 0 V bits, ~2 us each.");
 
 		/* Auto retransmission on: without an acknowledge the same frame is
 		 * retried at line rate, which keeps the pin busy until bus-off. */
-		s_auto_retx = ENABLE;
+		s_auto_retx = 1;
 		can_scope_blast(FDCAN_MODE_NORMAL, CAN_SCOPE_BLAST_MS, "[3]",
 		                "Same picture as [2], but on the real bus. If [2] "
 		                "shows traffic and [3] does not,\r\n    the peripheral "
 		                "is fine and the bus is holding the line.");
-		s_auto_retx = DISABLE;
+		s_auto_retx = 0;
 
 		printf("\r\n===== scope round complete =====\r\n");
 	}
@@ -996,12 +843,12 @@ void CAN_Test_Run(void)
 	printf("   FDCAN1 on PB9/PI9 through U8 (ISO1044BDR, isolated); the bus "
 	       "side is powered by U7\r\n");
 	printf("   Classic CAN, standard IDs, %" PRIu32 " bit/s\r\n",
-	       CAN_TIMINGS[s_rate].bps);
+	       PortCan_RateBps(s_rate));
 
-	if (can_clock_init() == 0u) {
+	if (PortCan_Init() == 0u) {
 		printf("** CAN: no kernel clock - nothing below is meaningful\r\n");
 	}
-	can_gpio_init();
+	(void)PortCan_Init();
 	can_p0_report();
 
 	for (;;) {

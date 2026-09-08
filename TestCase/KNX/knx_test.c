@@ -2235,6 +2235,91 @@ static void knx_slim_loop(void)
 
 /* --- Entry point -------------------------------------------------------- */
 
+/* ---- Session entry points, for pt.start knx ----------------------------
+ *
+ * Added 2026-09-08. Everything above stays exactly where it is: the capture
+ * ISR, the bit engine ISR and their statics are timing-critical and were left
+ * untouched on purpose - this is the same treatment sdram_test.c and sd_test.c
+ * got, an entry point that returns rather than a file that moved.
+ *
+ * ⚠️ KNX_Test_SessionSendChar() is NOT free: knx_tx_send_bits() spins until the
+ * bit engine has walked the pattern, about 1.35 ms for one 13-bit character at
+ * 104 us a bit. That is less than the ~8.7 ms one frame of console output
+ * already costs at 115200, so a session sending one character a period is
+ * fine - but it is a spin, and calling it faster than that is not. */
+
+int KNX_Test_SessionInit(void)
+{
+    knx_gpio_init();
+    knx_capture_start();
+    knx_tx_start();
+    knx_decoder_reset();
+    knx_stats_reset();
+    return 1;
+}
+
+void KNX_Test_SessionStatsReset(void)
+{
+    knx_decoder_reset();
+    knx_stats_reset();
+}
+
+int KNX_Test_SessionSendChar(uint8_t b)
+{
+    uint8_t bits[KNX_CHAR_BITS];
+
+    knx_encode_char(b, bits);
+    knx_tx_send_bits(bits, KNX_CHAR_BITS);
+    return 1;
+}
+
+/* Drains whatever the capture ISR has queued. Returns 1 and fills *out when a
+ * character closed - either because a later pulse passed the stop bit, or
+ * because the decoder's own idle timeout closed it. */
+int KNX_Test_SessionPollChar(uint8_t *out, uint8_t *framing_ok)
+{
+    uint16_t slots = 0u, t0 = 0u;
+    uint8_t got = 0u, sOk = 0u, pOk = 0u, tOk = 0u;
+
+    if (knx_decoder_poll(&slots, &t0) == 0u) {
+        return 0;
+    }
+    uint8_t good = knx_decode_char(slots, &got, &sOk, &pOk, &tOk);
+    if (out != NULL)        { *out = got; }
+    if (framing_ok != NULL) { *framing_ok = good; }
+    return 1;
+}
+
+void KNX_Test_SessionStats(knx_session_stats_t *out)
+{
+    uint8_t v = 0u, k = 0u, r = 0u;
+
+    if (out == NULL) {
+        return;
+    }
+    out->bus = (uint8_t) knx_bus_state(&v, &k, &r);
+    out->vcc_ok = v;
+    out->bus_ok = k;
+    out->rx_idle = r;
+
+    out->pulses  = s_rxPulses;
+    out->dropped = s_pulseDropped;
+
+    /* min/max stay at their reset sentinels until something arrives, so a
+     * caller can tell "nothing measured" from "measured zero". */
+    out->w_min = s_wMin;
+    out->w_max = s_wMax;
+    out->w_avg = (s_wCnt != 0u) ? (s_wSum / s_wCnt) : 0u;
+    out->w_count = s_wCnt;
+
+    out->d_min = s_dMin;
+    out->d_max = s_dMax;
+    out->d_avg = (s_dCnt != 0u) ? (s_dSum / s_dCnt) : 0u;
+    out->d_count = s_dCnt;
+
+    out->ms_since_edge = HAL_GetTick() - s_lastEdgeMs;
+}
+
 void KNX_Test_Run(void)
 {
 	printf("\r\n=== STKNX bring-up test (TestCase/KNX) ===\r\n");
