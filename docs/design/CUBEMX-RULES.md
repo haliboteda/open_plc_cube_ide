@@ -40,6 +40,16 @@ stm32cubeidec.exe … -D PORTTOOL_ENABLE=1 -E PLC_LD_SCRIPT=STM32H743IIKX_FLASH_
 
 **和 `PORTTOOL_ENABLE` 同一个原则**（[DECISIONS.md 第 14 条](DECISIONS.md)）：**只活在要它的那一次构建里，不写进工程文件**。所以随手编一次、或者在 IDE 里点一下构建，出来的都还是 bootloader。
 
+### 2026-09-10 试的一个「治本」办法 —— **还没验证**
+
+CubeMX 写回那个选项，用的是 `.cproject` 里**它自己那份记录**：`com.st.stm32cube.ide.common.services.build.inputs.*` 那个 `||` 分隔的大字符串，里面也有一段链接脚本路径。以前那里写的是写死的文件名，所以它每次照着写死的写回去。
+
+**现在那段也改成了 `${workspace_loc:/${ProjName}/${PLC_LD_SCRIPT}}`**，两处一致。⚠️ **`.ioc` 里没有链接脚本这个字段**（`ProjectManager.*` 只有 `CompilerLinker=GCC`），所以没有「在 CubeMX 界面里把它配成变量」这条路 —— 只能改 `.cproject`。
+
+已经验证的：改完之后两份镜像都正常构建（bootloader 102,896 B 用 `STM32H743IIKX_FLASH.ld`，工装 165,868 B 用 `..._PORTTOOL.ld`）。
+
+⚠️ **没有验证的：CubeMX 下次重新生成会不会仍然把它改回去。** 这只有等下一次重新生成才知道。**所以下面那两处照旧要查** —— 这个办法是想省掉一次手工修复，不是取消检查。
+
 ⚠️ **重新生成后必查这两处**：
 
 1. 那个选项的值有没有被 CubeMX 改回写死的 `STM32H743IIKX_FLASH.ld`。⚠️ **`.cproject` 里 ST 自己那个 `||` 分隔的大字符串（`com.st.stm32cube.ide.common.services.build.inputs…`）里仍然写着 bootloader 那份文件名** —— 那是 ST 用来回写的记录，所以这一处**被改回去的概率不低**。改回去的表现不是报错，是**工装镜像忽然又受 120K 限制**。
