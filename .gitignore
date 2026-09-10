@@ -1,4 +1,10 @@
-.settings/
+.settings/*
+# 例外：这一个文件是构建输入，不是 IDE 的个人偏好。它只有六行，装着
+# PLC_LD_SCRIPT 的工程默认值（= bootloader 那份链接脚本），一行机器相关的
+# 东西都没有。2026-09-10 实测：把它移走之后 bootloader 编不出来 ——
+# ${PLC_LD_SCRIPT} 展开成空，链接器拿不到 -T，报的是 ld 错误，离真正的
+# 原因隔着好几层。见 docs/design/CUBEMX-RULES.md。
+!.settings/org.eclipse.cdt.core.prefs
 .vscode/
 Debug/
 .idea/

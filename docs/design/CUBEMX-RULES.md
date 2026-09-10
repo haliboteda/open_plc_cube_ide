@@ -40,6 +40,8 @@ stm32cubeidec.exe … -D PORTTOOL_ENABLE=1 -E PLC_LD_SCRIPT=STM32H743IIKX_FLASH_
 
 **和 `PORTTOOL_ENABLE` 同一个原则**（[DECISIONS.md 第 14 条](DECISIONS.md)）：**只活在要它的那一次构建里，不写进工程文件**。所以随手编一次、或者在 IDE 里点一下构建，出来的都还是 bootloader。
 
+⚠️ **这不是限制，是用户 2026-09-10 明确要的形状**：原话「用 cubeide 生成就是 bootloader，如果想要工装固件用别的工具」。**在 IDE 里怎么点都编不出工装镜像，这一条是对的，不要去"修"它。** 工装镜像只有一条路：`python $TOOL/TestCase/tools/build_image.py --porttool`。
+
 ### 2026-09-10 试过一个「治本」办法，**验证之后证明没用**
 
 猜想是：CubeMX 写回那个选项，用的是 `.cproject` 里它自己那份记录（`com.st.stm32cube.ide.common.services.build.inputs.*` 那个 `||` 分隔的大字符串，里面也有一段链接脚本路径）。那就把那一段也改成 `${PLC_LD_SCRIPT}`，它照着写回来的就是变量。
@@ -60,7 +62,7 @@ stm32cubeidec.exe … -D PORTTOOL_ENABLE=1 -E PLC_LD_SCRIPT=STM32H743IIKX_FLASH_
 ⚠️ **重新生成后必查这两处**：
 
 1. 那个选项的值有没有被 CubeMX 改回写死的 `STM32H743IIKX_FLASH.ld`。⚠️ **`.cproject` 里 ST 自己那个 `||` 分隔的大字符串（`com.st.stm32cube.ide.common.services.build.inputs…`）里仍然写着 bootloader 那份文件名** —— 那是 ST 用来回写的记录，所以这一处**被改回去的概率不低**。改回去的表现不是报错，是**工装镜像忽然又受 120K 限制**。
-2. `.settings/org.eclipse.cdt.core.prefs` 还在不在、默认值还是不是 bootloader 那份。**这个文件没了，`${PLC_LD_SCRIPT}` 会展开成空**，链接器拿不到 `-T`。
+2. `.settings/org.eclipse.cdt.core.prefs` 还在不在、默认值还是不是 bootloader 那份。**这个文件没了，`${PLC_LD_SCRIPT}` 会展开成空**，链接器拿不到 `-T`。2026-09-10 实测过：把它移走再编 bootloader，得到的是 `ld returned 1 exit status` —— 报错离真正的原因隔着好几层。⚠️ **它以前被 `.gitignore` 的 `.settings/` 整个挡在 git 外面，也就是说一份全新 clone 编不出 bootloader**（工装镜像不受影响，因为 `build_image.py` 自己传 `-E PLC_LD_SCRIPT=…`）。现在单独放行了这一个文件 —— 它只有六行，全是这一个变量，没有任何机器相关的东西；`.settings/` 其余三个照旧忽略。
 
 **两处都由 `build_image.py` 自动兜着**：它在构建日志里核对链接器实际拿到的是哪一份，拿错了当场判失败 —— 因为拿错是静默的（工装拿到 bootloader 那份只是「装不下」，而 bootloader 拿到工装那份会**烧穿 app 区**）。
 

@@ -1,0 +1,6 @@
+eclipse.preferences.version=1
+environment/project/com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.1049024112/PLC_LD_SCRIPT/delimiter=;
+environment/project/com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.1049024112/PLC_LD_SCRIPT/operation=replace
+environment/project/com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.1049024112/PLC_LD_SCRIPT/value=STM32H743IIKX_FLASH.ld
+environment/project/com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.1049024112/append=true
+environment/project/com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.1049024112/appendContributed=true
