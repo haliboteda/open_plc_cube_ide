@@ -44,7 +44,7 @@
 | 2 | `Core/Src/main.c` 的 `SystemClock_Config()` | 多了 `RCC_OSCILLATORTYPE_LSE` 和 `LSEState = RCC_LSE_ON` |
 | 3 | `PC14` / `PC15` 没有被别的东西占 | 生成前 `.ioc` 里这两个脚是空的，本来就没人用 |
 | 4 | **启动时间** | 见下面那条 ⚠️ |
-| **5** | **`.cproject` 的链接脚本变量** | ⚠️ **2026-09-10 这一处真的被 CubeMX 改回写死的 `STM32H743IIKX_FLASH.ld` 了**，[CUBEMX-RULES.md](CUBEMX-RULES.md) 预告过。必须是 `${workspace_loc:/${ProjName}/${PLC_LD_SCRIPT}}` |
+| **5** | **`.cproject` 的链接脚本变量** | ⚠️ **每次重新生成都会被改回写死的 `STM32H743IIKX_FLASH.ld`** —— 2026-09-10 那天连着两次生成，两次都被改。必须手工改回 `${workspace_loc:/${ProjName}/${PLC_LD_SCRIPT}}`。试过治本的办法，[CUBEMX-RULES.md](CUBEMX-RULES.md) 里记了为什么没用 |
 
 ⚠️ **最要紧的一条：LSE 起振比 LSI 慢得多（几百 ms 到 2 s），而 HAL 的 `HAL_RCC_OscConfig()` 在等 LSE 就绪时是阻塞的，超时值 `LSE_TIMEOUT_VALUE` 是 5000 ms。**
 

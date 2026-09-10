@@ -40,15 +40,22 @@ stm32cubeidec.exe … -D PORTTOOL_ENABLE=1 -E PLC_LD_SCRIPT=STM32H743IIKX_FLASH_
 
 **和 `PORTTOOL_ENABLE` 同一个原则**（[DECISIONS.md 第 14 条](DECISIONS.md)）：**只活在要它的那一次构建里，不写进工程文件**。所以随手编一次、或者在 IDE 里点一下构建，出来的都还是 bootloader。
 
-### 2026-09-10 试的一个「治本」办法 —— **还没验证**
+### 2026-09-10 试过一个「治本」办法，**验证之后证明没用**
 
-CubeMX 写回那个选项，用的是 `.cproject` 里**它自己那份记录**：`com.st.stm32cube.ide.common.services.build.inputs.*` 那个 `||` 分隔的大字符串，里面也有一段链接脚本路径。以前那里写的是写死的文件名，所以它每次照着写死的写回去。
+猜想是：CubeMX 写回那个选项，用的是 `.cproject` 里它自己那份记录（`com.st.stm32cube.ide.common.services.build.inputs.*` 那个 `||` 分隔的大字符串，里面也有一段链接脚本路径）。那就把那一段也改成 `${PLC_LD_SCRIPT}`，它照着写回来的就是变量。
 
-**现在那段也改成了 `${workspace_loc:/${ProjName}/${PLC_LD_SCRIPT}}`**，两处一致。⚠️ **`.ioc` 里没有链接脚本这个字段**（`ProjectManager.*` 只有 `CompilerLinker=GCC`），所以没有「在 CubeMX 界面里把它配成变量」这条路 —— 只能改 `.cproject`。
+**当天就用一次真的重新生成验了，结果是猜错了**：
 
-已经验证的：改完之后两份镜像都正常构建（bootloader 102,896 B 用 `STM32H743IIKX_FLASH.ld`，工装 165,868 B 用 `..._PORTTOOL.ld`）。
+| | 重新生成之后 |
+|---|---|
+| ST 那份记录里的那一段 | **`${PLC_LD_SCRIPT}` 原样保住了** —— 它对那个字符串是原样往返的 |
+| 链接选项本身 | **照旧被改回写死的 `STM32H743IIKX_FLASH.ld`** |
 
-⚠️ **没有验证的：CubeMX 下次重新生成会不会仍然把它改回去。** 这只有等下一次重新生成才知道。**所以下面那两处照旧要查** —— 这个办法是想省掉一次手工修复，不是取消检查。
+**所以那个选项不是从这份记录来的**，是 CubeMX 按芯片型号自己生成的默认名。改记录既没帮上忙，还会骗下一个读它的人，**已经改回原样**。
+
+⚠️ **`.ioc` 里也没有这个字段**（`ProjectManager.*` 只有 `CompilerLinker=GCC`），所以没有「在 CubeMX 界面里把它配成变量」这条路。
+
+**结论：治不了，只能每次修。** 好在改坏了藏不住 —— 工装镜像 16 万字节装不进 bootloader 脚本的 120K，链接器当场 `region 'FLASH' overflowed`；`build_image.py` 另有一道核对链接器命令行的检查。**照下面查就行。**
 
 ⚠️ **重新生成后必查这两处**：
 
