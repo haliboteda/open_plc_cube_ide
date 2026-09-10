@@ -43,4 +43,14 @@ int PortRs485_Send(const uint8_t *data, uint16_t len);
 /* Stores one byte and returns 1 if one was waiting, 0 otherwise. Never blocks. */
 int PortRs485_RecvByte(uint8_t *out);
 
+/* Overruns since PortRs485_Init. A lost byte on a half-duplex pair is a real
+ * event; reporting the count is what tells "the reader was late" apart from
+ * "the pair is dead". */
+uint32_t PortRs485_Overruns(void);
+
+/* Zeroes that counter. A session calls it at start so the number means "lost
+ * during this run" rather than "since the board booted" - a limit can only
+ * judge the former. */
+void PortRs485_ResetOverruns(void);
+
 #endif /* TESTCASE_COMMON_PORT_RS485_H_ */

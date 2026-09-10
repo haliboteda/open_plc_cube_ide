@@ -39,6 +39,19 @@
 /* Long enough for "PT 4294967295\n". */
 #define RS485_LINE_MAX 24U
 
+/* How long the tick keeps reading after sending, waiting for the reply.
+ *
+ * Same value as RS485_IDLE_GAP_MS in TestCase/RS485/rs485_test.c, which is the
+ * silence that marks the end of an inbound frame there - so both agree on when
+ * a reply has either arrived or is not coming. It is a spin, but a bounded one
+ * and only once a period; PortRs485_Send already spins for the transmit. */
+#define RS485_REPLY_WINDOW_MS 20U
+
+/* A second bound on that wait, in iterations. 20 ms of polling on this core is
+ * far fewer passes than this, so on a board the time bound is what ends the
+ * loop; this one only matters where the clock does not move. */
+#define RS485_REPLY_MAX_SPINS 200000U
+
 static uint32_t rs485_baud = PORT_RS485_DEFAULT_BAUD;
 static uint32_t rs485_period_ms = 3000U;
 static uint32_t rs485_due_ms;
@@ -107,6 +120,7 @@ static int rs485_start(const char *args, char *err, uint32_t err_len)
     rs485_in_len  = 0U;
     rs485_rxbytes = 0U;
     rs485_junk    = 0U;
+    PortRs485_ResetOverruns();
     PortTool_EchoReset(&rs485_echo);
     rs485_due_ms = HAL_GetTick();
     return 1;
@@ -200,12 +214,47 @@ static void rs485_tick(uint32_t now_ms)
                            (unsigned long)rs485_echo.seq);
     (void)PortRs485_Send((const uint8_t *)out, (uint16_t)n);
 
+    /* Then take the reply here, in a tight loop, instead of leaving it to the
+     * next superloop pass.
+     *
+     * ⚠️ This is what makes the port work at all, and it is why the bring-up
+     * entry point in TestCase/RS485 always did. At 115200 a byte occupies
+     * 87 us and the H7's USART holds exactly one - no FIFO - so the receiver
+     * has to be read faster than that. A superloop pass that prints a frame
+     * spends more than ten milliseconds, so the reply's second byte was gone
+     * before anyone looked, the overrun flag latched, and every later read
+     * failed: rxbytes stuck at 0 until a hardware reset. Measured 2026-09-09
+     * over 265 periods at three different rates - one closed loop, the rest
+     * lost, on wiring that was provably fine.
+     *
+     * RS485_Test_Run's own loop has no printf in it for exactly this reason;
+     * this session has to buy the same property with a bounded spin. The
+     * window is the idle gap the bring-up test uses to mark a frame's end, so
+     * both agree on what "the reply is in" means. */
+    {
+        uint32_t until = HAL_GetTick() + RS485_REPLY_WINDOW_MS;
+        uint32_t spins = RS485_REPLY_MAX_SPINS;
+
+        /* ⚠️ Bounded by iterations as well as by time. The time bound alone is
+         * not enough: on the PC contract harness HAL_GetTick() is a stub whose
+         * clock does not advance, so a loop waiting only on it never ends.
+         * That is the same trap the usb source mode fell into, where the host
+         * stub always accepted a packet and the loop had no other way out. */
+        while ((spins-- > 0u) && ((int32_t)(HAL_GetTick() - until) < 0)) {
+            rs485_drain();
+            if (rs485_echo.have) {
+                break;      /* the number came back - no need to spin on */
+            }
+        }
+    }
+
     n = PortTool_EchoFields(&rs485_echo, body, sizeof(body));
     n += (uint32_t)snprintf(body + n, sizeof(body) - n,
-                            " baud=%lu rxbytes=%lu junk=%lu",
+                            " baud=%lu rxbytes=%lu junk=%lu overrun=%lu",
                             (unsigned long)rs485_baud,
                             (unsigned long)rs485_rxbytes,
-                            (unsigned long)rs485_junk);
+                            (unsigned long)rs485_junk,
+                            (unsigned long)PortRs485_Overruns());
 
     PortTool_Frame("rs485", "%s", body);
 }
