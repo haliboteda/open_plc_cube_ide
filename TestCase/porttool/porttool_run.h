@@ -24,8 +24,12 @@
 #include <stdint.h>
 
 /* Runs one target and prints its OK line. Returns 0 when the name is unknown,
- * in which case nothing was printed and the caller reports the error. */
-int PortTool_RunTarget(const char *name);
+ * in which case nothing was printed and the caller reports the error.
+ *
+ * `args` is what followed the target name on the pt.run line ("bytes=1048576"
+ * and the like), or "" - so a one-shot can be parameterised from a plan file
+ * the same way a session is. Pass NULL and it is treated as empty. */
+int PortTool_RunTarget(const char *name, const char *args);
 
 /* Prints one OK line per target, for pt.run with no argument. */
 void PortTool_RunList(void);

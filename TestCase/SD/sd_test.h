@@ -71,6 +71,19 @@
 
 #include <stdint.h>
 
+/* What is on the card, read from the boot sector rather than from FatFs.
+ *
+ * ⚠️ EXFAT is the one that matters. With _FS_EXFAT 0 an exFAT card fails
+ * f_mount with FR_NO_FILESYSTEM, so a station that only looked at "mounted"
+ * could not tell a good card that needs reformatting from a dead one - and
+ * would have an operator throw the good card away. */
+#define SD_FS_NONE     0u   /* no boot signature at all */
+#define SD_FS_FAT12    1u
+#define SD_FS_FAT16    2u
+#define SD_FS_FAT32    3u
+#define SD_FS_EXFAT    4u
+#define SD_FS_UNKNOWN  5u   /* signature present, none of the above */
+
 typedef struct {
     uint8_t  detected;     /* the PE6 detect pin, before any bus traffic */
     uint8_t  ready;        /* identification succeeded */
@@ -80,6 +93,8 @@ typedef struct {
     uint32_t card_type;
     uint8_t  version_2x;
     uint32_t card_class;
+    uint8_t  fs_type;      /* one of SD_FS_*; NONE when the card is unreadable */
+    uint32_t hal_error;    /* hsd1.ErrorCode after a failed identification */
 } sd_probe_t;
 
 typedef struct {
@@ -105,8 +120,39 @@ typedef struct {
 } sd_stress_t;
 
 void SD_Test_Probe(sd_probe_t *out);
-int  SD_Test_IntegrityOnce(sd_integrity_t *out);
-int  SD_Test_StressOnce(sd_stress_t *out);
+/* One write/read/verify round of `bytes` bytes. 0 means the built-in default.
+ *
+ * The transfer is chunked internally, so `bytes` may be far larger than any
+ * buffer - a plan can ask for a firmware image's worth. The data is
+ * regenerated from its seed on the read pass rather than held in RAM. */
+int  SD_Test_IntegrityOnce(uint32_t bytes, sd_integrity_t *out);
+/* How fast the card moves data, in bytes per second each way.
+ *
+ * ⚠️ Deliberately does NOT verify the content - that is what sd.integrity is
+ * for. Comparing here would put this loop's own compare cost into the rate and
+ * make a fast card look slow.
+ *
+ * What it catches that integrity cannot: a card that works but is far slower
+ * than its class claims. Such a card passes every correctness test and then
+ * makes a firmware update time out in the field. */
+typedef struct {
+    uint8_t  mounted;
+    uint32_t bytes;         /* moved each way */
+    uint32_t write_ms;
+    uint32_t read_ms;
+    uint32_t write_bps;     /* bytes per second; 0 when the time was too short */
+    uint32_t read_bps;
+    int      fresult;       /* -1 never mounted */
+} sd_speed_t;
+
+/* `bytes` each way, 0 for the built-in default. */
+int  SD_Test_Speed(uint32_t bytes, sd_speed_t *out);
+
+/* `passes` rounds of `bytes` each. 0 for either means the built-in default.
+ *
+ * How much traffic counts as proof is a production decision, so a plan says
+ * it - the firmware only measures (DECISIONS.md 22). */
+int  SD_Test_StressOnce(uint32_t bytes, uint32_t passes, sd_stress_t *out);
 
 void SD_Test_Info(void);
 void SD_Test_FileIntegrity(void);

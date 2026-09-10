@@ -16,7 +16,7 @@
 
 #if PORTTOOL_ENABLE
 
-#define PORTTOOL_VERSION "0.8.0"
+#define PORTTOOL_VERSION "0.9.0"
 
 /* Each porttool_<name>.c defines one of these. */
 extern porttool_port_t porttool_ain;
@@ -472,15 +472,18 @@ static void cmd_handover(const char *rest)
 static void cmd_run(const char *rest)
 {
     char name[32];
+    const char *args = NULL;
 
-    PortCmd_Word(rest, name, sizeof(name), NULL);
+    /* What follows the target name is handed to the target, so a one-shot can
+     * be parameterised from a plan the same way a session is. */
+    PortCmd_Word(rest, name, sizeof(name), &args);
 
     if (name[0] == '\0') {
         PortTool_RunList();
         return;
     }
 
-    if (!PortTool_RunTarget(name)) {
+    if (!PortTool_RunTarget(name, args)) {
         printf("ERR no such run target \"%s\" - run pt.run with no argument to "
                "list them\r\n", name);
     }

@@ -3,6 +3,7 @@
 // One-shot actions - see porttool_run.h.
 
 #include "porttool_run.h"
+#include "porttool_cmd.h"
 #include "porttool.h"       /* PORTTOOL_ENABLE, PORTTOOL_REPLY_MAX */
 
 #include <stdio.h>
@@ -20,6 +21,11 @@
 
 /* A target measures, then writes the k=v body of its OK line into `out`.
  *
+ * `args` is whatever followed the target name on the pt.run line, so a target
+ * can take a parameter the way a session does - "pt.run sd.integrity
+ * bytes=1048576". Most ignore it. It comes first for the same reason it does
+ * in a session's apply(): inputs before outputs.
+ *
  * It must not print the OK line itself: the checks it runs print their own
  * prose as they go, and a half-written OK line with a log line inside it is
  * one the PC cannot parse. Measuring first and formatting after keeps the two
@@ -30,12 +36,13 @@ typedef struct {
     const char *board; /* which PCB - see porttool.h PORTTOOL_BOARD_* */
     const char *blk;   /* panel group */
     const char *term;  /* terminal or designator, "-" when there is none */
-    void      (*body)(char *out, uint32_t len);
+    void      (*body)(const char *args, char *out, uint32_t len);
     const char *what;
 } run_target_t;
 
-static void run_sdram_probe(char *out, uint32_t len)
+static void run_sdram_probe(const char *args, char *out, uint32_t len)
 {
+    (void)args;
     sdram_probe_t p;
 
     SDRAM_Test_Probe(&p);
@@ -48,8 +55,9 @@ static void run_sdram_probe(char *out, uint32_t len)
 /* The stress pass the production test guide asks for: the whole 64 MiB, four
  * patterns. Tens of seconds, so a plan step running this needs a timeout that
  * allows for it - the reply carries the milliseconds it actually took. */
-static void run_sdram_sweep(char *out, uint32_t len)
+static void run_sdram_sweep(const char *args, char *out, uint32_t len)
 {
+    (void)args;
     sdram_sweep_t s;
 
     (void) SDRAM_Test_SweepOnce(&s);
@@ -65,8 +73,9 @@ static void run_sdram_sweep(char *out, uint32_t len)
 
 /* One write/wait/read-back cycle. How many cycles a station runs is the plan's
  * business, not the firmware's - the handover entry is the one that loops. */
-static void run_sdram_retention(char *out, uint32_t len)
+static void run_sdram_retention(const char *args, char *out, uint32_t len)
 {
+    (void)args;
     sdram_retention_t r;
 
     (void) SDRAM_Test_RetentionOnce(&r);
@@ -84,8 +93,9 @@ static void run_sdram_retention(char *out, uint32_t len)
  * Only reads. Setting the calendar is deliberately not offered here: the
  * backup domain also holds iap_auth's nonce counter, and a test that writes
  * there would be a test that can roll a security counter back. */
-static void run_rtc_read(char *out, uint32_t len)
+static void run_rtc_read(const char *args, char *out, uint32_t len)
 {
+    (void)args;
     RTC_TimeTypeDef t = {0};
     RTC_DateTypeDef d = {0};
 
@@ -114,8 +124,9 @@ static void run_rtc_read(char *out, uint32_t len)
 #define LED_PULSES     6U
 #define LED_HALF_MS  250U
 
-static void run_led_blink(char *out, uint32_t len)
+static void run_led_blink(const char *args, char *out, uint32_t len)
 {
+    (void)args;
     PortLed_Blink(LED_PULSES, LED_HALF_MS);
 
     /* Reports what it drove, not whether anybody saw it - there is no readback
@@ -124,25 +135,50 @@ static void run_led_blink(char *out, uint32_t len)
              (unsigned long)LED_PULSES, (unsigned long)LED_HALF_MS);
 }
 
-static void run_sd_probe(char *out, uint32_t len)
+/* ⚠️ exfat is a PASS-able state for the card and a FAIL for the station: the
+ * card is fine, the format is not. Saying which is the difference between
+ * "reformat it" and "bin it". */
+static const char *run_sd_fs_name(uint8_t t)
 {
+    switch (t) {
+    case SD_FS_FAT12:   return "fat12";
+    case SD_FS_FAT16:   return "fat16";
+    case SD_FS_FAT32:   return "fat32";
+    case SD_FS_EXFAT:   return "exfat";
+    case SD_FS_UNKNOWN: return "unknown";
+    default:            return "none";
+    }
+}
+
+static void run_sd_probe(const char *args, char *out, uint32_t len)
+{
+    (void)args;
     sd_probe_t p;
 
     SD_Test_Probe(&p);
 
     snprintf(out, len,
-             "detected=%u ready=%u blocks=%lu block_size=%lu mib=%lu v2x=%u class=%lu",
+             "detected=%u ready=%u blocks=%lu block_size=%lu mib=%lu v2x=%u"
+             " class=%lu fs=%s err=0x%08lX",
              (unsigned)p.detected, (unsigned)p.ready,
              (unsigned long)p.block_count, (unsigned long)p.block_size,
              (unsigned long)p.capacity_mib, (unsigned)p.version_2x,
-             (unsigned long)p.card_class);
+             (unsigned long)p.card_class, run_sd_fs_name(p.fs_type),
+             (unsigned long)p.hal_error);
 }
 
-static void run_sd_integrity(char *out, uint32_t len)
+static void run_sd_integrity(const char *args, char *out, uint32_t len)
 {
     sd_integrity_t r;
+    uint32_t bytes = 0;
 
-    (void) SD_Test_IntegrityOnce(&r);
+    /* 0 leaves the default. A plan says how much to move; nothing here caps it
+     * beyond what the card and the filesystem will take, because "how big a
+     * transfer counts as proof" is a production decision, not a firmware one
+     * (DECISIONS.md 22). */
+    (void) PortCmd_GetU32(args, "bytes", &bytes);
+
+    (void) SD_Test_IntegrityOnce(bytes, &r);
 
     /* identical is the whole verdict in one flag, but the parts are reported
      * too: a card that mounts and writes but reads back wrong is a different
@@ -158,8 +194,9 @@ static void run_sd_integrity(char *out, uint32_t len)
 
 /* The PHY over MDIO only - no lwIP, no DMA, no RMII reference clock. See
  * ETH/eth_test.h for what that does and does not prove. */
-static void run_eth_link(char *out, uint32_t len)
+static void run_eth_link(const char *args, char *out, uint32_t len)
 {
+    (void)args;
     eth_probe_t p;
 
     (void) ETH_Test_Probe(&p);
@@ -177,11 +214,38 @@ static void run_eth_link(char *out, uint32_t len)
              (unsigned long)p.mdio_errors);
 }
 
-static void run_sd_stress(char *out, uint32_t len)
+/* ⚠️ B/s, not KB/s: a limit written against a rounded kilobyte figure cannot
+ * express "at least 400 kB/s" without the plan doing arithmetic. The PC
+ * formats it for a person; the wire carries the number it measured. */
+static void run_sd_speed(const char *args, char *out, uint32_t len)
+{
+    sd_speed_t r;
+    uint32_t bytes = 0;
+
+    (void) PortCmd_GetU32(args, "bytes", &bytes);
+    (void) SD_Test_Speed(bytes, &r);
+
+    snprintf(out, len,
+             "mounted=%u bytes=%lu write_ms=%lu read_ms=%lu"
+             " write_bps=%lu read_bps=%lu fresult=%d",
+             (unsigned)r.mounted, (unsigned long)r.bytes,
+             (unsigned long)r.write_ms, (unsigned long)r.read_ms,
+             (unsigned long)r.write_bps, (unsigned long)r.read_bps,
+             r.fresult);
+}
+
+static void run_sd_stress(const char *args, char *out, uint32_t len)
 {
     sd_stress_t s;
+    uint32_t bytes = 0;
+    uint32_t passes = 0;
 
-    (void) SD_Test_StressOnce(&s);
+    /* 0 leaves the defaults. Both are the plan's call: fewer larger rounds and
+     * more smaller ones stress different things about a card. */
+    (void) PortCmd_GetU32(args, "bytes", &bytes);
+    (void) PortCmd_GetU32(args, "passes", &passes);
+
+    (void) SD_Test_StressOnce(bytes, passes, &s);
 
     /* passes is what was attempted and passed is what came back identical, so
      * a run that stopped early is visible as the two differing rather than as
@@ -202,6 +266,8 @@ static const run_target_t targets[] = {
       "one write/read/verify round through FatFs; reports both CRCs" },
     { "sd.stress",       "sd", PORTTOOL_BOARD_BRIDGE, "-", "J6", run_sd_stress,
       "64 write/read/verify rounds; reports rounds passed and elapsed time" },
+    { "sd.speed",        "sd", PORTTOOL_BOARD_BRIDGE, "-", "J6", run_sd_speed,
+      "how fast the card moves data each way; does not verify content" },
     { "sdram.probe",     "sdram", PORTTOOL_BOARD_BRIDGE, "-", "U6", run_sdram_probe,
       "FMC bring-up, data bus and address bus; reports the window and three flags" },
     { "sdram.sweep",     "sdram", PORTTOOL_BOARD_BRIDGE, "-", "U6", run_sdram_sweep,
@@ -296,7 +362,7 @@ uint32_t PortTool_RunCaps(int emit)
     return lines;
 }
 
-int PortTool_RunTarget(const char *name)
+int PortTool_RunTarget(const char *name, const char *args)
 {
     char body[PORTTOOL_REPLY_MAX];
 
@@ -305,7 +371,7 @@ int PortTool_RunTarget(const char *name)
             continue;
         }
         body[0] = '\0';
-        targets[i].body(body, (uint32_t)sizeof(body));
+        targets[i].body(args, body, (uint32_t)sizeof(body));
         printf("OK %s %s\r\n", targets[i].name, body);
         return 1;
     }
