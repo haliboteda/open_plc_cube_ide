@@ -79,7 +79,7 @@ A 接 **C09**，B 接 **C10**（就是之前记的 COM16 那个适配器）。
 1. 备份域里的 `iap_auth` nonce 计数器 —— 工装镜像里根本没有 `iap_auth`（[../design/DECISIONS.md 第 33 条](../design/DECISIONS.md)底下那一段），备份域随便初始化
 2. 时钟源 —— 用户同意换 **LSE**，硬件本来就有晶振和备份电池（[../design/DECISIONS.md 第 36 条](../design/DECISIONS.md)）
 
-⚠️ **换 LSE 要改 `.ioc` 重新生成，得开一次 CubeIDE。** 在那之前写校准没有意义 —— LSI 一天漂一个多小时。
+⚠️ **换 LSE 要改 `.ioc` 重新生成，得开一次 CubeIDE。** 要点哪几下、生成之后必须查什么，写在 [../design/RTC-LSE-CHANGE.md](../design/RTC-LSE-CHANGE.md)。在那之前写校准没有意义 —— LSI 一天漂一个多小时。
 
 ---
 
