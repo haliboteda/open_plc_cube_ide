@@ -48,10 +48,20 @@ typedef struct {
 extern const port_dout_t port_dout_pins[PORT_DOUT_COUNT];
 
 /* Configures all eight as push-pull outputs, driven low, and starts the PWM
- * timer at `freq_hz`. Returns 0 if the timer refused to start, in which case
- * nothing is driven - a half-configured output port would be worse than none.
- * Safe to call more than once; a later call only changes the frequency. */
-int PortDout_Init(uint32_t freq_hz);
+ * timer. Every channel starts at PORT_DOUT_FREQ_DEF_HZ. Returns 0 if the timer
+ * refused to start, in which case nothing is driven - a half-configured output
+ * port would be worse than none. Safe to call more than once. */
+int PortDout_Init(void);
+
+/* Frequency for ONE channel. Clamped to the min/max above. Returns 0 only if
+ * the timer refused the rate the new set of frequencies needs, in which case
+ * the previous frequency is put back.
+ *
+ * *** Each channel really is independent, unlike the hardware timer channels
+ * *** these pins sit on - see the note at the top of this file. What is shared
+ * *** is the interrupt rate, which the fastest channel sets. A slow channel
+ * *** beside a fast one is therefore resolved more finely, never less. */
+int PortDout_SetFreq(int ch, uint32_t freq_hz);
 
 /* 0..100. A channel at 0 or 100 is held steady rather than switched, so a
  * plain on/off needs no PWM edges at all. Out-of-range channels are ignored. */
@@ -66,8 +76,13 @@ void PortDout_AllOff(void);
  * channel, and an interrupt still writing that pin would fight it. */
 void PortDout_Stop(void);
 
-/* What the timer actually landed on, which is not always what was asked for:
- * the prescaler is an integer. */
-uint32_t PortDout_ActualFreqHz(void);
+/* What one channel actually landed on, which is not always what was asked for:
+ * the interrupt rate is quantised by the prescaler, and each channel's
+ * increment is quantised by that rate. */
+uint32_t PortDout_ActualFreqHz(int ch);
+
+/* The shared interrupt rate. Reported so the resolution behind those
+ * frequencies is visible rather than something to be inferred. */
+uint32_t PortDout_TickHz(void);
 
 #endif /* TESTCASE_COMMON_PORT_DOUT_H_ */

@@ -150,7 +150,7 @@ static int soak_start(const char *args, char *err, uint32_t err_len)
             snprintf(err, err_len, "the ADC would not start");
             return 0;
         }
-        if (!PortDout_Init(PORT_DOUT_FREQ_DEF_HZ)) {
+        if (!PortDout_Init()) {
             snprintf(err, err_len, "the high-side outputs would not start");
             return 0;
         }

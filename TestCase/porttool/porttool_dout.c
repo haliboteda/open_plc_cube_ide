@@ -7,11 +7,26 @@
 //   mode=hold     hold each duty, or blink             (default hold)
 //   duty=100      one duty for every selected channel  (default 0)
 //   duty=1:20,5:75  or a duty per channel, in percent
-//   freq=1000     PWM frequency in Hz                  (default 1000)
+//   freq=1000     one PWM frequency for every selected channel (default 1000)
+//   freq=1:1000,5:250  or a frequency per channel, in Hz
 //   period=1000   blink half period, ms                (default 1000, floor 50)
 //
 // Frame:
-//   !dout t=48213 seq=1 rx=0 miss=0 mode=hold freq=1000 ch1=20 ch5=75
+//   !dout t=48213 seq=1 rx=0 miss=0 mode=hold tick=100000 ch1=20 ch5=75
+//
+// *** ch<n> stays a plain duty. The per-channel FREQUENCY is reported by
+// *** pt.caps instead of here, for two reasons: a frame carrying both for all
+// *** eight channels runs past PORTTOOL_LINE_MAX, and a plan criterion like
+// *** "ch1 eq 100" would have to become "ch1 eq 100@1000" - a duty check that
+// *** fails when somebody changes the frequency.
+//
+// *** tick= is the shared interrupt rate, which is the fastest channel times
+// *** the duty resolution. It is the resolution behind every frequency the
+// *** port reports, so it is said out loud rather than left to be inferred.
+//
+// *** What caps reports for freq is what each channel ACTUALLY landed on, not
+// *** what was asked for: the rate is quantised by the prescaler and the
+// *** increment by the rate. Reporting the request back would hide both.
 //
 // *** There is deliberately no on= parameter. duty=0 is off and duty=100 is
 // *** on, so a separate switch would be a second way to say the same thing and
@@ -37,7 +52,16 @@ typedef enum { DOUT_MODE_HOLD = 0, DOUT_MODE_BLINK } dout_mode_t;
 static uint32_t    dout_mask = (1U << PORT_DOUT_COUNT) - 1U;
 static dout_mode_t dout_mode = DOUT_MODE_HOLD;
 static uint32_t    dout_duty[PORT_DOUT_COUNT];
-static uint32_t    dout_freq_hz = PORT_DOUT_FREQ_DEF_HZ;
+/* Spelled out rather than left at zero: caps is read before any session has
+ * started, and a frequency of 0 there would be a value the panel would offer
+ * back as if the board had chosen it. */
+_Static_assert(PORT_DOUT_COUNT == 8, "the frequency defaults below list eight");
+static uint32_t    dout_freq_hz[PORT_DOUT_COUNT] = {
+    PORT_DOUT_FREQ_DEF_HZ, PORT_DOUT_FREQ_DEF_HZ,
+    PORT_DOUT_FREQ_DEF_HZ, PORT_DOUT_FREQ_DEF_HZ,
+    PORT_DOUT_FREQ_DEF_HZ, PORT_DOUT_FREQ_DEF_HZ,
+    PORT_DOUT_FREQ_DEF_HZ, PORT_DOUT_FREQ_DEF_HZ,
+};
 static uint32_t    dout_period_ms = 1000U;
 static uint32_t    dout_due_ms;
 static int         dout_dark;         /* blink phase: driving 0 rather than duty */
@@ -74,12 +98,13 @@ static int dout_apply(const char *args, char *err, uint32_t err_len)
 
     uint32_t    want_mask   = dout_mask;
     dout_mode_t want_mode   = dout_mode;
-    uint32_t    want_freq   = dout_freq_hz;
     uint32_t    want_period = dout_period_ms;
     uint32_t    want_duty[PORT_DOUT_COUNT];
+    uint32_t    want_freq[PORT_DOUT_COUNT];
 
     for (int i = 0; i < PORT_DOUT_COUNT; i++) {
         want_duty[i] = dout_duty[i];
+        want_freq[i] = dout_freq_hz[i];
     }
 
     if (PortCmd_GetStr(args, "ch", probe, sizeof(probe))) {
@@ -123,15 +148,41 @@ static int dout_apply(const char *args, char *err, uint32_t err_len)
         }
     }
 
+    /* Same two shapes as duty: one value for every selected channel, or a
+     * value per channel. The pairs form is what makes these eight outputs
+     * genuinely independent - see port_dout.h. */
     if (PortCmd_GetStr(args, "freq", probe, sizeof(probe))) {
-        if (!PortCmd_GetU32(args, "freq", &v) ||
-            v < PORT_DOUT_FREQ_MIN_HZ || v > PORT_DOUT_FREQ_MAX_HZ) {
-            snprintf(err, err_len, "freq=\"%s\" must be %lu..%lu Hz",
-                     probe, (unsigned long)PORT_DOUT_FREQ_MIN_HZ,
-                     (unsigned long)PORT_DOUT_FREQ_MAX_HZ);
-            return 0;
+        if (strchr(probe, ':') != NULL) {
+            if (!PortCmd_GetPairs(args, "freq", PORT_DOUT_COUNT,
+                                  PORT_DOUT_FREQ_MAX_HZ, want_freq, NULL)) {
+                snprintf(err, err_len,
+                         "freq=\"%s\" must be like 1:1000,5:250 - outputs 1..%d, "
+                         "%lu..%lu Hz, each output named at most once",
+                         probe, PORT_DOUT_COUNT,
+                         (unsigned long)PORT_DOUT_FREQ_MIN_HZ,
+                         (unsigned long)PORT_DOUT_FREQ_MAX_HZ);
+                return 0;
+            }
+            for (int i = 0; i < PORT_DOUT_COUNT; i++) {
+                if (want_freq[i] < PORT_DOUT_FREQ_MIN_HZ) {
+                    snprintf(err, err_len,
+                             "freq=\"%s\" names output %d below the %lu Hz floor",
+                             probe, i + 1, (unsigned long)PORT_DOUT_FREQ_MIN_HZ);
+                    return 0;
+                }
+            }
+        } else {
+            if (!PortCmd_GetU32(args, "freq", &v) ||
+                v < PORT_DOUT_FREQ_MIN_HZ || v > PORT_DOUT_FREQ_MAX_HZ) {
+                snprintf(err, err_len, "freq=\"%s\" must be %lu..%lu Hz",
+                         probe, (unsigned long)PORT_DOUT_FREQ_MIN_HZ,
+                         (unsigned long)PORT_DOUT_FREQ_MAX_HZ);
+                return 0;
+            }
+            for (int i = 0; i < PORT_DOUT_COUNT; i++) {
+                want_freq[i] = v;
+            }
         }
-        want_freq = v;
     }
 
     if (PortCmd_GetStr(args, "period", probe, sizeof(probe))) {
@@ -144,10 +195,25 @@ static int dout_apply(const char *args, char *err, uint32_t err_len)
 
     dout_mask      = want_mask;
     dout_mode      = want_mode;
-    dout_freq_hz   = want_freq;
     dout_period_ms = want_period;
     for (int i = 0; i < PORT_DOUT_COUNT; i++) {
         dout_duty[i] = want_duty[i];
+        dout_freq_hz[i] = want_freq[i];
+    }
+    return 1;
+}
+
+/* Pushes the wanted frequencies at the hardware. Separate from dout_drive
+ * because the timer is reprogrammed by it: the duty of an unselected channel
+ * is left alone, but the interrupt rate is shared and therefore always is. */
+static int dout_drive_freq(char *err, uint32_t err_len)
+{
+    for (int i = 0; i < PORT_DOUT_COUNT; i++) {
+        if (!PortDout_SetFreq(i + 1, dout_freq_hz[i])) {
+            snprintf(err, err_len, "the PWM timer would not take %lu Hz on output %d",
+                     (unsigned long)dout_freq_hz[i], i + 1);
+            return 0;
+        }
     }
     return 1;
 }
@@ -157,8 +223,11 @@ static int dout_start(const char *args, char *err, uint32_t err_len)
     if (!dout_apply(args, err, err_len)) {
         return 0;
     }
-    if (!PortDout_Init(dout_freq_hz)) {
+    if (!PortDout_Init()) {
         snprintf(err, err_len, "the PWM timer would not start");
+        return 0;
+    }
+    if (!dout_drive_freq(err, err_len)) {
         return 0;
     }
     dout_inited = 1;
@@ -171,14 +240,10 @@ static int dout_start(const char *args, char *err, uint32_t err_len)
 
 static int dout_set(const char *args, char *err, uint32_t err_len)
 {
-    uint32_t was_freq = dout_freq_hz;
-
     if (!dout_apply(args, err, err_len)) {
         return 0;
     }
-    if (dout_freq_hz != was_freq && !PortDout_Init(dout_freq_hz)) {
-        snprintf(err, err_len, "the PWM timer would not take %lu Hz",
-                 (unsigned long)dout_freq_hz);
+    if (!dout_drive_freq(err, err_len)) {
         return 0;
     }
     dout_drive();
@@ -211,9 +276,9 @@ static void dout_tick(uint32_t now_ms)
 
     PortTool_EchoTick(&dout_echo);
     n = PortTool_EchoFields(&dout_echo, body, sizeof(body));
-    n += (uint32_t)snprintf(body + n, sizeof(body) - n, " mode=%s freq=%lu",
+    n += (uint32_t)snprintf(body + n, sizeof(body) - n, " mode=%s tick=%lu",
                             (dout_mode == DOUT_MODE_BLINK) ? "blink" : "hold",
-                            (unsigned long)PortDout_ActualFreqHz());
+                            (unsigned long)PortDout_TickHz());
 
     for (int i = 0; i < PORT_DOUT_COUNT && n < sizeof(body); i++) {
         if ((dout_mask & (1U << i)) == 0U) { continue; }
@@ -233,14 +298,30 @@ static void dout_caps(char *out, uint32_t out_len)
 {
     char sel[40];
     char duty[80];
+    char freq[96];
 
     PortCmd_FormatMask(dout_mask, PORT_DOUT_COUNT, sel, sizeof(sel));
     PortCmd_FormatPairs(dout_duty, dout_mask, PORT_DOUT_COUNT, duty, sizeof(duty));
-    snprintf(out, out_len, "ch=%s mode=%s duty=%s freq=%lu period=%lu",
+    /* What each channel landed on, not what was asked for. caps is "what this
+     * port is set to now", and the clamped-and-quantised value is that. */
+    uint32_t actual[PORT_DOUT_COUNT];
+    for (int i = 0; i < PORT_DOUT_COUNT; i++) {
+        actual[i] = dout_inited ? PortDout_ActualFreqHz(i + 1) : dout_freq_hz[i];
+    }
+    /* *** All eight, not just the selected ones, and this is the difference
+     * *** that matters: the panel fills a control per channel from this line,
+     * *** and a channel missing from it gets a zero. Zero is a legal duty, so
+     * *** duty can be reported masked; zero is BELOW the frequency floor, so
+     * *** a masked freq line makes the panel send freq=5:0 the moment somebody
+     * *** ticks channel 5 - and the board refuses the whole command. Found by
+     * *** case H5 against the board on 2026-09-10; the simulated board could
+     * *** not show it, because nothing there re-selects channels. */
+    PortCmd_FormatPairs(actual, (1U << PORT_DOUT_COUNT) - 1U,
+                        PORT_DOUT_COUNT, freq, sizeof(freq));
+    snprintf(out, out_len, "ch=%s mode=%s duty=%s freq=%s period=%lu",
              sel,
              (dout_mode == DOUT_MODE_BLINK) ? "blink" : "hold",
-             duty,
-             (unsigned long)dout_freq_hz,
+             duty, freq,
              (unsigned long)dout_period_ms);
 }
 
