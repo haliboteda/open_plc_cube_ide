@@ -516,6 +516,16 @@ stm32cubeidec.exe … -application org.eclipse.cdt.managedbuilder.core.headlessb
 
 **这条不允许的事**：把这个原则读成「工装镜像里可以留一个能擦 app 区的服务器」。第 31 条那个 `#if` 不是「为 flash 让路」，是**不让工装带上它不需要的破坏能力**。两件事方向相反。
 
+### 工装也不考虑任何安全机制
+
+用户 2026-09-10 的原话：**「工装不要考虑任何安全，防重放一类的事。」**
+
+**所以**：签名、证书链、挑战认证、`iap_auth` 的 nonce 计数器、owner 记录 —— 这些在工装镜像里**一件都不存在**，也不需要为它们让路。
+
+**这条直接解掉的一个死结**：RTC 一直没敢动，理由是「备份域里住着 `iap_auth` 的 nonce 计数器，初始化会清掉它」。**在工装镜像里那个计数器不存在**，所以备份域可以随便初始化。剩下的唯一障碍是时钟源（见 [HARDWARE-FACTS.md](HARDWARE-FACTS.md) 的 RTC 一节）。
+
+⚠️ **这条只管工装镜像。** bootloader 那边这些机制一个都不能少。
+
 ## 34 · 面板改了参数就存回方案文件；限值仍然不可编辑
 
 用户 2026-09-09：**「面板改了，就直接存方案里。」**
@@ -536,3 +546,29 @@ stm32cubeidec.exe … -application org.eclipse.cdt.managedbuilder.core.headlessb
 **留痕**：写回时往面板日志写一行（哪个方案、哪一步、哪个参数、从什么改成什么）。方案文件本身在 git 里，所以谁改了什么由 git 记着 —— 这也是为什么参数存回是安全的而限值不是：`limit_version` 不会因为改了个周期而变，报告里那份追溯链没有被动过。
 
 ⚠️ **产线跑的不是 git 里那份**，是打包在 exe 旁边的 `Output/windows/plans/` 副本。所以「留痕靠 git」只对工程师的机器成立 —— 这正是限值必须由**服务端**而不是页面守住的原因：`$TOOL/internal/ptpanel/plan.go` 的 `keepLimits` 在每次保存时把 `checks` 和 `limit_version` 从磁盘那份原样取回，页面发什么都不算数。
+
+## 35 · DIN 导轨扩展口不测
+
+用户 2026-09-10 的原话：**「DIN 导轨扩展口先不测，没法测。」**
+
+**决定**：`JunctionLink J4`（20 pin，Samtec ERF8）整个不进工装的测试范围。**不是「暂缓」，是这一版不做** —— 上面那 20 个脚（SPI2 / I2C2 / UART4 / SPI6 / JTAG 四线 / Debug Trigger）一个都不测。
+
+**为什么这条不是遗憾**：那个口上没有任何东西是**只能**从它验的。SPI2、I2C2、SPI6 在这块板上没有别的用户；JTAG 四线是 ST-Link 每次烧录都在用的，烧得进去就说明它通。真正独占那个口的只有 `PH13/PH14` 的 TTL 串口，而它和工装自己的命令通道共用 UART4（[HARDWARE-FACTS.md](HARDWARE-FACTS.md) 的「UART4 与 USART3」一节），测它就要放弃控制台。
+
+**什么情况下重开**：有了能插到 J4 上的工装板，能同时给那 20 个脚加激励、读回应 —— 那时才谈得上测它。在那之前写任何代码都是写完没法验。
+
+## 36 · RTC 时钟源从 LSI 换成 LSE
+
+用户 2026-09-10：**「同意改 lse。」**
+
+**决定**：三边（bootloader / 工装镜像 / 客户 app）的 RTC 全部改用 **LSE**（外部 32.768 kHz 晶振）。改 `.ioc` 重新生成，不做只给工装打补丁的分叉。
+
+**硬件本来就齐**：晶振 **XTAL2**（ABS07 系列，Bridge 板顶层，在贴片坐标里）、备份电池 **BAT1 = VL1220/1HF**。固件从来没用上 —— [Core/Src/rtc.c:74](../../Core/Src/rtc.c) 写死 `RCC_RTCCLKSOURCE_LSI`，`.ioc` 里 LSE 压根没打开（`RCC.RTCFreq_Value=32000` 是 LSI 的值）。
+
+**为什么不能凑合用 LSI**：LSI 是片内 RC，±5% 量级并随温度漂，**一天最坏能差一个多小时**。产线报告里的时间戳、升级事件 journal 的时间、客户 app 的日历控制，三样都因此没有追溯价值。LSE 是石英，±20 ppm 量级，一天约 2 秒。
+
+**为什么不只给工装改**：补丁会让 bootloader 和 app 继续用漂的钟，以后还要再改一遍，而且三份镜像的时间对不上。
+
+⚠️ **LSI 不会被删**：独立看门狗（IWDG）只能由 LSI 驱动，那是硬件规定，和 RTC 无关。
+
+⚠️ **这是 CubeMX 生成区**，重新生成后有两项必查 —— [CUBEMX-RULES.md](CUBEMX-RULES.md)。另外 LSE 起振要几百 ms 到 2 s，比 LSI 慢得多，**启动路径上任何等 RTC 就绪的地方都要重新看一遍超时**。
