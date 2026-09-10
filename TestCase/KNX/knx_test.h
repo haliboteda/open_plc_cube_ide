@@ -260,6 +260,29 @@ typedef struct {
     uint32_t ms_since_edge;
 } knx_session_stats_t;
 
+/* Longest frame the board assembles or sends, octets. A KNX standard frame can
+ * carry up to 23; this is the buffer the bring-up path has always used, and a
+ * longer frame is reported truncated rather than dropped. */
+#define KNX_FRAME_MAX      16u
+
+/* Which reading of a received frame's octets passed the check octet. Both are
+ * reported because the RX chain's polarity is not settled on this board: the
+ * octets as received may be the frame, or the frame may be their bit-inverse.
+ * This is the machine's answer to "which reading is the real KNX frame". */
+#define KNX_FRAME_CRC_BAD   0u   /* neither reading passes */
+#define KNX_FRAME_CRC_RAW   1u   /* the octets as received are the frame */
+#define KNX_FRAME_CRC_INV   2u   /* the frame is the octets bit-inverted */
+
+/* A lone octet is an acknowledge, not a frame, and has no check octet. Judging
+ * one as a bad frame would make every answered transmission look like a
+ * failure - a real installation answers every frame it accepts. */
+#define KNX_ACK_NONE        0u   /* not a valid acknowledge octet */
+#define KNX_ACK_ACK         1u   /* L_Ack ACK - the frame was accepted */
+#define KNX_ACK_NAK         2u
+#define KNX_ACK_BUSY        3u
+
+uint8_t KNX_Test_AckKind(uint8_t octet);
+
 int  KNX_Test_SessionInit(void);
 void KNX_Test_SessionStatsReset(void);
 
@@ -268,6 +291,22 @@ int  KNX_Test_SessionSendChar(uint8_t b);
 
 /* 1 when a character closed. Never blocks. */
 int  KNX_Test_SessionPollChar(uint8_t *out, uint8_t *framing_ok);
+
+/* Frame layer. PollFrame drains every queued character, assembles frames and
+ * returns 1 once per completed frame; bad_chars counts the characters that
+ * failed framing/parity during this call whether or not a frame closed.
+ * Never blocks. Call FrameReset when a session starts. */
+void     KNX_Test_SessionFrameReset(void);
+int      KNX_Test_SessionPollFrame(uint8_t *out, uint8_t *out_len, uint8_t cap,
+                                   uint8_t *which, uint8_t *bad_chars);
+uint32_t KNX_Test_SessionPartialFrames(void);
+
+/* Builds an L_Data_Standard GroupValueWrite (DPT 1.001) and puts it on the bus
+ * as one frame, so the inter-character gap stays the two idle bits the
+ * encoding carries. ⚠️ Spins for about 12 ms. Returns the octet count. */
+uint8_t  KNX_Test_SessionSendGroupWrite(uint16_t src, uint16_t ga, uint8_t value,
+                                        uint8_t *out, uint8_t cap,
+                                        uint8_t *bus_was_idle);
 
 void KNX_Test_SessionStats(knx_session_stats_t *out);
 

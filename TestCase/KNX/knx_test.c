@@ -71,7 +71,8 @@
 #define KNX_SEND_FRAMES          1u   /* 0 = send a lone character instead */
 #define KNX_SRC_ADDR        0xFFFAu   /* 15.15.250 - no real device owns this */
 #define KNX_GROUP_ADDR      0x0801u   /* 1/0/1  = main<<11 | middle<<8 | sub */
-#define KNX_FRAME_MAX           16u   /* octets */
+/* KNX_FRAME_MAX lives in the header: a session caller has to size its own
+ * buffer to it. */
 #define KNX_TX_BITS_MAX     (KNX_FRAME_MAX * KNX_CHAR_BITS)
 
 /* TP1 wants the line quiet before a device may start sending. */
@@ -634,7 +635,11 @@ static void knx_tx_send_bits(const uint8_t *bits, uint16_t len)
 
 static void knx_encode_char(uint8_t b, uint8_t *bits);   /* defined below */
 
-#if KNX_TX_ENABLE
+/* The three calls below are outside KNX_TX_ENABLE on purpose: that macro says
+ * whether KNX_Test_Run() transmits on its own fixed cadence, not whether the
+ * board is able to build and send a frame at all. The port tool session needs
+ * the ability without the cadence - it sends only when a caller names a group
+ * address. */
 
 /* Builds an L_Data_Standard GroupValueWrite carrying a 6-bit small payload,
  * which is how DPT 1.001 switch commands travel. Returns the octet count. */
@@ -688,8 +693,6 @@ static uint8_t knx_wait_bus_idle(void)
 	}
 	return 0u;
 }
-
-#endif /* KNX_TX_ENABLE */
 
 /* --- TP1 character encode / decode -------------------------------------- */
 
@@ -1004,9 +1007,21 @@ static knx_bus_t knx_bus_state(uint8_t *vccOk, uint8_t *busOk, uint8_t *rxIdle)
 
 	*vccOk = v; *busOk = k; *rxIdle = r;
 
-	if ((v != 0u) && (k != 0u) && (r == 0u)) { return KNX_BUS_OK;   }
-	if ((v == 0u) && (k == 0u) && (r != 0u)) { return KNX_BUS_DEAD; }
-	return KNX_BUS_ODD;
+	/* PH12 alone decides, because it is the only one of the three that was
+	 * measured to follow the bus: pulling C03/C04 takes it to 0 and plugging
+	 * back takes it to 1, reproduced twice on 2026-09-09.
+	 *
+	 * The other two are still reported - they are just not judged:
+	 *   PA10 is high when the line is idle, not low. /KNX_RX is active low and
+	 *   has no board pull-up, so the idle level comes from the MCU's own
+	 *   pull-up. Requiring r == 0 here made a healthy bus read as odd.
+	 *   PD7 does not move at all on this board, not even with the isolated
+	 *   side fully unpowered, so what it means is unknown.
+	 *
+	 * Frame-level proof that the bus works regardless: 47 GroupValueWrites
+	 * sent, 47 heard back with the check octet passing, 47 acknowledged by a
+	 * real device on the installation. See docs/design/HARDWARE-FACTS.md. */
+	return (v != 0u) ? KNX_BUS_OK : KNX_BUS_DEAD;
 }
 
 static void knx_bus_print(knx_bus_t st, uint8_t v, uint8_t k, uint8_t r)
@@ -2288,6 +2303,176 @@ int KNX_Test_SessionPollChar(uint8_t *out, uint8_t *framing_ok)
     if (out != NULL)        { *out = got; }
     if (framing_ok != NULL) { *framing_ok = good; }
     return 1;
+}
+
+/* --- Session frame layer ------------------------------------------------- */
+
+/* Which reading of the octets passes the check octet. Both are tried because
+ * the RX chain's polarity is not settled on this board: the octets as received
+ * may be the frame, or the frame may be their bit-inverse. The check octet is
+ * the XOR of every earlier octet, inverted. Inverting every octet inverts the
+ * expected check octet too, so the inverted reading passes when the received
+ * check octet equals the XOR of the inverted octets. */
+static uint8_t knx_frame_which(const uint8_t *f, uint8_t n)
+{
+    uint8_t x = 0u, xi = 0u;
+
+    if (n < 2u) {
+        return KNX_FRAME_CRC_BAD;
+    }
+    for (uint8_t i = 0u; (i + 1u) < n; i++) {
+        x  ^= f[i];
+        xi ^= (uint8_t) ~f[i];
+    }
+    if (f[n - 1u] == (uint8_t) ~x)  { return KNX_FRAME_CRC_RAW; }
+    if (f[n - 1u] == xi)            { return KNX_FRAME_CRC_INV; }
+    return KNX_FRAME_CRC_BAD;
+}
+
+/* A lone octet on TP1 is never a frame - it is an acknowledge, and it carries
+ * no check octet to judge. The masks are the same ones knx_describe() uses for
+ * its prose further down (from knx/tpuart_data_link_layer.cpp:55-64), kept in
+ * one function here so the session and the console path cannot disagree about
+ * what 0xCC means. */
+uint8_t KNX_Test_AckKind(uint8_t octet)
+{
+    if ((octet & 0x33u) != 0x00u) {
+        return KNX_ACK_NONE;
+    }
+    if (((octet & 0x0Cu) != 0u) && ((octet & 0xC0u) != 0u)) {
+        return KNX_ACK_ACK;
+    }
+    if ((octet & 0xC0u) == 0u) {
+        return KNX_ACK_NAK;
+    }
+    return KNX_ACK_BUSY;
+}
+
+static uint8_t  s_sesFrame[KNX_FRAME_MAX];
+static uint8_t  s_sesLen;
+static uint8_t  s_sesOut[KNX_FRAME_MAX];
+static uint8_t  s_sesOutLen;
+static uint8_t  s_sesOutWhich;
+static uint8_t  s_sesOutReady;
+static uint32_t s_sesLastMs;
+static uint32_t s_sesPartial;
+
+void KNX_Test_SessionFrameReset(void)
+{
+    s_sesLen      = 0u;
+    s_sesOutLen   = 0u;
+    s_sesOutReady = 0u;
+    s_sesPartial  = 0u;
+    s_sesLastMs   = HAL_GetTick();
+}
+
+static void knx_ses_publish(uint8_t which)
+{
+    for (uint8_t i = 0u; i < s_sesLen; i++) { s_sesOut[i] = s_sesFrame[i]; }
+    s_sesOutLen   = s_sesLen;
+    s_sesOutWhich = which;
+    s_sesOutReady = 1u;
+    s_sesLen      = 0u;
+}
+
+/* Feeds one received octet. Octet 5 low nibble is the APDU length and a
+ * standard frame is 8 + that - but octet 5 is itself subject to the polarity
+ * question, so both lengths are tried. Whichever total the octets reach first
+ * with a passing check octet is the frame. */
+static void knx_ses_feed(uint8_t b)
+{
+    if (s_sesLen < KNX_FRAME_MAX) {
+        s_sesFrame[s_sesLen] = b;
+        s_sesLen++;
+    }
+    s_sesLastMs = HAL_GetTick();
+
+    if (s_sesLen < 6u) {
+        return;
+    }
+
+    uint8_t rawTotal = (uint8_t) (8u + (s_sesFrame[5] & 0x0Fu));
+    uint8_t invTotal = (uint8_t) (8u + ((uint8_t) ~s_sesFrame[5] & 0x0Fu));
+    uint8_t longest  = (rawTotal > invTotal) ? rawTotal : invTotal;
+
+    if ((s_sesLen == rawTotal) || (s_sesLen == invTotal)) {
+        uint8_t which = knx_frame_which(s_sesFrame, s_sesLen);
+        if (which != KNX_FRAME_CRC_BAD) {
+            knx_ses_publish(which);
+            return;
+        }
+    }
+    if ((s_sesLen >= longest) || (s_sesLen >= KNX_FRAME_MAX)) {
+        knx_ses_publish(KNX_FRAME_CRC_BAD);
+    }
+}
+
+/* Closes a frame that stopped mid-way, so a single-octet ACK or a truncated
+ * frame is reported rather than swallowed by the next one. */
+static void knx_ses_frame_timeout(void)
+{
+    if ((s_sesOutReady == 0u) && (s_sesLen != 0u)
+        && ((HAL_GetTick() - s_sesLastMs) > 30u)) {
+        s_sesPartial++;
+        knx_ses_publish(knx_frame_which(s_sesFrame, s_sesLen));
+    }
+}
+
+int KNX_Test_SessionPollFrame(uint8_t *out, uint8_t *out_len, uint8_t cap,
+                              uint8_t *which, uint8_t *bad_chars)
+{
+    uint8_t b = 0u, ok = 0u;
+    uint8_t bad = 0u;
+
+    /* Stops taking characters the moment a frame is ready: only one completed
+     * frame is held, so draining past it would overwrite the first of two
+     * frames that arrived back to back. The characters stay queued in the
+     * decoder's own ring for the next call. */
+    while ((s_sesOutReady == 0u) && (KNX_Test_SessionPollChar(&b, &ok) != 0)) {
+        if (ok == 0u) { bad++; }
+        knx_ses_feed(b);
+    }
+    knx_ses_frame_timeout();
+
+    if (bad_chars != NULL) { *bad_chars = bad; }
+    if (s_sesOutReady == 0u) {
+        return 0;
+    }
+    s_sesOutReady = 0u;
+
+    uint8_t n = (s_sesOutLen > cap) ? cap : s_sesOutLen;
+    for (uint8_t i = 0u; i < n; i++) { out[i] = s_sesOut[i]; }
+    if (out_len != NULL) { *out_len = n; }
+    if (which != NULL)   { *which = s_sesOutWhich; }
+    return 1;
+}
+
+uint32_t KNX_Test_SessionPartialFrames(void)
+{
+    return s_sesPartial;
+}
+
+/* ⚠️ Spins for about 12 ms - nine characters at 1.35 ms each. Returns the
+ * octet count put on the bus, 0 only if out was too small. bus_was_idle says
+ * whether TP1 arbitration found the line quiet; the frame goes out either way,
+ * because a bus that never falls quiet must not stall a production test. */
+uint8_t KNX_Test_SessionSendGroupWrite(uint16_t src, uint16_t ga, uint8_t value,
+                                       uint8_t *out, uint8_t cap,
+                                       uint8_t *bus_was_idle)
+{
+    uint8_t frame[KNX_FRAME_MAX];
+    uint8_t n = knx_build_group_write(frame, src, ga, value);
+    uint8_t idle;
+
+    if (cap < n) {
+        return 0u;
+    }
+    idle = knx_wait_bus_idle();
+    if (bus_was_idle != NULL) { *bus_was_idle = idle; }
+
+    knx_send_frame(frame, n);
+    for (uint8_t i = 0u; i < n; i++) { out[i] = frame[i]; }
+    return n;
 }
 
 void KNX_Test_SessionStats(knx_session_stats_t *out)
