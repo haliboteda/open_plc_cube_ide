@@ -134,7 +134,7 @@ DI 八路读回、DO 八路 + 软件 PWM、继电器逐路驱动、温度两路�
 | AO 电流 + 校准 | DUT 输出设定电流，工装板读回实测判定并校准 | 🔨 会话 `aout` 有（报 asked / 量化 / µA），**校准没有；实测电流板上读不回来** |
 | CAN 通信 | 与固定 CAN 设备传文件，报速率 | 🔨 **会话有了**（`loop=link`，`baud` 四档、`normal/listen/loopback` 三种模式，报 `tx/rx_frames/junk/tec/rec/lec`，主机可判）。按[第 23 条](DECISIONS.md)判据是「固定帧数无丢包 + 错误计数为 0」不是速率 |
 | RS485 通信 | 同上 | 🔨 会话 `rs485` 有（`loop=link`，报 `seq/rx/miss/junk`），**不是「传文件测速率」** |
-| KNX 通信 | 同上 | 🔨 **会话有了**（`loop=link`，`mode=loopback|listen`）：回路是 MCU → STKNX → 总线 → STKNX → MCU，所以闭合证明的是收发器加总线，不只是控制器；`bus=`/`vcc=` 把「总线没电」和「芯片坏」分开。按[第 23 条](DECISIONS.md)判据是「字符对得上 + `bad=0`」不是速率 |
+| KNX 通信 | 同上 | ✅ **报文级通了**（`loop=link`，`mode=loopback|listen|frames`）：回路是 MCU → STKNX → 总线 → STKNX → MCU，所以闭合证明的是收发器加总线，不只是控制器；`bus=`/`vcc=` 把「总线没电」和「芯片坏」分开。按[第 23 条](DECISIONS.md)判据是「字符对得上 + `bad=0`」不是速率。<br/>**2026-09-09 加了 `mode=frames`**：组一条真的 L_Data GroupValueWrite 整帧发出、收回、算校验字节，`ga=`/`src=`/`val=` 可从上位机设。实测 47/47/47（发/收/真实设备的 ACK），**ETS5 里可见**。`crc_raw` 对 `crc_inv` 顺便回答了 RX 极性该怎么读 |
 
 ### D · Lower Deck（输出与温度）
 

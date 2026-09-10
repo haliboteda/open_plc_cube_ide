@@ -265,18 +265,29 @@ CAN 两根信号跨板走 Upper Deck **J8 pin2（CAN_TXD_PB9）/ pin3（CAN_RXD_
 | 信号 | MCU 引脚 | 复用 | 说明 |
 |---|---|---|---|
 | `KNX_TX` | **PB14** | TIM12_CH1 / AF2 | 高 = 有源脉冲，低 = 空闲 |
-| `KNX_RX` | **PA10** | TIM1_CH3 / AF1 | 只在总线上有有源脉冲时为高 |
-| `KNX_OK` | **PD7** | GPIO | STKNX pin 21，总线电源正常 |
+| `KNX_RX` | **PA10** | TIM1_CH3 / AF1 | ⚠️ **低 = 有源脉冲，高 = 空闲**（低有效，2026-09-09 实测，见下） |
+| `KNX_OK` | **PD7** | GPIO | STKNX pin 21，总线电源正常。⚠️ **这块板子上恒为 LOW，不跟总线走**，见下 |
 | `KNX_VCC_OK` | **PH12** | GPIO | STKNX pin 19，VCCCORE 正常 |
 | `KNX_Prog_LED` | **PG11** | GPIO | 心跳指示 |
 | `KNX_Prog_KEY` | **PG9** | — | ⚠️ **和 BOOT0 同一条网**，KNX 代码从不驱动它 |
 
 **TP1 位时序**（STKNX datasheet DocID031327 Rev 1 §5.1 p17）：位周期 **104 µs**（9600 bit/s）；逻辑 1 / 空闲 = `KNX_TX` 全程低；逻辑 0 = `KNX_TX` 高 35 µs 再低 69 µs。
 
-**收发链极性，两端都不反相：**
+**收发链极性：TX 不反相，RX 反相。**
 
 - **TX**：`+3V3 → U12 LED 阳极；阴极 → R88 332R → PB14`。PB14 低点亮 LED；U12（TLP2362）反相开集，LED 亮则输出低；R94 10k 上拉到 VCCCORE。**净结果 PB14 高 → STKNX pin 24 高 → 有源脉冲。**
-- **RX**：`VCCCORE → R89 332R → U13 LED 阳极；阴极 → STKNX pin 23`。pin 23 低点亮 LED，U13 开集输出把 PA10 拉低。
+- **RX**：`VCCCORE → R89 332R → U13 LED 阳极；阴极 → STKNX pin 23`。pin 23 低点亮 LED，U13 开集输出把 PA10 拉低。`/KNX_RX` 是**低有效**：pin 23 空闲为高 → LED 灭 → PA10 被 MCU 内部上拉拉高；有源脉冲时 pin 23 低 → LED 亮 → PA10 低。**所以 PA10 空闲为高、有脉冲为低。**
+
+⚠️ **收进来的位要取反，发出去的不用**（用户 2026-09-09 确认，代码里就是这样）。取反在 `knx_slot_level()`（`TestCase/KNX/knx_test.c:733`）：`slots` 位为 1 返回 0。加上上面 RX 那一路的反相，一共反了两次，所以字符解码是对的、环回能通 —— 但**引脚层的极性理解一直是反的**，两处后果：
+
+1. `TIM1_CC_IRQHandler`（`TestCase/KNX/knx_test.c:415`）把上升沿当脉冲起点，按实际极性那是脉冲**终点**，于是 `w_avg` / `d_avg` 的角色整个互换。实测 `w_avg=152 d_avg=37`：`porttool_knx.c:27` 说 `w_avg` 应接近 35 µs，实际是 **`d_avg=37` 才是那个 35 µs**
+2. `knx_bus_state()` 原来判「总线供电、空闲」要求 PA10 为低，于是这块板子恒判 `bus=odd`。**2026-09-09 已改成只看 PH12**，`ok=`/`idle=` 照旧报出来但不参与判定
+
+**报文级已经端到端验证过了（2026-09-09），所以极性这件事不影响 KNX 可用性：**
+
+`pt.start knx mode=frames` 90 秒，47 条 GroupValueWrite 发出、47 条原样收回且**校验字节通过**（`crc_raw=47 crc_inv=0 crc_bad=0`）、收到 47 个 `L_Ack ACK`。ACK 只可能来自装置里的真实 KNX 设备（固件没有自动应答逻辑），**用户在 ETS5 总线监视器里看到了这 47 条**。
+
+结论：位/字符层的极性理解是反的，但 `knx_slot_level()` 又取反一次，两次抵消，**字节层和报文层都是正的**。`crc_raw` 对 `crc_inv` 就是这件事的运行时判据 —— 哪天硬件改了，数字自己会换边，不用改代码。
 
 ⚠️ **PB14 绝不能悬空。** 没有 LED 电流时 U12 输出释放，R94 把 STKNX pin 24 拉高，收发器会持续从总线抽流。STKNX 自己在 pin 24 上只有 6 µA 下拉，拉不过 10k。**空闲时 PB14 必须驱动为低。**
 
@@ -286,8 +297,19 @@ CAN 两根信号跨板走 Upper Deck **J8 pin2（CAN_TXD_PB9）/ pin3（CAN_RXD_
 
 | 状态 | PH12 | PD7 | PA10 |
 |---|---|---|---|
-| 总线供电、空闲 | HIGH | HIGH | LOW |
-| 总线无电 | LOW | LOW | HIGH |
+| 总线供电、空闲 | HIGH | ❓ | **HIGH** |
+| 总线无电 | LOW | ❓ | HIGH |
+
+⚠️ **2026-09-09 拔线实测的结果**（`pt.start knx mode=listen`，拔掉 C03/C04 再插回，两轮）：
+
+| | PH12 `vcc` | PD7 `ok` | PA10 `idle` |
+|---|---|---|---|
+| 总线接着 | 1 | **0** | 1 |
+| 总线拔掉 | **0** | **0** | 1 |
+
+- **PH12 是唯一跟着总线走的一项** —— 拔掉变 0、插回变 1，两轮都复现。**它单独就够判「总线有没有电」**
+- **PA10 恒为高**，符合上面「空闲为高」的推导。总线拔掉后仍然是空闲，所以还是高，一致
+- **PD7 恒为 0，拔插都不动。** 隔离侧掉电时 pin 21 输出应释放、板上上拉应把 PD7 拉高，实测没有 —— **这一项没查清**。可能是那一路光耦输出常通、上拉没生效、或 STKNX 在这个外部网络下不驱动 pin 21。要定论得量 PD7 电压或查那一路网表。⚠️ **在查清之前，不要把 PD7 当成总线电源的判据**
 
 **与 datasheet 的四处偏差**（外部网络其余部分逐点符合 Figure 3 buck-disabled，CGATE 10 µF + CVDDHV 220 µF 正好是 Table 8 的 30 mA fan-in 那一行）：
 

@@ -511,6 +511,7 @@ Klemmblock B，Lower Deck。代码 [porttool_relay.c](../../TestCase/porttool/po
 | **端子 / 引脚** | C03 / C04 → `PB14 TX · PA10 RX · PD7 OK · PH12 VCC_OK · PG11 Prog_LED` |
 | **怎么接** | KNX 总线接 Upper Deck 的 KNX 端子 |
 | **看到什么算过** | **收**：总线安静 `KNX_RX_FLUSH_MS` 后整串打印，raw 和 bit-inverted 两种读法都按 KNX 服务解析。**发**：`KNX_TX_ENABLE` 置 1，发出的脉冲经收发器回到 RX 被自己收到 |
+| **报文层** | `mode=frames` 组一条真的 L_Data GroupValueWrite 整帧发出（`ga=` / `src=` / `val=` 从上位机设），收发各一行事件帧 `!knx.rx` / `!knx.tx`。每一帧同时给 `raw=` 和 `inv=` 两种读法，`crc=` 说哪种通过校验字节（`raw` / `inv` / `ack` / `bad`）—— 极性由校验字节裁决，不用人看，见 [DECISIONS.md 第 32 条](DECISIONS.md)。⚠️ 默认发到 **31/7/255**，`ga=none` 停发 |
 | **坑** | ⚠️ **`PG9`（Prog_KEY）和 `BOOT0` 是同一条网络** —— 误置会改变下次复位的启动模式。<br/>⚠️ STKNX 是**裸 TP1 收发器**，104 µs 的位时序由 MCU 自己产生，时钟不对就整串是垃圾 |
 
 ### B.3.5 `pwm` —— Digital Out 6 的 PWM（Klemmblock A）
@@ -872,7 +873,7 @@ flowchart TD
 
 - ~~CAN 的硬件层抽取~~ ✅ **2026-09-08 做完**：`TestCase/common/port_can.{c,h}` 拿走了时序表、时钟/引脚初始化、开关收发；`can_test.c` 只剩编排与诊断，五个交权入口行为不变。会话是 `porttool_can.c`（`loop=link`，`mode=normal|listen|loopback`）。按[第 17 条](DECISIONS.md)四个交权项改挂到会话行上。
 - ~~SD / KNX~~ ✅ **2026-09-08 做完，但走的不是抽层那条路**：目的是机器可读结果，抽层只是手段之一。
-  - **KNX 成了会话** `porttool_knx.c`（`loop=link`，`mode=loopback|listen`）—— 回路是 MCU → STKNX → 总线 → STKNX → MCU，闭合就证明了收发器和总线，`bus=`/`vcc=` 把「总线没电」和「芯片坏」分开。
+  - **KNX 成了会话** `porttool_knx.c`（`loop=link`，`mode=loopback|listen|frames`）—— 回路是 MCU → STKNX → 总线 → STKNX → MCU，闭合就证明了收发器和总线，`bus=`/`vcc=` 把「总线没电」和「芯片坏」分开。
   - **SD 挂上了 `pt.run`**：`sd.probe` / `sd.integrity` / `sd.stress`（64 轮）。交权那两个改名 `sd.info` / `sd.integrity.soak`。
   - **SDRAM 其余两项也挂上了 `pt.run`**：`sdram.sweep`（整片四花样）/ `sdram.retention`（一个周期就返回）。交权侧改名 `sdram.retention.soak`。
 - ~~caps 里没有 `pt.run` 目标~~ ✅ **2026-09-08 补上** `kind=run` 行 + `runs=` 字段。**这才让方案文件里的 `pt.run` 目标能离线校验** —— 打错一个字以前只能在产线上、板子面前才发现。上位机 `ptplan.CheckAgainstCaps` 现在报「this firmware does not report」。
