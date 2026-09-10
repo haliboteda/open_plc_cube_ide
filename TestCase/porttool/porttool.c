@@ -29,6 +29,7 @@ extern porttool_port_t porttool_eth;
 extern porttool_port_t porttool_relay;
 extern porttool_port_t porttool_rs232;
 extern porttool_port_t porttool_rs485;
+extern porttool_port_t porttool_sd;
 extern porttool_port_t porttool_soak;
 extern porttool_port_t porttool_temp;
 extern porttool_port_t porttool_usb;
@@ -46,6 +47,9 @@ static porttool_port_t *const ports[] = {
     &porttool_knx,
     &porttool_eth,
     &porttool_usb,
+    /* A session for the detect switch only; the deep checks on this same port
+     * stay as pt.run targets and appear on its row as runs=. */
+    &porttool_sd,
     /* Last on purpose: it drives several of the ports above, so a person
      * reading pt.caps meets the individual ports first. */
     &porttool_soak,

@@ -119,6 +119,18 @@ typedef struct {
     int      fresult;       /* the last FRESULT seen; -1 never mounted */
 } sd_stress_t;
 
+/* Just the detect switch on PE6, with nothing else touched.
+ *
+ * *** Separate from SD_Test_Probe on purpose. A probe brings SDMMC1 up and
+ * *** reads the card's registers, which takes long enough to be felt in a
+ * *** superloop; this is one GPIO read, so a session can poll it every pass
+ * *** and report an insertion the moment it happens. What KIND of card went
+ * *** in is still the probe's job.
+ *
+ * Initialises the pin on the first call, so a caller that only wants this does
+ * not have to know the pin exists. */
+int  SD_Test_Detected(void);
+
 void SD_Test_Probe(sd_probe_t *out);
 /* One write/read/verify round of `bytes` bytes. 0 means the built-in default.
  *

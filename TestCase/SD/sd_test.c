@@ -95,6 +95,17 @@ static int SD_Test_IsCardDetected(void)
     return HAL_GPIO_ReadPin(SD_TEST_DETECT_PORT, SD_TEST_DETECT_PIN) == GPIO_PIN_RESET;
 }
 
+int SD_Test_Detected(void)
+{
+    static int pin_ready;
+
+    if (!pin_ready) {
+        SD_Test_DetectPinInit();
+        pin_ready = 1;
+    }
+    return SD_Test_IsCardDetected();
+}
+
 static const char *SD_Test_CardTypeString(uint32_t card_type)
 {
     switch (card_type) {
