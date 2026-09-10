@@ -125,6 +125,17 @@ PG9 配成 input 不影响复位行为：**复位那一刻 MCU 所有 GPIO 都�
 
 ⚠️ **R32 / R33 那两个 0Ω 不在 `FMC_D2/D3` 上**，它们在 32.768 kHz 晶振（`XTAL2`）那一路。`PD0`（U1 ball B12）和 `PD1`（ball C12）到 SDRAM 同样是直连。
 
+## RTC 走 LSE，实测 180 s 不差秒
+
+2026-09-10 用户在 CubeMX 里改完并重新生成之后实测。决定在 [DECISIONS.md 第 36 条](DECISIONS.md)，操作和必查项在 [RTC-LSE-CHANGE.md](RTC-LSE-CHANGE.md)。
+
+| 项 | 实测 |
+|---|---|
+| 时钟源 | `pt.run rtc.read` 回 **`clk=lse`**。⚠️ 这个字段读的是 `RCC_BDCR.RTCSEL`，不是写死的文字 —— 它**曾经**是写死的 `lsi`，换 LSE 那天就变成了谎话 |
+| 走时 | **RTC 走 180 s，PC 时钟走 180.0 s**。⚠️ RTC 只报到秒，所以这只能说明「误差 < 1 s / 180 s」。**够用了** —— LSI 的 ±5% 在 180 s 上是 ±9 s，一眼就能看出来，而这里看不出来 |
+| 起振 | **没有 5 秒停顿。** 复位后板子立刻出 banner。晶振要是没起振，`HAL_RCC_OscConfig()` 会阻塞到 `LSE_TIMEOUT_VALUE`（5000 ms） |
+| 掉电保持 | 重新烧录之后 RTC 接着走（`time=00:01:57`），**BAT1 备份电池在工作** |
+
 ## SRAM4 的 no-init 机制
 
 链接脚本 `STM32H743IIKX_FLASH.ld` 第 58 行把 SRAM4 前 32 字节挖出来给 boot handoff 记录（`RAM_D3 ORIGIN = 0x38000020`）。

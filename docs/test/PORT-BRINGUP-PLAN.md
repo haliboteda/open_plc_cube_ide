@@ -79,7 +79,7 @@ A 接 **C09**，B 接 **C10**（就是之前记的 COM16 那个适配器）。
 1. 备份域里的 `iap_auth` nonce 计数器 —— 工装镜像里根本没有 `iap_auth`（[../design/DECISIONS.md 第 33 条](../design/DECISIONS.md)底下那一段），备份域随便初始化
 2. 时钟源 —— 用户同意换 **LSE**，硬件本来就有晶振和备份电池（[../design/DECISIONS.md 第 36 条](../design/DECISIONS.md)）
 
-⚠️ **换 LSE 要改 `.ioc` 重新生成，得开一次 CubeIDE。** 要点哪几下、生成之后必须查什么，写在 [../design/RTC-LSE-CHANGE.md](../design/RTC-LSE-CHANGE.md)。在那之前写校准没有意义 —— LSI 一天漂一个多小时。
+✅ **2026-09-10 用户已经在 CubeMX 里改完并重新生成。** 板子实测 `pt.run rtc.read` 回 `clk=lse`（这个字段现在读的是 `RCC_BDCR.RTCSEL`，不再是写死的文字）。生成时被 CubeMX 改回去的链接脚本变量已经修回来了 —— 就是 [../design/CUBEMX-RULES.md](../design/CUBEMX-RULES.md) 预告过的那一处。做法和必查项留在 [../design/RTC-LSE-CHANGE.md](../design/RTC-LSE-CHANGE.md)。
 
 ---
 

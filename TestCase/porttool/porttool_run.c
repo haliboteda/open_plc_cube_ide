@@ -110,13 +110,24 @@ static void run_rtc_read(const char *args, char *out, uint32_t len)
     (void)HAL_RTC_GetTime(&hrtc, &t, RTC_FORMAT_BIN);
     (void)HAL_RTC_GetDate(&hrtc, &d, RTC_FORMAT_BIN);
 
-    /* clk=lsi is a fact worth reporting, not decoration: the RTC runs off the
-     * internal RC oscillator (Core/Src/rtc.c selects RCC_RTCCLKSOURCE_LSI),
-     * so its drift is orders of magnitude worse than a crystal's. Anything
-     * about RTC accuracy has to be judged against that. */
+    /* Which oscillator the calendar is actually counting, read out of
+     * RCC_BDCR rather than written here as text.
+     *
+     * *** It used to be the literal "clk=lsi", and on 2026-09-10 the project
+     * *** moved to LSE - so the reply went on saying lsi against a board that
+     * *** had a crystal. A field that cannot disagree with the hardware is not
+     * *** a reading; it is a comment that happens to be inside a frame.
+     *
+     * *** Worth a field at all because everything about RTC accuracy hangs on
+     * *** it: LSI is an internal RC, a few percent and drifting with
+     * *** temperature; LSE is a crystal, tens of ppm. A timestamp means
+     * *** different things under the two. */
+    static const char *const rtcsel[] = { "none", "lse", "lsi", "hse" };
+    const char *clk = rtcsel[(RCC->BDCR & RCC_BDCR_RTCSEL) >> RCC_BDCR_RTCSEL_Pos];
+
     snprintf(out, len,
-             "init=%u clk=lsi date=%02u-%02u-%02u time=%02u:%02u:%02u",
-             (unsigned)__HAL_RTC_IS_CALENDAR_INITIALIZED(&hrtc),
+             "init=%u clk=%s date=%02u-%02u-%02u time=%02u:%02u:%02u",
+             (unsigned)__HAL_RTC_IS_CALENDAR_INITIALIZED(&hrtc), clk,
              (unsigned)d.Year, (unsigned)d.Month, (unsigned)d.Date,
              (unsigned)t.Hours, (unsigned)t.Minutes, (unsigned)t.Seconds);
 }

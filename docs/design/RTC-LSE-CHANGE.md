@@ -1,5 +1,7 @@
 # RTC 换 LSE：要在 CubeMX 里点哪几下，之后查什么
 
+> ✅ **2026-09-10 已经做完了。** 下面四项必查全过，板子实测 `clk=lse`。这份留着，因为**下一次重新生成还要照它查一遍**。
+
 决定和理由在 [DECISIONS.md 第 36 条](DECISIONS.md)。这份只回答「怎么做」。
 
 ⚠️ **这份是给人照着做的，不是给 AI 手改 `.ioc` 用的。** 下面第四节写了为什么不能手改。
@@ -42,6 +44,7 @@
 | 2 | `Core/Src/main.c` 的 `SystemClock_Config()` | 多了 `RCC_OSCILLATORTYPE_LSE` 和 `LSEState = RCC_LSE_ON` |
 | 3 | `PC14` / `PC15` 没有被别的东西占 | 生成前 `.ioc` 里这两个脚是空的，本来就没人用 |
 | 4 | **启动时间** | 见下面那条 ⚠️ |
+| **5** | **`.cproject` 的链接脚本变量** | ⚠️ **2026-09-10 这一处真的被 CubeMX 改回写死的 `STM32H743IIKX_FLASH.ld` 了**，[CUBEMX-RULES.md](CUBEMX-RULES.md) 预告过。必须是 `${workspace_loc:/${ProjName}/${PLC_LD_SCRIPT}}` |
 
 ⚠️ **最要紧的一条：LSE 起振比 LSI 慢得多（几百 ms 到 2 s），而 HAL 的 `HAL_RCC_OscConfig()` 在等 LSE 就绪时是阻塞的，超时值 `LSE_TIMEOUT_VALUE` 是 5000 ms。**
 
