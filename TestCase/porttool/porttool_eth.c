@@ -411,7 +411,14 @@ static void eth_tick(uint32_t now_ms)
     }
     eth_due_ms = now_ms + eth_period_ms;
 
-    PortTool_EchoTick(&eth_echo);
+    /* Only echo hands the peer a number to send back, so only echo may count a
+     * miss. sink and source push bytes one way and never ask for an answer;
+     * advancing the counter there reported misses against a peer that was
+     * never given anything to answer - a working transfer read as a dead link.
+     * This is the same rule usb's info mode already followed. */
+    if (eth_mode == ETH_MODE_ECHO) {
+        PortTool_EchoTick(&eth_echo);
+    }
 
     /* Sent on the link under test. The peer sends this number straight back -
      * unchanged, like every other loop=link port (DECISIONS.md 18). */

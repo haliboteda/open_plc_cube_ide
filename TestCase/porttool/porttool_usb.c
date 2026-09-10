@@ -91,6 +91,20 @@ static uint32_t usb_busy;           /* writes the endpoint refused */
 static uint8_t  usb_last_state;
 static uint32_t usb_enum_changes;
 
+/* Counting only starts once the pipe has been configured once.
+ *
+ * ⚠️ On a board that has just been powered on, pt.start usb is what
+ * initialises the USB stack, so the host has not enumerated at all yet - the
+ * walk default -> addressed -> configured then happens DURING the session and
+ * would be counted as four changes. That is enumeration working, not
+ * enumeration going wrong. Counting from "configured" is what makes enum=
+ * mean "it re-enumerated after being up", which is the fault worth reporting
+ * (a flaky cable, or a host that keeps re-attaching).
+ *
+ * If the cable is out this never arms, enum stays 0 - and state= is what says
+ * so, which the plan judges separately. */
+static int usb_enum_armed;
+
 static porttool_echo_t usb_echo;
 
 /* What source mode pushes. Content is irrelevant - only the rate is. */
@@ -238,6 +252,7 @@ static int usb_start(const char *args, char *err, uint32_t err_len)
     usb_window_bytes = 0;
     usb_busy         = 0;
     usb_enum_changes = 0;
+    usb_enum_armed   = 0;
     usb_last_state   = usb_dev_state();
     usb_running      = 1;
     usb_due_ms       = HAL_GetTick();
@@ -272,7 +287,13 @@ static void usb_tick(uint32_t now_ms)
     st = usb_dev_state();
     if (st != usb_last_state) {
         usb_last_state = st;
-        usb_enum_changes++;
+        if (usb_enum_armed) {
+            usb_enum_changes++;
+        }
+    }
+    if (!usb_enum_armed && (st == USBD_STATE_CONFIGURED)) {
+        usb_enum_armed   = 1;
+        usb_enum_changes = 0;
     }
 
     if (usb_mode == USB_MODE_SOURCE) {
@@ -299,10 +320,12 @@ static void usb_tick(uint32_t now_ms)
     }
     usb_due_ms = now_ms + usb_period_ms;
 
-    /* info moves nothing, so the counter must not advance: a mode that reports
-     * misses it never gave anybody a chance to answer would read as a dead
-     * link on a perfectly good one. */
-    if (usb_mode != USB_MODE_INFO) {
+    /* Only echo hands the host a number to send back, so only echo may count a
+     * miss. info moves nothing at all, and sink and source push bytes one way
+     * without ever asking for an answer: a mode that reports misses it never
+     * gave anybody a chance to answer would read as a dead link on a perfectly
+     * good one. */
+    if (usb_mode == USB_MODE_ECHO) {
         PortTool_EchoTick(&usb_echo);
     }
 
