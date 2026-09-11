@@ -69,7 +69,16 @@ int PortRs485_Init(uint32_t baud)
     huart_rs485.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
 
     s_rs485_overruns = 0u;
-    return (HAL_UART_Init(&huart_rs485) == HAL_OK);
+    if (HAL_UART_Init(&huart_rs485) != HAL_OK) {
+        return 0;
+    }
+
+    /* Give the receiver the USART's 8-byte FIFO, so a superloop pass longer
+       than one byte time (87 us at 115200) no longer costs a byte. */
+    (void)HAL_UARTEx_SetTxFifoThreshold(&huart_rs485, UART_TXFIFO_THRESHOLD_1_8);
+    (void)HAL_UARTEx_SetRxFifoThreshold(&huart_rs485, UART_RXFIFO_THRESHOLD_1_8);
+    (void)HAL_UARTEx_EnableFifoMode(&huart_rs485);
+    return 1;
 }
 
 int PortRs485_SendRaw(const uint8_t *data, uint16_t len)
