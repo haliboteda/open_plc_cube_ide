@@ -46,7 +46,8 @@ arm-none-eabi-gcc -fsyntax-only -mcpu=cortex-m7 -mthumb \
 
 1. **CubeMX 生成区不能手工改**，重新生成后有两项必查 —— [docs/design/CUBEMX-RULES.md](docs/design/CUBEMX-RULES.md)
 2. **`docs/` 下的笔记是本仓库事实的唯一出处。** 发现和现状不符就地改掉，不要另起一份 —— 约定见 `$PROD/docs/CONVENTIONS.md`
-3. **测试脚本不放这个仓库。** 它们在 `$TOOL/TestCase/tools/` 或 `host/<主题>/`，判据在 `$TOOL/TestCase/TEST-CASES.md`。这个仓库**没有 `tools/` 目录**，也不该有
+3. ⚠️ **`TestCase/` 里的代码是已经测试通过的，写任何测试用例都必须先参考它。**（用户 2026-09-11：「testcase 是测试通过的代码，你写测试用例都要必须参考」）做一个端口的新用例、或者怀疑工装某个端口有问题时，**先读 `TestCase/<PORT>/<port>_test.c`** —— 那份在真板子上跑通过。两边行为不一致时，**差异本身就是线索**：2026-09-11 的 RS485 overrun 就是这么找到的（独立测试的紧循环不丢字节，工装的超循环丢，根因是 USART FIFO 没开）。
+4. **测试脚本不放这个仓库。** 它们在 `$TOOL/TestCase/tools/` 或 `host/<主题>/`，判据在 `$TOOL/TestCase/TEST-CASES.md`。这个仓库**没有 `tools/` 目录**，也不该有
 
 ## 五、这个仓库的四份入口文件
 
