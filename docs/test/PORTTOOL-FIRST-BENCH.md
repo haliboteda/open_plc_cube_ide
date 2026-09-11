@@ -137,7 +137,7 @@
 | `din` | ❌ | `v=0x00` —— **没有激励，正确的失败** |
 | `ain` | ❌ | 通道读数落在悬空带 —— **没有信号源** |
 | `rs485` | ❌ | `miss=4` —— **没绑对端** |
-| `sd` | ❌ | `detected=0` —— **卡不在槽里**。插着卡的那次是 `f_mount` 报 `FR_NO_FILESYSTEM`，因为卡是 exFAT 而 `_FS_EXFAT=0` |
+| `sd` | ❌ | `detected=0` —— **卡不在槽里**。插着卡的那次是 `f_mount` 报 `FR_NO_FILESYSTEM`，因为卡是 exFAT 而当时 `_FS_EXFAT=0`。**2026-09-11 已把 exFAT 打开**，这一条不再成立 |
 | `knx` | ✅ | **2026-09-09 查清了：那一轮的 `bus=odd` 是判据错，不是硬件错。** 判据要求 PA10 空闲为低，而 `/KNX_RX` 是低有效、空闲本来就是高；PD7 在这块板子上恒为 0、连总线断电时也不动。判据改成只看 PH12（拔线实测唯一跟着总线走的那一项）后转 ✅。<br/>**报文级已端到端验证**：`mode=frames` 90 秒发 47 条 GroupValueWrite、47 条原样收回且校验字节通过（`crc_raw=47 crc_inv=0 crc_bad=0`）、收到 47 个真实设备回的 `L_Ack ACK`，用户在 **ETS5 总线监视器里看到了这 47 条**。极性问题在位/字符层被 `knx_slot_level()` 取反抵消，到字节层是正的 —— 见 [../design/HARDWARE-FACTS.md](../design/HARDWARE-FACTS.md) |
 | `pwm` `bringup` | 👁 人工判 | 只有交权入口，进去要复位板子，上位机判不了 |
 
