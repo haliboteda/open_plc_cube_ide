@@ -473,7 +473,7 @@ Klemmblock B，Lower Deck。代码 [porttool_relay.c](../../TestCase/porttool/po
 | | |
 |---|---|
 | **测什么** | 三件事：**引脚级**推 0/1 读回、**发**周期帧、**收**并回显 |
-| **端子 / 引脚** | C09 / C10 (A/B) → `PD5 TX · PD6 RX · PD4 DIR` |
+| **端子 / 引脚** | C10 / C11 (A/B) → `PD5 TX · PD6 RX · PD4 DIR` |
 | **怎么接** | USB-RS485 适配器 A 接端子 **A10**（Upper Deck J11-3），B 接 **A11**（J11-2）。**必须有第二台设备**，脚本 `$TOOL/TestCase/tools/rs485_echo.py` |
 | **看到什么算过** | ① `PD4` / `PD5` 当 GPIO 推 0/1 读回一致；② 适配器每 **3 s** 收到一帧 `RS485 HELLO <n>`；③ 主机发的探针原样回来，日志口同时打 ASCII + hex 两列 |
 | **坑** | ⚠️ **半双工，`PD4` 同时驱动 /RE 和 DE** —— 发送时接收器是关的，**板子听不到自己**，没有对端就永远收不到东西 |
@@ -578,7 +578,7 @@ Klemmblock C。代码 [porttool_rs485.c](../../TestCase/porttool/porttool_rs485.
 | | |
 |---|---|
 | **测什么** | A/B 差分对双向通：板子发一个数，从**同一对线**上收回来，在此基础上累加 |
-| **端子 / 引脚** | C09 / C10 (A/B) → `PD5 TX · PD6 RX · PD4 DIR`，USART2 |
+| **端子 / 引脚** | C10 / C11 (A/B) → `PD5 TX · PD6 RX · PD4 DIR`，USART2 |
 | **怎么接** | **必须有对端。**USB-RS485 适配器 A 接 **A10**（J11-3）、B 接 **A11**（J11-2）。对端把收到的那行原样送回去 —— 上位机的链路应答器，或 `$TOOL/TestCase/tools/rs485_echo.py` |
 | **敲什么** | `pt.start rs485 baud=115200 period=3000`。`baud=` 只收 9600 / 19200 / 38400 / 57600 / 115200 |
 | **看到什么算过** | `!rs485` 的 `seq − rx` 恒为 1、`miss` 保持 0。`junk=` 保持 0（有数说明线上有东西但不是应答） |

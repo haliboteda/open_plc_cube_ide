@@ -59,7 +59,7 @@ static const handover_t targets[] = {
     /* Offered beside their own session rather than as ports of their own: one
      * piece of hardware, one card on the panel (DECISIONS.md 17). CAN got a
      * session on 2026-09-08, so its four deep entries moved here too. */
-    { "rs485",       "rs485", PORTTOOL_BOARD_UPPER, "C", "C09,C10", PORTTOOL_LOOP_LINK, RS485_Test_Run,                  "pin-level check, periodic banner, echo of whatever arrives", HANDOVER_ON_PORT_ROW },
+    { "rs485",       "rs485", PORTTOOL_BOARD_UPPER, "C", "C10,C11", PORTTOOL_LOOP_LINK, RS485_Test_Run,                  "pin-level check, periodic banner, echo of whatever arrives", HANDOVER_ON_PORT_ROW },
     /* Nowhere in caps. Entering it takes the command loop away, so the only
      * way back is the reset button - a button for that on the panel would be a
      * button that kills the panel. Typing pt.handover rs232 still works, which

@@ -17,8 +17,8 @@
 | `sdram` `rtc` `led` `temp` `rs232` `can` `dout` `relay` `aout` `soak` `knx` `eth.link` | ✅ 通 | —— |
 | `eth`（会话） | ❌ | **没有 PC 侧应答器**，`conn` 永远是 0 |
 | `usb` | ❌ | 同上（面板模式下能手绑对端，CLI 模式不能） |
-| `rs485` | ❌ | 同上 + C09/C10 没接适配器 |
-| `sd` | ❌ | 卡不在槽里。⚠️ 插卡也要 **FAT32** —— exFAT 会报 `FR_NO_FILESYSTEM`（`_FS_EXFAT=0`） |
+| `rs485` | ❌ | 同上 + C10/C11 没接适配器 |
+| `sd` | ❌ | 卡不在槽里。FAT32 和 exFAT 都认（`_FS_EXFAT=1`，2026-09-11 实测 `fs=exfat err=0x0`） |
 | `din` | ❌ | 八路输入没有激励 |
 | `ain` | ❌ | D12/D13 没有信号源 |
 | `pwm` `bringup` | 👁 人工判 | 交权入口，进去要复位板子 |
@@ -36,20 +36,20 @@
 | **做什么** | `$TOOL` 里一个 `porttool answer` 子命令：同时在 TCP、板子枚举的 CDC 口、和一个指定串口上当应答器，收到什么原样送回 |
 | **为什么值得先做** | 一次让三个端口从 FAIL 转 PASS，而且它是**产线本来就必须有的东西**（[../design/PRODUCTION-TEST-GAP.md](../design/PRODUCTION-TEST-GAP.md) 的 Golden endpoint 那一行早就写着「产线 PC 要跑一个应答器」） |
 | **判据** | 真板子跑 station6，`eth` `usb` `rs485` 三行转 PASS；`miss` 全程 0，`conn=1` |
-| **谁做** | 我。⚠️ `rs485` 那一路还要你把适配器接到 C09/C10（见第 1 批） |
+| **谁做** | 我。⚠️ `rs485` 那一路还要你把适配器接到 C10/C11（见第 1 批） |
 | **机制已经有了** | `Tool` 步骤类型（起外部进程、判输出或退出码）在 `internal/ptseq` 里已实现，所以方案文件能直接起它 |
 
 ---
 
 ## 第 1 批：你顺手就能做的两件（各一分钟）
 
-# 🍍 请插一张 FAT32 格式的 microSD 卡
+# 🍍 请插一张 microSD 卡
 
-插进 Bridge 板的 **J6**。⚠️ **必须是 FAT32，不能是 exFAT** —— 工程里 `_FS_EXFAT=0`，exFAT 卡会挂载失败。
+插进 Bridge 板的 **J6**。FAT32 或 exFAT 都行 —— 工程里 `_FS_EXFAT=1`。
 
-# 🍍 请把 USB-RS485 适配器接到 C09 / C10
+# 🍍 请把 USB-RS485 适配器接到 C10 / C11
 
-A 接 **C09**，B 接 **C10**（就是之前记的 COM16 那个适配器）。
+A 接 **C10**，B 接 **C11**（就是之前记的 COM16 那个适配器）。
 
 做完这两件，`sd` 的三步和 `rs485` 就都有了打通的条件。
 

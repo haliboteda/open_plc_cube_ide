@@ -282,6 +282,12 @@ while ((VREFBUF->CSR & VREFBUF_CSR_VRR) == 0U) { }
 
 ⚠️ **端子编号以网表 `netlist.ipc:245-256` 和原理图 `OpenPLC_UpperDeck_R3.pdf` p1 为准**（两者一致）。A09=CAN_GND、A10=RS485 A、A11=RS485 B。
 
+⚠️ **这里的 A01–A12 是 Upper Deck 的板内局部编号，等于产品级的 C01–C12。`A` 这个字母不全局唯一** —— Lower Deck 另有一排 Klemmblock A（A01–A16，装 DO1–DO8 和电源）。**单写 `A08` 有歧义**：产品级是 Digital Out 6，Upper Deck 原理图是 CAN H。跨仓引用一律写产品级字母（C 排）。
+
+⚠️ **`Klemmenbezeichnungen-R.pdf` 和 `Klemmblockzuordnung.pdf` 这两张图在这里是错的**（用户 2026-09-11 确认）：它们**漏标了 `CAN_GND`**，于是 09 号往后整体错开一位，把 RS485 A/B 标成了 C09/C10。正确的是 **C09=CAN_GND、C10=RS485 A、C11=RS485 B**。同一份图还把 **A08 的 "Digital Out 6" 印成 "Digital Out 3"**。图纸不改（要和生产方对得上），以这里为准。
+
+> 这处陷阱最早写在 `TestCase/CAN/can_test.h:59-63` 的注释里，但一直没传出来 —— 2026-09-11 发现时，错的 C09/C10 还住在 `FIXTURE-INTERFACE.md`、`PORTTOOL-FLOW.md`（两处）、`PORT-BRINGUP-PLAN.md`（四处，含一条让人接线的指令）、固件两处 `term=`、面板的接线提示、以及两份假板子测试夹具里。
+
 CAN 两根信号跨板走 Upper Deck **J8 pin2（CAN_TXD_PB9）/ pin3（CAN_RXD_PI9）**（`netlist.ipc:391-392`）。
 
 ### 终端电阻出厂是断开的
