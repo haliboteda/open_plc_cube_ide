@@ -12,6 +12,7 @@
 | P2 | [ISS-A3](#iss-a3--pg9-改输入应该挪到-ioc-里) | PG9 改输入应挪进 `.ioc` | 无（整洁问题） | 我们 |
 | — | [ISS-B1](#iss-b1--boot-millis-靠电荷泵余电才出得来) | `[BOOT] millis=` 靠电荷泵余电 | 无。**等一个设计决策** | 要你定 |
 | — | [ISS-C1](#iss-c1--模拟校准值存在板子的哪里还没定) | 模拟校准值存板子哪里 | AI/AO 校准整件事 | **等你定** |
+| ✅ | [ISS-A5](#iss-a5--开机后插入的-sd-卡初始化不了要复位才认) | 热插的 SD 卡要复位才认 | — | **已修复并实测，待提交后删除** |
 
 ---
 
@@ -54,6 +55,27 @@
 ---
 
 # 已查清根因，等一个决定
+
+## ISS-A5 · 开机后插入的 SD 卡初始化不了，要复位才认
+
+> ✅ **2026-09-11 已修复并实测通过。** `TestCase/SD/sd_test.c:129` 在 `HAL_SD_Init` 前补了一句：句柄不在 `HAL_SD_STATE_RESET` 时先 `HAL_SD_DeInit`。
+>
+> 验证：用户热插一次（不复位），连探三次全部 `ready=1 ... fs=exfat err=0x0`；修改前同样场景稳定复现 `ready=0 err=0x10000000`。
+>
+> **提交之后这一条就可以从本文件删掉**（本文件的约定是「做完就删」）。
+
+| | |
+|---|---|
+| **是什么** | 板子启动后再插入 SD 卡，`sd.probe` 报 `ready=0 blocks=0 fs=none err=0x10000000`。同一张卡，复位一次（卡在位）就完全正常：`ready=1 blocks=123596800 mib=60350 v2x=1 fs=exfat err=0x0` |
+| **做什么用的** | `sd` 会话存在的理由就是让面板看见热插拔（`changes=` / `in=` / `out=`）。现在**看得见插入，卡却不能用** |
+| **根因** | `SD_Test_Bringup()`（`TestCase/SD/sd_test.c:119`）每次都调 `HAL_SD_Init(&hsd1)`，但**从不先 `HAL_SD_DeInit`**。而 `HAL_SD_Init` 里 `HAL_SD_MspInit` 只在 `State == HAL_SD_STATE_RESET` 时才跑（`TestCase/common/stm32h7xx_hal_sd.c:367`）。热插时句柄还是 READY，**外设没被带回已知状态**，接着 SDXC 卡因 `UhsSpeedGrade`/`UhsAllocationUnitSize` 非零被判成 `CARD_ULTRA_HIGH_SPEED`（`:423`），走 UHS-I 的 1.8 V 电压切换 —— 那正是返回 `UNSUPPORTED_FEATURE` 的 `:3261`。⚠️ **`sd.probe` 本来就每次都重跑 bring-up**（`sd_test.c:483`），所以这不是「工装没搬那段逻辑」，是 bring-up 函数本身少了一步 |
+| **错误码** | `0x10000000` = `SDMMC_ERROR_UNSUPPORTED_FEATURE`。这份 HAL 里只有四处返回它：`TestCase/common/stm32h7xx_hal_sd.c:3261`（1.8 V 电压切换）、`:3821` `:3937` `:4065`（高速模式切换）——**全在速度/电压协商阶段**，没走到文件系统。所以把卡格成 FAT32 也救不了热插 |
+| **可能的影响** | 产线上插卡不复位就判失败，而面板只给一个没人看得懂的 `err=0x10000000`。**和还欠的 H5 热插拔断言是一件事的两面** |
+| **要做什么** | 二选一：① `sd` 会话在 ABSENT→PRESENT 时调 `SD_Test_Bringup()`，热插即可用；② 至少把状态翻成人话「卡已插入但未初始化 —— 请复位板子」，并把 `err=` 译成原因 |
+
+> 2026-09-11 实测，连探 4 次稳定复现；复位后连探 3 次全部正常。
+
+---
 
 ## ISS-B1 · `[BOOT] millis=` 靠电荷泵余电才出得来
 

@@ -126,6 +126,12 @@ static int SD_Test_Bringup(void)
                "in case the pin sense is inverted on this board\r\n");
     }
 
+    /* Bring the peripheral back to RESET so a re-inserted card is identified
+       on a known-state SDMMC block, not on one left configured by the last card. */
+    if (hsd1.State != HAL_SD_STATE_RESET) {
+        HAL_SD_DeInit(&hsd1);
+    }
+
     hsd1.Instance = SDMMC1;
     hsd1.Init.ClockEdge           = SDMMC_CLOCK_EDGE_RISING;
     hsd1.Init.ClockPowerSave      = SDMMC_CLOCK_POWER_SAVE_DISABLE;
