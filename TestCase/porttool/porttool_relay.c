@@ -51,8 +51,9 @@ static relay_mode_t relay_mode = RELAY_MODE_HOLD;
  * (Learned the wrong way the same day: a command-path stress test drove them
  * at 100 ms for about 30 s, roughly 150 operations of the rated 30,000.)
  *
- * The soak session has the same constraint for the same reason, with a much
- * longer interval because it runs for hours - see porttool_soak.c. */
+ * A burn-in is now this same session left running for hours, so a plan that
+ * asks for one sets period= accordingly rather than getting a slower interval
+ * from somewhere else. */
 #define RELAY_PERIOD_MIN_MS 1000U
 
 static uint32_t     relay_period_ms = 2000U;

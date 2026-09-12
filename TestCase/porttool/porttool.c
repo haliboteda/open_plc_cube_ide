@@ -6,6 +6,7 @@
 #include "porttool_cmd.h"
 #include "porttool_handover.h"
 #include "porttool_run.h"
+#include "port_led.h"
 
 #include "main.h"
 #include "usart.h"          /* huart4: the RS232 log port is also the command port */
@@ -16,7 +17,7 @@
 
 #if PORTTOOL_ENABLE
 
-#define PORTTOOL_VERSION "0.9.0"
+#define PORTTOOL_VERSION "0.10.0"
 
 /* Each porttool_<name>.c defines one of these. */
 extern porttool_port_t porttool_ain;
@@ -30,7 +31,6 @@ extern porttool_port_t porttool_relay;
 extern porttool_port_t porttool_rs232;
 extern porttool_port_t porttool_rs485;
 extern porttool_port_t porttool_sd;
-extern porttool_port_t porttool_soak;
 extern porttool_port_t porttool_temp;
 extern porttool_port_t porttool_usb;
 
@@ -50,9 +50,6 @@ static porttool_port_t *const ports[] = {
     /* A session for the detect switch only; the deep checks on this same port
      * stay as pt.run targets and appear on its row as runs=. */
     &porttool_sd,
-    /* Last on purpose: it drives several of the ports above, so a person
-     * reading pt.caps meets the individual ports first. */
-    &porttool_soak,
 };
 #define PORT_COUNT (sizeof(ports) / sizeof(ports[0]))
 
@@ -95,6 +92,25 @@ static uint32_t lines_in;
  * evidence, and without it a plan step that timed out looks like a fault in
  * whatever it was testing. */
 static uint32_t rx_errors;
+
+/* The deadman. The PC owns the clock for a timed run, so a PC that dies leaves
+ * the board driving 24 V until somebody presses reset. pt.hold is what the PC
+ * renews to say it is still there; when it lapses the board releases every
+ * output and lights the indicator itself.
+ *
+ * *** This is not the board judging a test. DECISIONS.md 22 stands: the board
+ * *** judges whether anyone is still listening, never whether the board is
+ * *** good. Renewal is explicit - no other command refreshes it - so a PC that
+ * *** is merely echoing frames on a dead panel does not keep the outputs live.
+ *
+ * *** The indicator is lit here rather than left to the PC because the PC is
+ * *** by definition gone at this point, and a burn-in rack nobody is watching
+ * *** from a screen is exactly where the lamp is the only thing readable. */
+#define PORTTOOL_HOLD_MAX_MS 600000U
+
+static uint32_t hold_span_ms;   /* what the PC last asked for, echoed back */
+static uint32_t hold_until_ms;
+static int      hold_armed;
 
 uint32_t PortTool_LinesReceived(void)
 {
@@ -293,7 +309,12 @@ static void reply_caps(void)
     uint32_t handover_ports = PortTool_HandoverCaps(0);
     uint32_t run_ports      = PortTool_RunCaps(0);
 
-    printf("OK porttool=%s ports=%lu lines=%lu\r\n", PORTTOOL_VERSION,
+    /* hold= and led= are capability bits, not counts: the PC has no port list
+     * of its own, so this is how it learns whether this firmware understands
+     * pt.hold and pt.led rather than sending them and reading back an
+     * "unknown command". */
+    printf("OK porttool=%s ports=%lu lines=%lu hold=1 led=1\r\n",
+           PORTTOOL_VERSION,
            (unsigned long)(PORT_COUNT + handover_ports + run_ports),
            (unsigned long)(session_caps(0) + handover_ports + run_ports));
 
@@ -449,6 +470,91 @@ static void cmd_stop(const char *rest)
     printf("OK stopped %s\r\n", p->name);
 }
 
+/* Reads a bare decimal argument. Returns 0 for anything else, including an
+ * empty word, so a caller can tell "no argument" from "argument of zero". */
+static int parse_u32(const char *word, uint32_t *out)
+{
+    uint32_t v = 0;
+    uint32_t digits = 0;
+
+    for (const char *c = word; *c != '\0'; c++) {
+        if (*c < '0' || *c > '9') {
+            return 0;
+        }
+        v = v * 10U + (uint32_t)(*c - '0');
+        digits++;
+    }
+    if (digits == 0U) {
+        return 0;
+    }
+    *out = v;
+    return 1;
+}
+
+static void cmd_hold(const char *rest)
+{
+    char word[24];
+    uint32_t ms;
+
+    PortCmd_Word(rest, word, sizeof(word), NULL);
+
+    if (word[0] == '\0') {
+        if (!hold_armed) {
+            printf("OK hold=off\r\n");
+            return;
+        }
+        int32_t left = (int32_t)(hold_until_ms - HAL_GetTick());
+        printf("OK hold=%lu left=%ld\r\n", (unsigned long)hold_span_ms,
+               (long)(left < 0 ? 0 : left));
+        return;
+    }
+
+    if (!parse_u32(word, &ms)) {
+        printf("ERR hold=\"%s\" is not a number of milliseconds\r\n", word);
+        return;
+    }
+
+    if (ms == 0U) {
+        hold_armed = 0;
+        hold_span_ms = 0;
+        printf("OK hold=off\r\n");
+        return;
+    }
+
+    if (ms > PORTTOOL_HOLD_MAX_MS) {
+        printf("ERR hold=%lu is over the %lu ms ceiling\r\n",
+               (unsigned long)ms, (unsigned long)PORTTOOL_HOLD_MAX_MS);
+        return;
+    }
+
+    hold_span_ms  = ms;
+    hold_until_ms = HAL_GetTick() + ms;
+    hold_armed    = 1;
+    printf("OK hold=%lu\r\n", (unsigned long)ms);
+}
+
+/* The indicator, driven from the PC. Every verdict is made up there, so the
+ * lamp is told what to show rather than deciding anything here.
+ *
+ * Distinct from pt.run led.blink, which blocks for a fixed six pulses: that is
+ * a one-shot check of the lamp, not a warning that has to stay up. */
+static void cmd_led(const char *rest)
+{
+    char word[24];
+    uint32_t on;
+
+    PortCmd_Word(rest, word, sizeof(word), NULL);
+
+    if (!PortCmd_GetU32(word, "fault", &on) || on > 1U) {
+        printf("ERR pt.led takes fault=0 or fault=1\r\n");
+        return;
+    }
+
+    PortLed_Init();
+    PortLed_Set((int)on);
+    printf("OK led fault=%lu\r\n", (unsigned long)on);
+}
+
 static void cmd_handover(const char *rest)
 {
     char name[32];
@@ -520,6 +626,10 @@ static void dispatch(const char *line)
         cmd_stop(rest);
     } else if (strcmp(verb, "pt.echo") == 0) {
         cmd_echo(rest);
+    } else if (strcmp(verb, "pt.hold") == 0) {
+        cmd_hold(rest);
+    } else if (strcmp(verb, "pt.led") == 0) {
+        cmd_led(rest);
     } else {
         printf("ERR unknown command \"%s\"\r\n", verb);
     }
@@ -603,6 +713,28 @@ void UART4_IRQHandler(void)
     }
 }
 
+/* Releases everything when the PC stops renewing - see the hold_armed block.
+ *
+ * now_ms is a parameter for the same reason tick_sessions takes one: the host
+ * test's clock does not run on its own, and a deadman that could only be
+ * reached through HAL_GetTick() would be untestable off a board. */
+static void hold_check(uint32_t now_ms)
+{
+    if (!hold_armed) {
+        return;
+    }
+    if ((int32_t)(now_ms - hold_until_ms) < 0) {
+        return;
+    }
+
+    hold_armed = 0;
+    stop_all();
+    PortLed_Init();
+    PortLed_Set(1);
+    printf("!hold t=%lu expired=1 span=%lu\r\n", (unsigned long)now_ms,
+           (unsigned long)hold_span_ms);
+}
+
 /* Gives every running session a chance to push a frame. Each one decides for
  * itself whether its period has elapsed. Factored out of the superloop so the
  * host test can advance time by hand: without it the frame path - the whole
@@ -636,11 +768,16 @@ void PortTool_Run(void)
            "  pt.caps                          what this board exposes\r\n"
            "  pt.start din ch=1,3,5 period=200 start a session\r\n"
            "  pt.stop all                      stop every session\r\n"
+           "  pt.hold 6000                     renew the deadman; 0 disarms\r\n"
+           "  pt.led fault=1                   light the indicator; 0 clears\r\n"
            "  pt.handover                      list the standalone bring-up entries\r\n\r\n",
            PORTTOOL_VERSION);
 
     for (;;) {
-        tick_sessions(HAL_GetTick());
+        uint32_t now = HAL_GetTick();
+
+        hold_check(now);
+        tick_sessions(now);
         PortEth_Poll();
         poll_command();
     }

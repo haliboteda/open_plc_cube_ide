@@ -49,7 +49,7 @@
 | 参数约束数据化 | ✅ **2026-09-08 做到** | caps 多一行 `limits=`，值从 `*_apply()` 用的同一批宏生成。上位机据此**离线判方案文件里的参数值**，不用再抄第二份 |
 | 一次性动作数据化 | ✅ **2026-09-08 做到** | caps 多了 `kind=run` 行 + `runs=`，八个 `pt.run` 目标由固件自报。**这是「方案文件能离线校验」成立的最后一块** —— 之前方案里打错一个目标名，只能在产线上、板子面前才发现 |
 | **判据 / 限值数据化** | ✅ **产线这条路做到了** | 方案文件（JSON）里每一步自带 `checks`，算子在 `internal/ptcheck`，面板和产线序列共用。⚠️ **老用例那批判据仍然散在五种形态**：markdown 散文、Python 字面串匹配、Go 常量 + `if`、C `check()` 参数、编译期 `static_assert` —— 那是另一件事，没有排期 |
-| 用例序列数据化 | ✅ **产线这条路做到了** | `internal/ptplan` 读方案文件，`internal/ptseq` 按序执行并管六个通用字段。两份真方案在 `$TOOL/TestCase/plans/`（`bench-smoke.json`、`station6-poweron.json`、`soak-2h.json`），都由测试拿假板子真跑一遍 |
+| 用例序列数据化 | ✅ **产线这条路做到了** | `internal/ptplan` 读方案文件，`internal/ptseq` 按序执行并管六个通用字段。两份真方案在 `$TOOL/TestCase/plans/`（`bench-smoke.json`、`station6-poweron.json`），都由测试拿假板子真跑一遍 |
 | 执行框架 | ✅ **产线这条路有了第三个，而且是数据驱动的** | `internal/ptseq`：判据在方案文件里，不在二进制里。⚠️ **老的两个仍然并存、互不相通**：Go 侧 `testCase{id,title,destructive,manual,run}` 注册表（`$TOOL/TestCase/main.go`，**判据编译进二进制**）；Python 侧 `selfcheck` 的 `CATALOG` + `run_step`（**只看子进程退出码**，自己不含判据） |
 | 结构化报告 | ✅ **产线这条路做到了** | `internal/ptreport` 逐项原始值出 CSV/JSON，**判据本身也进报告**，重试不覆盖原失败。⚠️ `selfcheck.py`（老用例那条路）仍然只有染色日志 + 退出码 |
 | 多板型 / 变体 | — | 不需要，见上一节 |
@@ -123,7 +123,7 @@ DI 八路读回、DO 八路 + 软件 PWM、继电器逐路驱动、温度两路�
 | SD 读写压力 | DUT 自测并报结果 | ✅ **2026-09-08 齐了**：`pt.probe` 之外加了 `pt.run sd.stress` —— **64 轮** 4 KiB 写/读/CRC，报 `passes` `passed` `bytes_total` `elapsed_ms` `first_bad_pass`。⚠️ **判据必须同时看 `passes` 和 `passed`**：中途卡死时 `passes` 跟着变小，只看 `passed` 会把「跑一轮就放弃」判成通过 |
 | RTC 读 + 写校准值 + 回读 | — | 🔨 **读有了**：`pt.run rtc.read`（自己按需 `MX_RTC_Init()`，报 `init/clk/date/time`）。**写校准没有** —— 备份域里住着 iap_auth 的 nonce 计数器，写那里的测试等于能把安全计数器回滚。⚠️ 而且 `rtc.c:74` 选的是 **LSI 不是 LSE**，精度先天不够，谈校准之前要先定这个 |
 | 指示灯 | 上位机弹窗，人工看、人工选 | ✅ **两半都有了**：`pt.run led.blink` 闪 `PE2` 六次（`MX_GPIO_Init()` 不配这个脚，目标自己配），回复里是 `observed=unknown`（没有回读）；判定由 `UserConfirm` 步骤问人。工站 6 方案里就是这两步连着 |
-| 老化模式 | 全项通过后进老化模式：全负载开、DUT 自监控、异常灯告警、自计时 2–4 h 到点自动退回测试模式 | ✅ **`soak` 会话**：高边轮转 + 继电器慢速翻转 + 温度/基准监控 + 自计时 + 异常灯。方案 `$TOOL/TestCase/plans/soak-2h.json`。⚠️ 报的是 `faults` 计数不是结论，多少算合格由上位机定 |
+| 老化模式 | 全项通过后进老化模式：全负载开、DUT 自监控、异常灯告警、自计时 2–4 h 到点自动退回测试模式 | ✅ **面板的「持续」模式**：勾多个端口、选 1/2/3/4 小时或一直跑，一次启动。⚠️ **计时在上位机，不在板子**（[DECISIONS.md](DECISIONS.md) 第 37 条）；异常灯也由上位机判完再点（`pt.led fault=1`），因为板子不判任何东西。**上位机死了那一类情况由看门狗兜底**：`pt.hold` 每 2 秒续一次，6 秒没续上板子自己关输出并点灯。原来那个 `soak` 端口和 `plans/soak-2h.json` 已删 |
 
 ### C · Upper Deck（输入与通信）
 

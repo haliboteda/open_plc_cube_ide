@@ -59,7 +59,7 @@ flowchart TB
 | | ✅ **会话** | 🎯 **一次性动作** | 🔶 **交权** |
 |---|---|---|---|
 | 是什么 | 一个可启停的周期采样器，`porttool_port_t` 结构（[porttool.h:52-77](../../TestCase/porttool/porttool.h)） | 一个跑完就返回、把量到的数写成一行 `OK` 的函数 | 一个独占的传统 bring-up 测试入口函数 |
-| 现有几个 | **11 个**：`din`、`dout`、`relay`、`ain`、`aout`、`temp`、`rs232`、`rs485`、`can`、`knx`、`soak` | **8 个**：见 [A.3](#a3-怎么控制--全部-9-条命令) 的 `pt.run` 表 | **14 个**：见 [B.3](#b3-交权目标--14-个独占入口) |
+| 现有几个 | **13 个**：`din`、`dout`、`relay`、`ain`、`aout`、`temp`、`rs232`、`rs485`、`can`、`knx`、`eth`、`usb`、`sd` | **8 个**：见 [A.3](#a3-怎么控制--全部-9-条命令) 的 `pt.run` 表 | **14 个**：见 [B.3](#b3-交权目标--14-个独占入口) |
 | 怎么启动 | `pt.start <port> [k=v …]` | `pt.run <target>` | `pt.handover <target>` |
 | 能并存吗 | **能**，多个会话同时跑，主循环轮流 tick | 跑的时候独占 CPU，跑完就还回来 | **不能**，进去就不出来 |
 | 参数能热改吗 | **能**，`pt.set` 不重启会话 | **不收参数**，尺度编在固件里并写进应答 | 不能，参数编在固件里 |
@@ -880,7 +880,7 @@ flowchart TD
 - ~~产线方案文件~~ ✅ `$TOOL/TestCase/plans/station6-poweron.json` —— 工站 6 那 20 步，由 `porttool_plan` 的测试拿假板子真跑一遍
 - **RTC 写校准** —— 读有了，写没有。⚠️ 两个前置：备份域里住着 iap_auth 的 nonce 计数器；`rtc.c:74` 选的是 **LSI 不是 LSE**，精度先天不够，谈校准之前要先定这个
 - **DIN 导轨连接器回环** —— 小件，等 `FIXTURE-INTERFACE.md` 有回音
-- ~~老化模式~~ ✅ **`soak` 会话**（`porttool_soak.c`）：高边输出轮转、继电器慢速翻转、温度与基准监控、自计时、`faults>0` 时指示灯闪。⚠️ **继电器 30 秒才翻一次是硬约束不是调参** —— HF41F 额定 3×10⁴ 次，每秒翻一次跑两小时就吃掉四分之一寿命
+- ~~老化模式~~ ✅ **面板的「持续」模式**：勾多个端口、选 1/2/3/4 小时或一直跑，一次启动。计时和判定都在上位机，板子只发数据（[DECISIONS.md](DECISIONS.md) 第 37 条）。上位机死了由 `pt.hold` 看门狗兜底：每 2 秒续一次，6 秒没续上板子自己关输出并点灯。⚠️ **继电器的周期要自己设大** —— HF41F 额定 3×10⁴ 次，每秒翻一次跑两小时就吃掉四分之一寿命（`relay` 会话的下限是 1000 ms，烧机应该写 `period=30000`）
 - ~~以太网会话与吞吐~~ ✅ **2026-09-08 做完**（固件 `0.7.0`，`porttool_eth.c`）：`eth` 从 `kind=run` 改成 `kind=session`，`eth.link` 以 `runs=` 留在同一行（[第 28 条](DECISIONS.md)）。三个模式 `echo` / `sink` / `source`，`ip=` 收静态地址兜没有 DHCP 的工位。⚠️ **这让工装镜像把 lwIP 链了回来**，从 ~100K 涨到 153,956 字节 —— 整片烧没有尺寸门禁。H4 有 31 条断言（含 lwIP 只初始化一次）。**真板子上还没跑过。**
 - ~~USB-CDC 会话与吞吐~~ ✅ **2026-09-08 做完**（`porttool_usb.c`，四个模式 echo / sink / source / info）。⚠️ **`usbd_cdc_if.c` 的 `CDC_Receive_FS` 在 `PORTTOOL_ENABLE` 下改调 `PortUsb_Received`，那不只是行为分流 —— 它是唯一挡住整个 IAP 服务器被 USB 栈拖进工装镜像的东西**（[第 31 条](DECISIONS.md)）。镜像 153,956 → 159,224 字节，`nm` 核过 `IAP_data_recv` / `IAP_task` / mbedTLS 一个都不在。**真板子上还没跑过。**
 - 编码器 1–4；扩展口总线（⚠️ 扩展口的 `PH13/PH14` 也是 UART4，会顶掉工装自己的控制通道，见 [B.5](#b5-其余未实现的端口-)）

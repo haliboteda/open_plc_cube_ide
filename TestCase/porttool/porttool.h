@@ -28,8 +28,16 @@
 //   pt.set   <port> k=v ...    change parameters while it runs
 //   pt.stop  <port> | all      stop
 //   pt.echo  <port> <n>        close the loopback count for one frame
+//   pt.hold  [<ms>]            renew the deadman, 0 disarms, bare word queries
+//   pt.led   fault=0|1         drive the indicator from the PC
 //   pt.run   [<target>]        list one-shot actions, or perform one
 //   pt.handover [<target>]     list exclusive tests, or hand control to one
+//
+// A timed run is timed by the PC, which also makes every verdict: the board
+// only samples. pt.hold is the one thing the board decides on its own, and it
+// decides whether anyone is still listening - not whether the board is good.
+// Without it a PC that dies leaves the outputs driven until somebody presses
+// reset. See docs/design/DECISIONS.md 37.
 
 #ifndef TESTCASE_PORTTOOL_PORTTOOL_H_
 #define TESTCASE_PORTTOOL_PORTTOOL_H_
@@ -75,7 +83,7 @@
 #define PORTTOOL_BOARD_UPPER    "upper"     /* Upper Deck: DI, AI, AO, CAN, RS485, RS232, KNX */
 #define PORTTOOL_BOARD_LOWER    "lower"     /* Lower Deck: high-side out, relays, temperature */
 #define PORTTOOL_BOARD_JUNCTION "junction"  /* Junction Link: 24 V in, rails, DIN rail connector */
-#define PORTTOOL_BOARD_WHOLE    "whole"     /* spans boards - the soak does */
+#define PORTTOOL_BOARD_WHOLE    "whole"     /* spans boards - bringup does */
 
 /* noreturn is not documentation here, it is what makes the image fit.
  *

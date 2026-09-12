@@ -14,7 +14,7 @@
 
 | 端口 | 现状 | 卡在什么 |
 |---|---|---|
-| `sdram` `rtc` `led` `temp` `rs232` `can` `dout` `relay` `aout` `soak` `knx` `eth.link` | ✅ 通 | —— |
+| `sdram` `rtc` `led` `temp` `rs232` `can` `dout` `relay` `aout` `knx` `eth.link` | ✅ 通 | —— |
 | `eth`（会话） | ❌ | **没有 PC 侧应答器**，`conn` 永远是 0 |
 | `usb` | ❌ | 同上（面板模式下能手绑对端，CLI 模式不能） |
 | `rs485` | ❌ | 同上 + C10/C11 没接适配器 |

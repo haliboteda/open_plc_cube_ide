@@ -19,7 +19,7 @@ void PortLed_Init(void);
 void PortLed_Set(int on);
 
 /* Blocks for pulses * (2 * half_ms). For a one-shot check, not for a loop that
- * has other work to do - a soak drives PortLed_Set() from its own tick. */
+ * has other work to do - pt.led drives PortLed_Set() directly. */
 void PortLed_Blink(uint32_t pulses, uint32_t half_ms);
 
 #endif /* TESTCASE_COMMON_PORT_LED_H_ */
