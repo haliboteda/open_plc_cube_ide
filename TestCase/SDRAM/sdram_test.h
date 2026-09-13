@@ -131,9 +131,39 @@ typedef struct {
     uint32_t seed;             /* which address set this cycle used */
 } sdram_retention_t;
 
+typedef struct {
+    uint8_t  ready;
+    uint32_t offset;   /* byte offset into the array that was summed */
+    uint32_t length;   /* how many bytes, after clamping to the array */
+    uint32_t crc;      /* zlib-compatible CRC32 of that window */
+} sdram_crc_t;
+
 void SDRAM_Test_Probe(sdram_probe_t *out);
 int  SDRAM_Test_SweepOnce(sdram_sweep_t *out);
 int  SDRAM_Test_RetentionOnce(sdram_retention_t *out);
+
+/* CRC32 of one window, once. Reads and never writes, so it is safe to run over
+ * bytes somebody else put there - which is the whole point: an external tool
+ * writes the array and this says what actually landed.
+ *
+ * `offset` and `length` come from the plan rather than being fixed here: which
+ * window proves something is a production decision, and a firmware that fixed
+ * it would have to be reflashed to check a different file (DECISIONS.md 22).
+ * A length of 0 means "to the end of the array"; both are clamped so a plan
+ * cannot ask it to read past the mapping. */
+int  SDRAM_Test_Crc32Once(uint32_t offset, uint32_t length, sdram_crc_t *out);
+
+/* The two halves of a retention cycle, so a caller that must not block can do
+ * the waiting on its own clock. The wait is the test - the data has to sit
+ * there long enough that auto-refresh is the only thing keeping it - and it is
+ * also the only part that cannot happen inside a session tick.
+ *
+ * The address set lives between the calls, so Verify reads back exactly what
+ * Write put down. Write again before verifying and the old set is gone.
+ *
+ * Both are silent: whoever drives them decides what to print. */
+void SDRAM_Test_RetentionWrite(uint32_t *rng_state, sdram_retention_t *out);
+void SDRAM_Test_RetentionVerify(sdram_retention_t *out);
 
 void SDRAM_Test_Capacity(void);
 void SDRAM_Test_Retention(void);

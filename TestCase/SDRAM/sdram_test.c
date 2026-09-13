@@ -337,12 +337,18 @@ static uint32_t SDRAM_Test_Signature(uint32_t address)
 
 #define SDRAM_TEST_RETENTION_WAIT_MS 5000U
 
-/* One cycle: write the signatures, let them sit, read them back. `rng_state`
- * carries across calls so each cycle picks a different address set. */
+/* The address set the last write pass chose, read back by the verify pass.
+ * File scope rather than local, because the two halves are now separate calls:
+ * a caller that must not block waits between them on its own clock. */
+static uint32_t sdram_retention_addresses[SDRAM_TEST_NUM_RANDOM_ADDR];
 
-static void SDRAM_Test_RetentionCycle(uint32_t *rng_state, sdram_retention_t *out)
+/* The two halves, silent. Whoever drives them decides what to print - the
+ * blocking entry below prints its prose around them, and a session cannot
+ * print per cycle at all without burying the control port it shares with every
+ * other port. */
+
+void SDRAM_Test_RetentionWrite(uint32_t *rng_state, sdram_retention_t *out)
 {
-    static uint32_t addresses[SDRAM_TEST_NUM_RANDOM_ADDR];
     uint32_t i;
 
     out->seed    = *rng_state;
@@ -351,30 +357,49 @@ static void SDRAM_Test_RetentionCycle(uint32_t *rng_state, sdram_retention_t *ou
     out->wait_ms = SDRAM_TEST_RETENTION_WAIT_MS;
     out->first_bad_addr = 0;
 
-    printf("SDRAM_TEST: retention cycle - rng_seed=0x%08lX\r\n", (unsigned long)out->seed);
-
     for (i = 0; i < SDRAM_TEST_NUM_RANDOM_ADDR; i++) {
         uint32_t word_index = SDRAM_Test_Rand(rng_state) % (SDRAM_SIZE_BYTES / 4U);
         uint32_t address = SDRAM_BASE_ADDR + (word_index * 4U);
-        addresses[i] = address;
+        sdram_retention_addresses[i] = address;
         *(volatile uint32_t *)address = SDRAM_Test_Signature(address);
     }
+}
 
-    printf("SDRAM_TEST: written, waiting 5s (proves auto-refresh keeps cells alive)...\r\n");
-    HAL_Delay(SDRAM_TEST_RETENTION_WAIT_MS);
+void SDRAM_Test_RetentionVerify(sdram_retention_t *out)
+{
+    uint32_t i;
+
+    out->failed = 0;
+    out->first_bad_addr = 0;
 
     for (i = 0; i < SDRAM_TEST_NUM_RANDOM_ADDR; i++) {
-        uint32_t address = addresses[i];
+        uint32_t address = sdram_retention_addresses[i];
         uint32_t expected = SDRAM_Test_Signature(address);
         uint32_t actual = *(volatile uint32_t *)address;
         if (actual != expected) {
-            printf("SDRAM_TEST: RETENTION FAIL @ 0x%08lX: expected 0x%08lX got 0x%08lX\r\n",
-                   (unsigned long)address, (unsigned long)expected, (unsigned long)actual);
             if (out->failed == 0U) {
                 out->first_bad_addr = address;
             }
             out->failed++;
         }
+    }
+}
+
+/* One cycle: write the signatures, let them sit, read them back. `rng_state`
+ * carries across calls so each cycle picks a different address set. */
+
+static void SDRAM_Test_RetentionCycle(uint32_t *rng_state, sdram_retention_t *out)
+{
+    SDRAM_Test_RetentionWrite(rng_state, out);
+    printf("SDRAM_TEST: retention cycle - rng_seed=0x%08lX\r\n", (unsigned long)out->seed);
+
+    printf("SDRAM_TEST: written, waiting 5s (proves auto-refresh keeps cells alive)...\r\n");
+    HAL_Delay(SDRAM_TEST_RETENTION_WAIT_MS);
+
+    SDRAM_Test_RetentionVerify(out);
+    if (out->failed > 0U) {
+        printf("SDRAM_TEST: RETENTION FAIL - first bad @ 0x%08lX\r\n",
+               (unsigned long)out->first_bad_addr);
     }
 
     if (out->failed == 0U) {
@@ -447,6 +472,38 @@ static uint32_t SDRAM_Test_Crc32(const volatile uint8_t *data, uint32_t len)
         }
     }
     return crc ^ 0xFFFFFFFFUL;
+}
+
+int SDRAM_Test_Crc32Once(uint32_t offset, uint32_t length, sdram_crc_t *out)
+{
+    sdram_crc_t local;
+
+    if (out == NULL) {
+        out = &local;
+    }
+    memset(out, 0, sizeof(*out));
+
+    /* Clamped rather than refused. A window that runs off the end of the
+     * mapping is a plan that needs fixing, but reading past it on this part
+     * wraps silently and would produce a CRC that looks like an answer. */
+    if (offset >= SDRAM_SIZE_BYTES) {
+        offset = 0U;
+    }
+    if (length == 0U || length > (SDRAM_SIZE_BYTES - offset)) {
+        length = SDRAM_SIZE_BYTES - offset;
+    }
+
+    out->offset = offset;
+    out->length = length;
+
+    out->ready = SDRAM_Test_Bringup() ? 1 : 0;
+    if (!out->ready) {
+        return 0;
+    }
+
+    out->crc = SDRAM_Test_Crc32(
+        (const volatile uint8_t *)(SDRAM_BASE_ADDR + offset), length);
+    return 1;
 }
 
 void SDRAM_Test_CubeProgrammerVerify(void)

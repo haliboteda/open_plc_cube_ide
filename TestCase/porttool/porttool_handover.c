@@ -33,7 +33,18 @@ typedef struct {
     const char *what;
 
     /* Where pt.caps mentions this entry. Hiding one from caps keeps it off the
-     * panel; it stays reachable by typing pt.handover either way. */
+     * panel; it stays reachable by typing pt.handover either way.
+     *
+     * *** As of 2026-09-13 every entry is HANDOVER_NOT_IN_CAPS. *** The panel
+     * offers none of them: production drives sessions and pt.run targets, both
+     * of which report numbers a PC can judge, while an entry that takes the
+     * board and prints prose until somebody resets it cannot be judged at all
+     * (DECISIONS.md 38, 40). These stay as bench tools for whoever is holding
+     * a scope, reachable by typing the command.
+     *
+     * The other two values are kept because that decision is about what
+     * production needs, not about what the mechanism can do - putting an entry
+     * back on a caps row is a one-word change if a reason ever appears. */
     enum {
         /* Its own "OK port=... kind=handover" row. The default. */
         HANDOVER_OWN_ROW = 0,
@@ -50,27 +61,27 @@ typedef struct {
 } handover_t;
 
 static const handover_t targets[] = {
-    { "bringup",     "bringup", PORTTOOL_BOARD_WHOLE, "-", "-",       PORTTOOL_LOOP_NONE, BringUp_Test_Run,                "DIN, relays, analog in/out and temperature together, with a key menu" , HANDOVER_OWN_ROW },
-    { "can",         "can", PORTTOOL_BOARD_UPPER, "C", "C07,C08", PORTTOOL_LOOP_LINK, CAN_Test_Run,                    "five phases: report, internal loopback, external loopback, listen, normal" , HANDOVER_ON_PORT_ROW },
-    { "can.soak",    "can", PORTTOOL_BOARD_UPPER, "C", "C07,C08", PORTTOOL_LOOP_LINK, CAN_Test_Soak_Run,               "one normal-mode session that runs until reset" , HANDOVER_ON_PORT_ROW },
-    { "can.scope",   "can", PORTTOOL_BOARD_UPPER, "C", "C07,C08", PORTTOOL_LOOP_LINK, CAN_Test_Scope_Run,              "square wave then back-to-back frames, for a scope on PB9" , HANDOVER_ON_PORT_ROW },
-    { "can.echo",    "can", PORTTOOL_BOARD_UPPER, "C", "C07,C08", PORTTOOL_LOOP_LINK, CAN_Test_Echo_Run,               "replies to every frame with its payload incremented" , HANDOVER_ON_PORT_ROW },
-    { "knx",         "knx", PORTTOOL_BOARD_UPPER, "C", "C03,C04", PORTTOOL_LOOP_LINK, KNX_Test_Run,                    "TP1 bit timing, raw and bit-inverted decode of every burst" , HANDOVER_ON_PORT_ROW },
+    { "bringup",     "bringup", PORTTOOL_BOARD_WHOLE, "-", "-",       PORTTOOL_LOOP_NONE, BringUp_Test_Run,                "DIN, relays, analog in/out and temperature together, with a key menu" , HANDOVER_NOT_IN_CAPS },
+    { "can",         "can", PORTTOOL_BOARD_UPPER, "C", "C07,C08", PORTTOOL_LOOP_LINK, CAN_Test_Run,                    "five phases: report, internal loopback, external loopback, listen, normal" , HANDOVER_NOT_IN_CAPS },
+    { "can.soak",    "can", PORTTOOL_BOARD_UPPER, "C", "C07,C08", PORTTOOL_LOOP_LINK, CAN_Test_Soak_Run,               "one normal-mode session that runs until reset" , HANDOVER_NOT_IN_CAPS },
+    { "can.scope",   "can", PORTTOOL_BOARD_UPPER, "C", "C07,C08", PORTTOOL_LOOP_LINK, CAN_Test_Scope_Run,              "square wave then back-to-back frames, for a scope on PB9" , HANDOVER_NOT_IN_CAPS },
+    { "can.echo",    "can", PORTTOOL_BOARD_UPPER, "C", "C07,C08", PORTTOOL_LOOP_LINK, CAN_Test_Echo_Run,               "replies to every frame with its payload incremented" , HANDOVER_NOT_IN_CAPS },
+    { "knx",         "knx", PORTTOOL_BOARD_UPPER, "C", "C03,C04", PORTTOOL_LOOP_LINK, KNX_Test_Run,                    "TP1 bit timing, raw and bit-inverted decode of every burst" , HANDOVER_NOT_IN_CAPS },
     /* Offered beside their own session rather than as ports of their own: one
      * piece of hardware, one card on the panel (DECISIONS.md 17). CAN got a
      * session on 2026-09-08, so its four deep entries moved here too. */
-    { "rs485",       "rs485", PORTTOOL_BOARD_UPPER, "C", "C10,C11", PORTTOOL_LOOP_LINK, RS485_Test_Run,                  "pin-level check, periodic banner, echo of whatever arrives", HANDOVER_ON_PORT_ROW },
+    { "rs485",       "rs485", PORTTOOL_BOARD_UPPER, "C", "C10,C11", PORTTOOL_LOOP_LINK, RS485_Test_Run,                  "pin-level check, periodic banner, echo of whatever arrives", HANDOVER_NOT_IN_CAPS },
     /* Nowhere in caps. Entering it takes the command loop away, so the only
      * way back is the reset button - a button for that on the panel would be a
      * button that kills the panel. Typing pt.handover rs232 still works, which
      * is a deliberate act rather than a click. */
     { "rs232",       "rs232", PORTTOOL_BOARD_UPPER, "C", "C05,C06", PORTTOOL_LOOP_LINK, RS232_Test_Run,                  "echo every byte back to the terminal", HANDOVER_NOT_IN_CAPS },
-    { "pwm",         "pwm", PORTTOOL_BOARD_LOWER, "A", "A08",     PORTTOOL_LOOP_CTRL, PWM_Test_Run,                    "breathing LED on Digital Out 6" , HANDOVER_OWN_ROW },
-    { "sd.info",     "sd", PORTTOOL_BOARD_BRIDGE, "-", "J6",      PORTTOOL_LOOP_NONE, SD_Test_Info,                    "card type, capacity, and live detect-pin state" , HANDOVER_ON_PORT_ROW },
-    { "sd.integrity.soak", "sd", PORTTOOL_BOARD_BRIDGE, "-", "J6",     PORTTOOL_LOOP_NONE, SD_Test_FileIntegrity,           "write 4 KiB through FatFs, read back, compare and CRC, forever" , HANDOVER_ON_PORT_ROW },
-    { "sdram.capacity",  "sdram", PORTTOOL_BOARD_BRIDGE, "-", "U6",    PORTTOOL_LOOP_NONE, SDRAM_Test_Capacity,             "capacity and address wrap-around" , HANDOVER_ON_PORT_ROW },
-    { "sdram.retention.soak", "sdram", PORTTOOL_BOARD_BRIDGE, "-", "U6", PORTTOOL_LOOP_NONE, SDRAM_Test_Retention,          "write/wait/read-back cycles over a long run" , HANDOVER_ON_PORT_ROW },
-    { "sdram.crc",       "sdram", PORTTOOL_BOARD_BRIDGE, "-", "U6",    PORTTOOL_LOOP_NONE, SDRAM_Test_CubeProgrammerVerify, "CRC32 against what CubeProgrammer wrote" , HANDOVER_ON_PORT_ROW },
+    { "pwm",         "pwm", PORTTOOL_BOARD_LOWER, "A", "A08",     PORTTOOL_LOOP_CTRL, PWM_Test_Run,                    "breathing LED on Digital Out 6" , HANDOVER_NOT_IN_CAPS },
+    { "sd.info",     "sd", PORTTOOL_BOARD_BRIDGE, "-", "J6",      PORTTOOL_LOOP_NONE, SD_Test_Info,                    "card type, capacity, and live detect-pin state" , HANDOVER_NOT_IN_CAPS },
+    { "sd.integrity.soak", "sd", PORTTOOL_BOARD_BRIDGE, "-", "J6",     PORTTOOL_LOOP_NONE, SD_Test_FileIntegrity,           "write 4 KiB through FatFs, read back, compare and CRC, forever" , HANDOVER_NOT_IN_CAPS },
+    { "sdram.capacity",  "sdram", PORTTOOL_BOARD_BRIDGE, "-", "U6",    PORTTOOL_LOOP_NONE, SDRAM_Test_Capacity,             "capacity and address wrap-around" , HANDOVER_NOT_IN_CAPS },
+    { "sdram.retention.soak", "sdram", PORTTOOL_BOARD_BRIDGE, "-", "U6", PORTTOOL_LOOP_NONE, SDRAM_Test_Retention,          "write/wait/read-back cycles over a long run" , HANDOVER_NOT_IN_CAPS },
+    { "sdram.crc.soak",       "sdram", PORTTOOL_BOARD_BRIDGE, "-", "U6",    PORTTOOL_LOOP_NONE, SDRAM_Test_CubeProgrammerVerify, "CRC32 against what CubeProgrammer wrote, reprinted every second forever" , HANDOVER_NOT_IN_CAPS },
 };
 #define TARGET_COUNT (sizeof(targets) / sizeof(targets[0]))
 

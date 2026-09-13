@@ -16,6 +16,7 @@
 #include "SD/sd_test.h"
 #include "SDRAM/sdram_test.h"
 #include "port_led.h"
+#include "port_rs485.h"          /* the PD4/PD5 pin map, shared with the session */
 #include "main.h"
 #include "rtc.h"
 
@@ -270,6 +271,104 @@ static void run_sd_stress(const char *args, char *out, uint32_t len)
              (unsigned long)s.first_bad_pass, s.fresult);
 }
 
+/* CRC32 of a window of SDRAM, reading only.
+ *
+ * The pair to STM32CubeProgrammer's "Read & Write Memory": a tool writes a
+ * file into the array and this says what actually landed, so a matching CRC32
+ * proves the bytes survived the round trip through the physical part. That
+ * used to be reachable only by handing the board over, which meant nothing on
+ * the PC could read a result out of it (DECISIONS.md 40).
+ *
+ * offset= and bytes= come from the plan. bytes=0, or none given, means the
+ * whole array - and the reply says which window it actually summed, because a
+ * CRC without the range it covers cannot be compared to anything. */
+static void run_sdram_crc(const char *args, char *out, uint32_t len)
+{
+    sdram_crc_t c;
+    uint32_t offset = 0;
+    uint32_t bytes = 0;
+
+    (void) PortCmd_GetU32(args, "offset", &offset);
+    (void) PortCmd_GetU32(args, "bytes", &bytes);
+
+    (void) SDRAM_Test_Crc32Once(offset, bytes, &c);
+
+    snprintf(out, len, "ready=%u offset=%lu bytes=%lu crc=0x%08lX",
+             (unsigned)c.ready, (unsigned long)c.offset,
+             (unsigned long)c.length, (unsigned long)c.crc);
+}
+
+/* PD4 (/RE and DE together) and PD5 (TX) driven as plain GPIO and read back.
+ *
+ * This is phase R1 of the standalone RS485 test (../RS485/rs485_test.c), and
+ * it is the one thing that test could do which the session could not, so it
+ * comes across as a target rather than keeping a whole handover entry alive
+ * for it (DECISIONS.md 40).
+ *
+ * *** What it separates: "no cable" from "this pin is dead". *** Nothing needs
+ * to be attached. A pin that will not read back what was just written to it is
+ * a board fault, and without this check it looks exactly like a pair with
+ * nobody on the other end - which is the far more common and far less serious
+ * case.
+ *
+ * *** Refused while the session is running. *** The session has PD4/PD5 muxed
+ * to USART2's alternate function; re-muxing them to GPIO underneath it would
+ * leave the session running, reporting misses, and blaming the wire. pt.run
+ * deliberately does not stop sessions, so this target has to decline instead.
+ */
+static void run_rs485_pins(const char *args, char *out, uint32_t len)
+{
+    GPIO_InitTypeDef gpio = {0};
+    int low_ok, high_ok;
+    GPIO_PinState dir_low, tx_low, dir_high, tx_high;
+
+    (void)args;
+
+    if (PortTool_PortRunning("rs485")) {
+        snprintf(out, len, "checked=0 busy=1");
+        return;
+    }
+
+    __HAL_RCC_GPIOD_CLK_ENABLE();
+
+    gpio.Pin   = PORT_RS485_DIR_PIN | PORT_RS485_TX_PIN;
+    gpio.Mode  = GPIO_MODE_OUTPUT_PP;
+    gpio.Pull  = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(PORT_RS485_DIR_PORT, &gpio);
+
+    HAL_GPIO_WritePin(PORT_RS485_DIR_PORT,
+                      PORT_RS485_DIR_PIN | PORT_RS485_TX_PIN, GPIO_PIN_RESET);
+    dir_low = HAL_GPIO_ReadPin(PORT_RS485_DIR_PORT, PORT_RS485_DIR_PIN);
+    tx_low  = HAL_GPIO_ReadPin(PORT_RS485_DIR_PORT, PORT_RS485_TX_PIN);
+
+    HAL_GPIO_WritePin(PORT_RS485_DIR_PORT,
+                      PORT_RS485_DIR_PIN | PORT_RS485_TX_PIN, GPIO_PIN_SET);
+    dir_high = HAL_GPIO_ReadPin(PORT_RS485_DIR_PORT, PORT_RS485_DIR_PIN);
+    tx_high  = HAL_GPIO_ReadPin(PORT_RS485_DIR_PORT, PORT_RS485_TX_PIN);
+
+    /* Left in receive with the driver off. Walking away from this target with
+     * PD4 high would hold the transceiver driving the pair, and every other
+     * node on it would be deaf until somebody noticed. */
+    HAL_GPIO_WritePin(PORT_RS485_DIR_PORT,
+                      PORT_RS485_DIR_PIN | PORT_RS485_TX_PIN, GPIO_PIN_RESET);
+
+    low_ok  = (dir_low == GPIO_PIN_RESET) && (tx_low == GPIO_PIN_RESET);
+    high_ok = (dir_high == GPIO_PIN_SET) && (tx_high == GPIO_PIN_SET);
+
+    /* Each pin at each level is its own field. One rolled-up flag would say a
+     * pin is stuck without saying which pin or which way, and those point at
+     * different things on the board. */
+    snprintf(out, len,
+             "checked=1 busy=0 dir_low=%u tx_low=%u dir_high=%u tx_high=%u"
+             " follows=%u",
+             (unsigned)(dir_low == GPIO_PIN_SET),
+             (unsigned)(tx_low == GPIO_PIN_SET),
+             (unsigned)(dir_high == GPIO_PIN_SET),
+             (unsigned)(tx_high == GPIO_PIN_SET),
+             (unsigned)(low_ok && high_ok));
+}
+
 static const run_target_t targets[] = {
     { "sd.probe",        "sd", PORTTOOL_BOARD_BRIDGE, "-", "J6", run_sd_probe,
       "detect pin, card identification, capacity and class" },
@@ -289,6 +388,12 @@ static const run_target_t targets[] = {
       "PHY identity, link, and the speed/duplex auto-negotiation settled on" },
     { "rtc.read",        "rtc", PORTTOOL_BOARD_BRIDGE, "-", "-",  run_rtc_read,
       "brings the RTC up if needed and reads the calendar; never writes it" },
+    { "sdram.crc",       "sdram", PORTTOOL_BOARD_BRIDGE, "-", "U6",
+      run_sdram_crc,
+      "CRC32 of one window; reads only, so it checks what a tool wrote there" },
+    { "rs485.pins",      "rs485", PORTTOOL_BOARD_UPPER, "C", "C10,C11",
+      run_rs485_pins,
+      "drives PD4 and PD5 as plain GPIO and reads them back; nothing attached" },
     { "led.blink",       "led", PORTTOOL_BOARD_BRIDGE, "-", "-",  run_led_blink,
       "blinks the system indicator on PE2; a person decides whether it lit" },
 };

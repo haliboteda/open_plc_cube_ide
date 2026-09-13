@@ -265,6 +265,13 @@ uint32_t PortTool_ClampPeriod(uint32_t requested_ms);
  * second row under the same name - see DECISIONS.md 17. */
 int PortTool_IsSessionPort(const char *name);
 
+/* Whether that port's session is running right now. A pt.run target asks when
+ * it is about to reconfigure pins the session owns: pt.run deliberately leaves
+ * sessions alone, so a target that re-muxed PD4 under a live rs485 session
+ * would break it silently and the session would go on reporting misses as if
+ * the pair were at fault. Returns 0 for a name that is not a session port. */
+int PortTool_PortRunning(const char *name);
+
 /* Services lwIP, once the ethernet session has brought it up. Called every
  * superloop pass; does nothing in an image whose operator never started that
  * session. Lives in porttool_eth.c. */

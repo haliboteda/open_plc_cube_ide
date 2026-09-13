@@ -4,12 +4,12 @@
 //
 // Parameters:
 //   baud=500000  125000 / 250000 / 500000 / 1000000  (default 500000)
-//   mode=normal  normal | listen | loopback | extloop (default normal)
+//   mode=normal  normal | listen | loopback | extloop | echo (default normal)
 //   period=1000  milliseconds between frames         (default 1000, floor 50)
 //
 // Frame:
 //   !can t=48213 seq=1 rx=0 miss=0 bps=500000 mode=normal alive=1
-//        tx=12 rx_frames=11 junk=0 tec=0 rec=0 lec=none
+//        tx=12 rx_frames=11 junk=0 replied=0 tec=0 rec=0 lec=none
 //
 // *** loop=link. *** The counter travels over the CAN pair, not over the
 // control port, so seq/rx/miss ARE this port's verdict - and pt.echo is
@@ -37,6 +37,18 @@
 //   normal    a real bus with a real second node. On a bus with no second node
 //             there is no acknowledge - see the warning below about what that
 //             does and does not show.
+//   echo      *** the board is the responder, not the originator. *** The
+//             controller runs NORMAL and the session never starts a frame of
+//             its own: every frame that arrives on the session identifier has
+//             its payload incremented as one big-endian number and goes back
+//             out on the same identifier and length. This replaces the
+//             standalone echo entry that used to require handing the board
+//             over (DECISIONS.md 40).
+//
+// *** seq/rx/miss are NOT the verdict in mode=echo, the same way they are not
+// *** in mode=listen: nothing originates here, so the loop never closes and
+// *** miss climbs every period on a perfectly healthy bus. The judgeable
+// *** number is replied= against rx_frames=.
 //
 // ⚠️ The transceiver is isolated (ISO1044) and its bus side is powered by U7.
 // If U7 is dead the controller looks perfectly healthy and the bus does
@@ -69,14 +81,30 @@
  * reason as ../CAN/can_test.c: a loopback frame is back in about 1 ms. */
 #define CAN_RX_WAIT_MS 20u
 
+/* *** A hard bound on one drain, not an optimisation. *** mode=echo transmits
+ * from inside the drain loop, so anything that hands a sent frame back as a
+ * received one - the contract test's stub, or a bus wired into its own
+ * receiver - turns an unbounded while into a spin that no timeout escapes.
+ * The FDCAN RX FIFO is 64 deep, so a full FIFO still empties in one call and
+ * whatever arrives after that is the next tick's business. */
+#define CAN_DRAIN_MAX 64u
+
+/* What the session does with the bus, on top of the controller's HAL mode.
+ * echo is the only one that is not a HAL mode of its own: the controller runs
+ * NORMAL and the difference is entirely in who starts a frame. Kept separate
+ * so that adding a role never silently changes which HAL mode is opened. */
+typedef enum { CAN_ROLE_SEND = 0, CAN_ROLE_ECHO } can_role_t;
+
 static uint8_t  can_rate = PORT_CAN_RATE_DEFAULT;
 static uint32_t can_mode = FDCAN_MODE_NORMAL;
+static can_role_t can_role = CAN_ROLE_SEND;
 static uint32_t can_period_ms = 1000u;
 static uint32_t can_due_ms;
 
 static uint32_t can_tx_count;
 static uint32_t can_rx_count;
 static uint32_t can_junk;      /* frames that were not ours */
+static uint32_t can_replied;   /* frames answered in mode=echo */
 
 static porttool_echo_t can_echo;
 
@@ -96,8 +124,15 @@ static uint32_t can_get_u32(const uint8_t *d)
            ((uint32_t)d[2] << 8)  | (uint32_t)d[3];
 }
 
+/* The role wins when it is set: mode=echo opens the controller in NORMAL, so
+ * reporting the HAL mode here would print "normal" for a session that is not
+ * originating anything - a frame that disagrees with the command that started
+ * it. */
 static const char *can_mode_name(uint32_t mode)
 {
+    if (can_role == CAN_ROLE_ECHO) {
+        return "echo";
+    }
     switch (mode) {
     case FDCAN_MODE_BUS_MONITORING:    return "listen";
     case FDCAN_MODE_INTERNAL_LOOPBACK: return "loopback";
@@ -113,6 +148,7 @@ static int can_apply(const char *args, char *err, uint32_t err_len)
 
     uint8_t  want_rate   = can_rate;
     uint32_t want_mode   = can_mode;
+    can_role_t want_role = can_role;
     uint32_t want_period = can_period_ms;
 
     if (PortCmd_GetStr(args, "baud", probe, sizeof(probe))) {
@@ -127,6 +163,9 @@ static int can_apply(const char *args, char *err, uint32_t err_len)
     }
 
     if (PortCmd_GetStr(args, "mode", probe, sizeof(probe))) {
+        /* Every branch sets the role too. Leaving it alone would let a session
+         * started as echo stay a responder after being set back to normal. */
+        want_role = CAN_ROLE_SEND;
         if (strcmp(probe, "normal") == 0) {
             want_mode = FDCAN_MODE_NORMAL;
         } else if (strcmp(probe, "listen") == 0) {
@@ -135,10 +174,13 @@ static int can_apply(const char *args, char *err, uint32_t err_len)
             want_mode = FDCAN_MODE_INTERNAL_LOOPBACK;
         } else if (strcmp(probe, "extloop") == 0) {
             want_mode = FDCAN_MODE_EXTERNAL_LOOPBACK;
+        } else if (strcmp(probe, "echo") == 0) {
+            want_mode = FDCAN_MODE_NORMAL;
+            want_role = CAN_ROLE_ECHO;
         } else {
             snprintf(err, err_len,
-                     "mode=\"%s\" must be normal, listen, loopback or extloop",
-                     probe);
+                     "mode=\"%s\" must be normal, listen, loopback, extloop or "
+                     "echo", probe);
             return 0;
         }
     }
@@ -153,6 +195,7 @@ static int can_apply(const char *args, char *err, uint32_t err_len)
 
     can_rate      = want_rate;
     can_mode      = want_mode;
+    can_role      = want_role;
     can_period_ms = want_period;
     return 1;
 }
@@ -182,6 +225,7 @@ static int can_start(const char *args, char *err, uint32_t err_len)
     can_tx_count = 0;
     can_rx_count = 0;
     can_junk     = 0;
+    can_replied  = 0;
     PortTool_EchoReset(&can_echo);
     can_due_ms = HAL_GetTick();
     return 1;
@@ -217,11 +261,26 @@ static void can_collect(void)
     uint32_t id = 0;
     uint8_t  d[8] = {0};
     uint8_t  len = 0;
+    uint32_t drained = 0;
 
-    while (PortCan_Receive(&id, d, &len)) {
+    while (drained++ < CAN_DRAIN_MAX && PortCan_Receive(&id, d, &len)) {
         if (id == CAN_SESSION_ID && len >= 4u) {
             can_rx_count++;
-            PortTool_EchoGot(&can_echo, can_get_u32(d));
+
+            /* As the responder, answer on the same identifier and length with
+             * the payload incremented, so the node that sent it can tell its
+             * own frame coming back from somebody else's traffic. Counted
+             * separately from can_tx_count: a reply is not a frame this
+             * session started, and folding the two together would make the
+             * tx-against-rx_frames criterion meaningless here. */
+            if (can_role == CAN_ROLE_ECHO) {
+                can_put_u32(d, can_get_u32(d) + 1u);
+                if (PortCan_Send(CAN_SESSION_ID, d, len)) {
+                    can_replied++;
+                }
+            } else {
+                PortTool_EchoGot(&can_echo, can_get_u32(d));
+            }
         } else {
             can_junk++;
         }
@@ -243,8 +302,9 @@ static void can_tick(uint32_t now_ms)
     can_due_ms = now_ms + can_period_ms;
 
     /* Listen-only must not transmit: the whole point of bus monitoring is to
-     * watch a live bus without disturbing it. */
-    if (can_mode != FDCAN_MODE_BUS_MONITORING) {
+     * watch a live bus without disturbing it. The responder must not either -
+     * it answers from can_collect and starts nothing of its own. */
+    if (can_mode != FDCAN_MODE_BUS_MONITORING && can_role != CAN_ROLE_ECHO) {
         uint32_t sent_seq = can_echo.seq;
 
         can_put_u32(d, sent_seq);
@@ -290,11 +350,11 @@ static void can_tick(uint32_t now_ms)
     n = PortTool_EchoFields(&can_echo, body, sizeof(body));
     (void) snprintf(body + n, sizeof(body) - n,
                     " bps=%lu mode=%s alive=%d tx=%lu rx_frames=%lu junk=%lu"
-                    " tec=%lu rec=%lu lec=%lu",
+                    " replied=%lu tec=%lu rec=%lu lec=%lu",
                     (unsigned long)PortCan_RateBps(can_rate),
                     can_mode_name(can_mode), PortCan_Alive(),
                     (unsigned long)can_tx_count, (unsigned long)can_rx_count,
-                    (unsigned long)can_junk,
+                    (unsigned long)can_junk, (unsigned long)can_replied,
                     (unsigned long)tec, (unsigned long)rec,
                     (unsigned long)lec);
 
@@ -323,7 +383,7 @@ static void can_limits(char *out, uint32_t out_len)
     }
     if (n < out_len) {
         (void) snprintf(out + n, out_len - n,
-                        " mode:normal|listen|loopback|extloop period:%lu..",
+                        " mode:normal|listen|loopback|extloop|echo period:%lu..",
                         (unsigned long)PORTTOOL_PERIOD_MIN_MS);
     }
 }

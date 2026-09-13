@@ -31,6 +31,7 @@ extern porttool_port_t porttool_relay;
 extern porttool_port_t porttool_rs232;
 extern porttool_port_t porttool_rs485;
 extern porttool_port_t porttool_sd;
+extern porttool_port_t porttool_sdram;
 extern porttool_port_t porttool_temp;
 extern porttool_port_t porttool_usb;
 
@@ -50,6 +51,10 @@ static porttool_port_t *const ports[] = {
     /* A session for the detect switch only; the deep checks on this same port
      * stay as pt.run targets and appear on its row as runs=. */
     &porttool_sd,
+    /* Retention, which only means anything over a long run - so it is a
+     * session that never blocks rather than the one-way entry it replaces.
+     * probe, sweep, retention and crc stay as pt.run targets on this row. */
+    &porttool_sdram,
 };
 #define PORT_COUNT (sizeof(ports) / sizeof(ports[0]))
 
@@ -153,6 +158,13 @@ static porttool_port_t *find_port(const char *name)
 int PortTool_IsSessionPort(const char *name)
 {
     return find_port(name) != NULL;
+}
+
+int PortTool_PortRunning(const char *name)
+{
+    const porttool_port_t *p = find_port(name);
+
+    return (p != NULL) && p->running;
 }
 
 static void stop_all(void)
