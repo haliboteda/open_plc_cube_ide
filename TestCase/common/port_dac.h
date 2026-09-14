@@ -32,10 +32,8 @@
  * *** The raw pin level, not a verdict. *** Which level means "fault" is not
  * stated anywhere in Hardware/ - the overview says only that the signal comes
  * back, and the pin assignment table has both pins as 预留/Reserved. So this
- * reports what the pin reads and the plan decides what that means, once
- * somebody has settled the polarity against the schematic or the XTR111
- * datasheet. Reporting it as "fault=0/1" would be inventing the half nobody
- * has checked.
+ * reports what the pin reads and the plan decides what that means. Reporting
+ * it as "fault=0/1" would be inventing the half nobody has checked.
  *
  * ch is 1 or 2. Returns 0 or 1; anything else returns 0. */
 int PortDac_FaultLevel(int ch);
