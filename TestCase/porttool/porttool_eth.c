@@ -357,9 +357,27 @@ static int eth_set(const char *args, char *err, uint32_t err_len)
     return 1;
 }
 
+/* Drops the client without leaving it in TIME_WAIT holding the listen port.
+ * SO_REUSE is off in this lwIP build, so a politely closed connection makes
+ * the next pt.start eth fail with "port is already bound" for a minute. */
+static void eth_drop_client(void)
+{
+    struct tcp_pcb *pcb = eth_client_pcb;
+
+    if (pcb == NULL) {
+        return;
+    }
+    eth_client_pcb = NULL;
+    tcp_arg(pcb, NULL);
+    tcp_recv(pcb, NULL);
+    tcp_err(pcb, NULL);
+    tcp_sent(pcb, NULL);
+    tcp_abort(pcb);
+}
+
 static void eth_stop(void)
 {
-    eth_close_client(eth_client_pcb);
+    eth_drop_client();
     if (eth_listen_pcb != NULL) {
         tcp_close(eth_listen_pcb);
         eth_listen_pcb = NULL;
