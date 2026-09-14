@@ -103,19 +103,26 @@ static int rs485_apply(const char *args, char *err, uint32_t err_len)
 
 static int rs485_start(const char *args, char *err, uint32_t err_len)
 {
-    uint32_t was_baud = rs485_baud;
-
     if (!rs485_apply(args, err, err_len)) {
         return 0;
     }
-    if (!rs485_inited || rs485_baud != was_baud) {
-        if (!PortRs485_Init(rs485_baud)) {
-            snprintf(err, err_len, "USART2 would not start at %lu baud",
-                     (unsigned long)rs485_baud);
-            return 0;
-        }
-        rs485_inited = 1;
+    /* *** Every start, not only the first. *** PD4/PD5 belong to USART2 only
+     * while something has muxed them there, and pt.run rs485.pins deliberately
+     * takes them back as plain GPIO to read them. Skipping the init because it
+     * "was initialised once" then leaves a session driving pins that are no
+     * longer wired to the UART: the board reports frames going out, the counter
+     * never closes, and every symptom points at the cable. Found 2026-09-14,
+     * the day rs485.pins was added - and it took a board reset to tell it apart
+     * from a real wiring fault.
+     *
+     * Re-initialising a UART costs microseconds, and it is the only way to be
+     * correct without knowing who else touched those pins. */
+    if (!PortRs485_Init(rs485_baud)) {
+        snprintf(err, err_len, "USART2 would not start at %lu baud",
+                 (unsigned long)rs485_baud);
+        return 0;
     }
+    rs485_inited = 1;
 
     rs485_in_len  = 0U;
     rs485_rxbytes = 0U;
