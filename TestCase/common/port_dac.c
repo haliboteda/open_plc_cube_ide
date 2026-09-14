@@ -61,6 +61,19 @@ int PortDac_Init(void)
     gpio.Pin  = GPIO_PIN_4 | GPIO_PIN_5;
     HAL_GPIO_Init(GPIOA, &gpio);
 
+    /* The two fault flags, as plain inputs. No pull: the flag's idle state is
+     * the transceiver's business and a pull here would decide it instead, so a
+     * floating pin has to read as floating rather than as whatever this file
+     * preferred. */
+    __HAL_RCC_GPIOI_CLK_ENABLE();
+    __HAL_RCC_GPIOE_CLK_ENABLE();
+    gpio.Mode = GPIO_MODE_INPUT;
+    gpio.Pull = GPIO_NOPULL;
+    gpio.Pin  = PORT_AOUT1_EF_PIN;
+    HAL_GPIO_Init(PORT_AOUT1_EF_PORT, &gpio);
+    gpio.Pin  = PORT_AOUT2_EF_PIN;
+    HAL_GPIO_Init(PORT_AOUT2_EF_PORT, &gpio);
+
     hdac1.Instance = DAC1;
     if (HAL_DAC_Init(&hdac1) != HAL_OK) {
         return 0;
@@ -105,4 +118,17 @@ int PortDac_SetMv(int ch, uint32_t mv)
         return 0;
     }
     return 1;
+}
+
+int PortDac_FaultLevel(int ch)
+{
+    GPIO_TypeDef *port;
+    uint16_t pin;
+
+    switch (ch) {
+    case 1:  port = PORT_AOUT1_EF_PORT; pin = PORT_AOUT1_EF_PIN; break;
+    case 2:  port = PORT_AOUT2_EF_PORT; pin = PORT_AOUT2_EF_PIN; break;
+    default: return 0;
+    }
+    return (HAL_GPIO_ReadPin(port, pin) == GPIO_PIN_SET) ? 1 : 0;
 }

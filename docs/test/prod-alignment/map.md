@@ -32,7 +32,10 @@
 - [交权 14 个入口全部退出](issues/01-handover-retreat.md)：`can.scope` 后两步 = 会话的 `extloop`/`normal`；`can.echo` = 会话加一个 `mode=echo`；KNX 逐帧 `raw=/inv=/crc=` 会话已有。已落 `DECISIONS.md` 40。
 - [配置项总表](../PROD-CONFIG-ITEMS.md)：九个分类、每项的说明与用法、**十四条互斥关系及其出处**。已落 `DECISIONS.md` 41；落到面板上是 [配置项落进面板](issues/07-config-items-in-panel.md)。
 - [五个通信口的判据形状](issues/03-comm-criteria-shape.md)：`eth`/`usb` 留速率；`can`/`rs485`/`knx` 改成**帧数 + 丢帧率 + 总线错误计数器归零**。已落 `DECISIONS.md` 42。⚠️ 「异常可恢复」仍开着。
-- [校准先算后存](issues/05-calibration-fit.md)：系数由**上位机**拟合，先落在测试报告里，板子不存；「存哪」仍挂在 `ISS-C1`。
+- [逐项三分：板子自证 / 人工 / 不做](issues/04-board-selfproof-matrix.md)：文档 24 项软件需求 → **16 项能自动判**（14 项已在跑 + 2 项要跳线）、**6 项人工**（板子无采样通路）、2 项不做。⚠️ 顺带查出 **高边输出和继电器现在是「回显判据」，坏板子照样过**。
+- [校准先算后存](issues/05-calibration-fit.md)：拟合在 **`$TOOL/internal/ptcal`**（和 `ptcheck` 同一条理由：面板和产线不能分叉）。**直线拟合，但把残差摆在增益前面** —— 响应不是直线时残差会当场说出来，所以现在拟直线是安全的。系数只进报告，**不写板子**；「存哪」仍挂在 `ISS-C1`。
+
+- [老化按上位机监工落地](issues/06-aging-mode.md)：文档 3.8 逐条对过。**复位拆成两半** —— 上位机从 tick 倒退发现「复位了」（原来会当成 49.7 天绕圈吞掉），`pt.run reset.cause` 答「为什么」；`aout` 帧补 `ef1=`/`ef2=`（**这板上唯一能到 MCU 的输出故障信号**，⚠️ 极性待硬件工程师定）。
 
 ## Not yet specified
 

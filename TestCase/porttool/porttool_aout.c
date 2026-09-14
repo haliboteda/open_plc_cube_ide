@@ -10,7 +10,7 @@
 //   period=1000   milliseconds between frames    (default 1000, floor 50)
 //
 // Frame:
-//   !aout t=48213 seq=1 rx=0 miss=0 ch1=500/488/4883 ch2=1500/1465/14648
+//   !aout t=48213 seq=1 rx=0 miss=0 ch1=500/488/4883 ef1=0 ch2=1500/1465/14648 ef2=0
 //
 // *** ch<n> is asked/quantised/microamps: what was requested, what the DAC can
 // *** actually produce with its step size, and the current that should appear
@@ -186,10 +186,17 @@ static void aout_tick(uint32_t now_ms)
     for (int i = 1; i <= PORT_AOUT_COUNT && n < sizeof(body); i++) {
         if ((aout_mask & (1U << (i - 1))) == 0U) { continue; }
         uint32_t asked = aout_mv[i - 1];
-        int w = snprintf(body + n, sizeof(body) - n, " ch%d=%lu/%lu/%lu",
+        /* ef<n> is the XTR111's fault flag as the pin reads, nothing more -
+         * which level means fault is not settled anywhere in Hardware/, so
+         * the plan judges it once somebody has (DECISIONS.md 22). It is here
+         * because it is the ONLY output-fault signal on this board that
+         * reaches the MCU at all: the high-side switches' fault bits do not,
+         * so without this an ageing run has nothing to watch. */
+        int w = snprintf(body + n, sizeof(body) - n, " ch%d=%lu/%lu/%lu ef%d=%d",
                          i, (unsigned long)asked,
                          (unsigned long)PortDac_QuantisedMv(asked),
-                         (unsigned long)PortDac_ExpectedMicroamps(asked));
+                         (unsigned long)PortDac_ExpectedMicroamps(asked),
+                         i, PortDac_FaultLevel(i));
         if (w < 0) { break; }
         n += (uint32_t)w;
     }

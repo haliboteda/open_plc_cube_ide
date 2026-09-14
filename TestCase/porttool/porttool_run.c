@@ -15,6 +15,7 @@
 #include "ETH/eth_test.h"
 #include "SD/sd_test.h"
 #include "SDRAM/sdram_test.h"
+#include "IAP_boot_handoff.h"   /* the reset cause main() latched at boot */
 #include "port_led.h"
 #include "port_rs485.h"          /* the PD4/PD5 pin map, shared with the session */
 #include "main.h"
@@ -271,6 +272,36 @@ static void run_sd_stress(const char *args, char *out, uint32_t len)
              (unsigned long)s.first_bad_pass, s.fresult);
 }
 
+/* Why the board last came up.
+ *
+ * *** The value is already latched; this only puts it on the wire. *** main()
+ * captures RCC->RSR as its first statement and clears it, because the register
+ * is sticky and anything running later would wipe it - the tool image goes
+ * through the same main() as the bootloader, so the value is sitting there
+ * already (Core/Src/main.c, boot_handoff_latch_reset_cause).
+ *
+ * *** Why production needs it, and why the PC cannot work it out. *** The PC
+ * can already tell THAT a board restarted: every frame carries the board's own
+ * millisecond counter, and a restart sends it back to near zero
+ * (ptproto.TickUnwrapper). What it cannot tell is why, and the difference
+ * decides who owns the failure: PIN is somebody knocking the reset line during
+ * an ageing run, IWDG is the board hanging and being rescued by its own
+ * watchdog. One is an operator, the other is a defect, and "0 abnormal resets"
+ * cannot be judged without separating them.
+ *
+ * Both the decoded name and the raw register go out: the name is what a person
+ * reads, and the raw word keeps the flags that the name's first-match order
+ * hides - two causes can be set at once.
+ */
+static void run_reset_cause(const char *args, char *out, uint32_t len)
+{
+    (void)args;
+
+    snprintf(out, len, "cause=%s rsr=0x%08lX",
+             boot_handoff_reset_cause_str(),
+             (unsigned long)boot_handoff_reset_rsr());
+}
+
 /* CRC32 of a window of SDRAM, reading only.
  *
  * The pair to STM32CubeProgrammer's "Read & Write Memory": a tool writes a
@@ -394,6 +425,9 @@ static const run_target_t targets[] = {
     { "rs485.pins",      "rs485", PORTTOOL_BOARD_UPPER, "C", "C10,C11",
       run_rs485_pins,
       "drives PD4 and PD5 as plain GPIO and reads them back; nothing attached" },
+    { "reset.cause",     "reset", PORTTOOL_BOARD_BRIDGE, "-", "-",
+      run_reset_cause,
+      "why the board last came up - POR, PIN, IWDG, WWDG, SOFT or BOR" },
     { "led.blink",       "led", PORTTOOL_BOARD_BRIDGE, "-", "-",  run_led_blink,
       "blinks the system indicator on PE2; a person decides whether it lit" },
 };
