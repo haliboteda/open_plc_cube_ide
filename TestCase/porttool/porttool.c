@@ -4,7 +4,6 @@
 
 #include "porttool.h"
 #include "porttool_cmd.h"
-#include "porttool_handover.h"
 #include "porttool_run.h"
 #include "port_led.h"
 
@@ -264,23 +263,18 @@ static uint32_t session_caps(int emit)
             continue;
         }
 
-        /* A port with both a session and a deep bring-up entry - rs485 - is
-         * one piece of hardware, so it gets one row with the entry listed
-         * beside the session rather than a second row under the same name.
-         * eth does the same with a one-shot target: its session is the TCP
-         * server and eth.link is the PHY probe, and they share an RJ45. */
-        char deep[64];
+        /* A port with both a session and a one-shot target - eth - is one
+         * piece of hardware, so it gets one row with the target listed beside
+         * the session rather than a second row under the same name: its
+         * session is the TCP server and eth.link is the PHY probe, and they
+         * share an RJ45. */
         char runs[64];
-        uint32_t targets = PortTool_HandoverTargetsFor(p->name, deep, sizeof(deep));
-        uint32_t shots   = PortTool_RunTargetsFor(p->name, runs, sizeof(runs));
+        uint32_t shots = PortTool_RunTargetsFor(p->name, runs, sizeof(runs));
 
         printf("OK port=%s board=%s kind=session blk=%s term=%s channels=%u "
                "loop=%s params=%s running=%d",
                p->name, p->board, p->blk, p->term, (unsigned)p->channels,
                PortTool_LoopName(p->loop), p->params, p->running);
-        if (targets > 0U) {
-            printf(" targets=%s", deep);
-        }
         if (shots > 0U) {
             printf(" runs=%s", runs);
         }
@@ -306,20 +300,18 @@ static uint32_t session_caps(int emit)
     return lines;
 }
 
-/* The whole port list - sessions, handover groups and one-shot hardware - so
- * the PC builds its panel from the firmware instead of a hard-coded copy of
- * it, and can check a plan file's targets without a board present.
+/* The whole port list - sessions and one-shot hardware - so the PC builds its
+ * panel from the firmware instead of a hard-coded copy of it, and can check a
+ * plan file's targets without a board present.
  *
  * `lines=` counts the OK lines that follow. It is not the same as `ports=`:
  * a port may add a terms= line, and later ones may add more. Reading a fixed
  * count is what keeps the PC from having to guess where the reply ends. */
 static void reply_caps(void)
 {
-    /* A handover group and a run group each print exactly one line and never a
-     * terms= line, so for those the line count and the port count are the same
-     * number. */
-    uint32_t handover_ports = PortTool_HandoverCaps(0);
-    uint32_t run_ports      = PortTool_RunCaps(0);
+    /* A run group prints exactly one line and never a terms= line, so for
+     * those the line count and the port count are the same number. */
+    uint32_t run_ports = PortTool_RunCaps(0);
 
     /* hold= and led= are capability bits, not counts: the PC has no port list
      * of its own, so this is how it learns whether this firmware understands
@@ -327,11 +319,10 @@ static void reply_caps(void)
      * "unknown command". */
     printf("OK porttool=%s ports=%lu lines=%lu hold=1 led=1\r\n",
            PORTTOOL_VERSION,
-           (unsigned long)(PORT_COUNT + handover_ports + run_ports),
-           (unsigned long)(session_caps(0) + handover_ports + run_ports));
+           (unsigned long)(PORT_COUNT + run_ports),
+           (unsigned long)(session_caps(0) + run_ports));
 
     (void)session_caps(1);
-    (void)PortTool_HandoverCaps(1);
     (void)PortTool_RunCaps(1);
 }
 
@@ -567,30 +558,8 @@ static void cmd_led(const char *rest)
     printf("OK led fault=%lu\r\n", (unsigned long)on);
 }
 
-static void cmd_handover(const char *rest)
-{
-    char name[32];
-
-    PortCmd_Word(rest, name, sizeof(name), NULL);
-
-    if (name[0] == '\0') {
-        PortTool_HandoverList();
-        return;
-    }
-
-    /* Every session goes down first: the entry taking over reinitialises the
-     * same peripherals, and a relay left energised by a session nobody is
-     * watching any more is the one that matters. */
-    stop_all();
-
-    if (!PortTool_Handover(name)) {
-        printf("ERR no such handover target \"%s\" - run pt.handover with no "
-               "argument to list them\r\n", name);
-    }
-}
-
-/* Unlike pt.handover, this comes back: sessions are left alone, and a target
- * that measures nothing still answers with a line the PC can read. */
+/* Sessions are left alone, and a target that measures nothing still answers
+ * with a line the PC can read. */
 static void cmd_run(const char *rest)
 {
     char name[32];
@@ -620,8 +589,6 @@ static void dispatch(const char *line)
 
     if (verb[0] == '\0') {
         return;
-    } else if (strcmp(verb, "pt.handover") == 0) {
-        cmd_handover(rest);
     } else if (strcmp(verb, "pt.run") == 0) {
         cmd_run(rest);
     } else if (strcmp(verb, "pt.caps") == 0) {
@@ -781,8 +748,7 @@ void PortTool_Run(void)
            "  pt.start din ch=1,3,5 period=200 start a session\r\n"
            "  pt.stop all                      stop every session\r\n"
            "  pt.hold 6000                     renew the deadman; 0 disarms\r\n"
-           "  pt.led fault=1                   light the indicator; 0 clears\r\n"
-           "  pt.handover                      list the standalone bring-up entries\r\n\r\n",
+           "  pt.led fault=1                   light the indicator; 0 clears\r\n\r\n",
            PORTTOOL_VERSION);
 
     for (;;) {

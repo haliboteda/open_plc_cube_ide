@@ -71,9 +71,7 @@ void PortDout_SetDuty(int ch, uint32_t duty_pct);
 void PortDout_AllOff(void);
 
 /* Drives everything low and stops the PWM timer, so nothing is left switching
- * and no interrupt keeps firing. Called when the session stops, and before a
- * handover: the pwm bring-up entry takes PA9 (Digital Out 6) over as a timer
- * channel, and an interrupt still writing that pin would fight it. */
+ * and no interrupt keeps firing. Called when the session stops. */
 void PortDout_Stop(void);
 
 /* What one channel actually landed on, which is not always what was asked for:

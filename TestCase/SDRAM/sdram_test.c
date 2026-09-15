@@ -165,8 +165,7 @@ static int SDRAM_Test_AddressBus(void)
  *
  * `acc` is optional. With it the caller gets the numbers as well as the
  * verdict, which is what SDRAM_Test_SweepOnce() reports to the PC; without it
- * the prose on the log line is the whole result, which is what the handover
- * entry has always done. */
+ * the prose on the log line is the whole result. */
 
 static int SDRAM_Test_FullSweepPattern(uint32_t pattern32, const char *label,
                                        sdram_sweep_t *acc)

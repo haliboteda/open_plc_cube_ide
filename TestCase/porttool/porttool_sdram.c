@@ -16,19 +16,17 @@
 // after seconds could not have survived any other way. Nothing shorter tests
 // it - which is why wait= has a floor and why the waiting cannot be skipped.
 //
-// *** Why a session and not the handover entry it replaces. *** The long run
-// is the point, and a one-way entry that prints prose until somebody resets
-// the board cannot be judged by anything on the PC (DECISIONS.md 38, 40). The
-// cycle is therefore split: the write and the read-back are short and happen
-// inside a tick, and the wait between them is just a deadline this session
-// checks on its way past.
+// *** Why a session. *** The long run is the point, and the PC has to be able
+// to judge it while it runs (DECISIONS.md 38). The cycle is therefore split:
+// the write and the read-back are short and happen inside a tick, and the wait
+// between them is just a deadline this session checks on its way past.
 //
 // *** loop=ctrl. *** seq/rx/miss ride the control port, so they say the
 // control port and the loop are alive and NOTHING about the array
 // (DECISIONS.md 9). The verdict here is failed= against checked=.
 //
 // ⚠️ The one-shot pt.run targets on this same hardware - sdram.probe,
-// sdram.sweep, sdram.retention, sdram.crc - stay where they are and appear on
+// sdram.sweep, sdram.crc - stay where they are and appear on
 // this session's caps row as runs=, the way eth.link does on eth's
 // (DECISIONS.md 17). They block while they run; this does not.
 

@@ -27,8 +27,8 @@
 // ⚠️ That on-demand call is not decoration. The port tool reaches these from
 // main.c's Phase 1, where only clocks, GPIO and UART4 are up - MX_FMC_Init()
 // does not run until Phase 2, which this image never reaches. Without it every
-// SDRAM entry reported "not_initialised" and the three handover targets were
-// dead ends (found 2026-09-07, before the first bench run).
+// SDRAM entry reported "not_initialised" (found 2026-09-07, before the first
+// bench run).
 //
 // MPU region 0 is open for 0xC0000000 in both phases: main.c calls
 // MPU_Config() before either.

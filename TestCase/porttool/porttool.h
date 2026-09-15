@@ -31,7 +31,6 @@
 //   pt.hold  [<ms>]            renew the deadman, 0 disarms, bare word queries
 //   pt.led   fault=0|1         drive the indicator from the PC
 //   pt.run   [<target>]        list one-shot actions, or perform one
-//   pt.handover [<target>]     list exclusive tests, or hand control to one
 //
 // A timed run is timed by the PC, which also makes every verdict: the board
 // only samples. pt.hold is the one thing the board decides on its own, and it
@@ -122,11 +121,9 @@ typedef enum {
                                 be lying about the only test it has. */
 } porttool_loop_t;
 
-/* Whether a port is a session that can be started and stopped, or a one-way
- * handover into a standalone bring-up entry. */
+/* A port is a session that can be started and stopped. */
 typedef enum {
     PORTTOOL_KIND_SESSION = 0,
-    PORTTOOL_KIND_HANDOVER,
 } porttool_kind_t;
 
 /* The echo counter one session keeps.

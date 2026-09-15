@@ -96,10 +96,10 @@
 #include "bringup_test.h"
 #endif
 
-/* Port test tool: the PC-driven instrument panel for the terminals. It also
- * reaches every entry above through pt.handover, so it is the one to turn on
- * when the choice is not already made. Turn it on the same way as the others,
- * by defining the symbol in the project's preprocessor settings. */
+/* Port test tool: the PC-driven instrument panel for the terminals, and the
+ * one to turn on when the choice is not already made. Turn it on the same way
+ * as the others, by defining the symbol in the project's preprocessor
+ * settings. */
 #ifndef PORTTOOL_ENABLE
 #define PORTTOOL_ENABLE 0
 #endif

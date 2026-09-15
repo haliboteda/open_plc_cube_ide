@@ -18,10 +18,6 @@
 // *** This replaces an earlier belief - written down in PORTTOOL-FLOW.md B.3.3
 // *** and wrong - that the tool occupying this channel meant the channel could
 // *** not be tested. Occupying it is what tests it.
-//
-// *** What this port does NOT get is a button for the handover entry
-// *** (pt.handover rs232, the byte-for-byte echo). That one takes the command
-// *** loop away, so the only way back is the reset button.
 
 #include "porttool.h"
 #include "porttool_cmd.h"

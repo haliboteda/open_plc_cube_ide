@@ -3,15 +3,13 @@
 // One-shot actions: pt.run <target> performs something that finishes, reports
 // what it measured, and comes back to the command loop.
 //
-// This is the third shape the tool has, next to the two in porttool.h:
+// This is the second shape the tool has, next to the one in porttool.h:
 //
 //   session    pt.start / pt.stop, keeps pushing "!" frames until stopped
-//   handover   pt.handover, one-way door into a standalone test, never returns
 //   run        pt.run, finishes and answers with one OK line of k=v
 //
-// A production sequence needs this shape because handover cannot be judged: it
-// hands the command loop away and prints prose, so nothing on the PC can read
-// a result out of it. See ../../docs/design/PORTTOOL-FLOW.md C.5.
+// A production sequence needs a shape that finishes and reports, so every
+// check a plan makes can read its result off one line.
 //
 // *** The reply carries measurements, never a verdict. *** No target here
 // prints PASS or FAIL. The limit lives in the PC's plan file, which is what
