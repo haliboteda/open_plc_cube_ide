@@ -95,7 +95,7 @@
 
 ## H · 人工项
 
-**这几项板子没有通路，只能人看。** 详见 [prod-alignment/逐项三分](prod-alignment/issues/04-board-selfproof-matrix.md)。
+**这几项板子没有通路，只能人看。** 详见 [PROD-DOC-REVIEW.md](PROD-DOC-REVIEW.md) 的三分表。
 
 | 配置项 | 说明 | 用法 |
 |---|---|---|
@@ -128,7 +128,7 @@
 | 5 | **`relay` 周期下限 1000 ms** | 其余端口是 50。填小了固件拒绝 | `porttool_relay.c:57` |
 | 6 | **`rs485` 必须有对端** | 半双工且是一条网：`PD4` 同时驱动 /RE 和 DE，**发送时板子听不到自己**。没有对端计数器永远闭合不了 —— 那是接线不对，不是会话有问题 | `porttool_rs485.c` 文件头 |
 | 7 | **`din` 的激励不由面板给** | `din` 只读不驱动，`dout` 只输出。判据 `v eq 0xFF` 要求的是**这一轮的激励状态**，八路怎么被拉高是工位的事 —— 工装板、别的夹具、或者一根线从 DO 接过来都行。**面板不替产线定夹具** | [DECISIONS.md 43](../design/DECISIONS.md) |
-| 8 | **AO→AI 跳线要串电阻** | AOUT 是**电流**输出，AIN 是电压输入。⚠️ 两头共用同一个 VREFBUF，**能验线性，验不了绝对精度** | [prod-alignment/边界](prod-alignment/issues/00-scope-from-user.md) |
+| 8 | **AO→AI 跳线要串电阻** | AOUT 是**电流**输出，AIN 是电压输入。⚠️ 两头共用同一个 VREFBUF，**能验线性，验不了绝对精度** | [PROD-DOC-REVIEW.md](PROD-DOC-REVIEW.md) |
 | 9 | **`dout` 的 `freq` 封顶 2000 Hz** | 软件 PWM 跑在 TIM7 上，中断率 = `freq × 100`，2000 Hz 已经是 200 kHz 中断 | `PORTTOOL-FLOW.md:643` |
 | 10 | **改了参数，方案判据当场失效** | 按钮改口成「按我改的参数跑（不出结论）」，并说清差在哪，另给一键「恢复方案参数」 | `index.html` 的 `offPlan()` |
 | 11 | **「持续」才武装看门狗** | 单次不武装 —— 跑几秒钟，武装它只会误停 | `DECISIONS.md` 37 |

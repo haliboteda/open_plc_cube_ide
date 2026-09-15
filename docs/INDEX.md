@@ -35,6 +35,7 @@
 | 文件 | 装什么 |
 |---|---|
 | [test/BOARD-BRINGUP-CASES.md](test/BOARD-BRINGUP-CASES.md) | **板级 10 项测试用例：接哪几个端子、判据是什么、结果** |
+| [test/PROD-DOC-REVIEW.md](test/PROD-DOC-REVIEW.md) | **对硬件工程师那份产测指导文件的意见**，可以直接发出去：要改的四条、**24 项需求的三分**（16 自动判 / 6 人工 / 2 不做）、两件要让产线知道的事、所有限值仍是 TBD |
 | [test/PORTTOOL-FIRST-BENCH.md](test/PORTTOOL-FIRST-BENCH.md) | **端口工装第一次上板的清单，带待填结果栏。**三个只有真硬件能回答的数（VNQ5160K 的 PWM 上限、模拟跳线焊没焊、AOUT 实际电流）就在这里等着填 |
 
 ### `work/` —— 手头还没完的

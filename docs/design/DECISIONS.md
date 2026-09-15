@@ -698,7 +698,7 @@ stm32cubeidec.exe … -application org.eclipse.cdt.managedbuilder.core.headlessb
 
 **连带要改文档的还有一处**：「USB 通信测试：向固定 USB 设备上传/下载文件」—— 板子是 **Device**，PC 才是主机（文档自己在「关键观察」栏也写了 `USB为Device`）。
 
-⚠️ **「异常可恢复」还没定。** 文档 3.10 判定栏要求「全部配置接口通过且异常可恢复」并记「误码/恢复时间」，**现在没有任何一项测「拔掉再插回来能不能恢复」**（拔线是人工动作）。留在 [../test/prod-alignment/issues/03-comm-criteria-shape.md](../test/prod-alignment/issues/03-comm-criteria-shape.md)。
+⚠️ **「异常可恢复」还没定。** 文档 3.10 判定栏要求「全部配置接口通过且异常可恢复」并记「误码/恢复时间」，**现在没有任何一项测「拔掉再插回来能不能恢复」**（拔线是人工动作）。进了 `ISS-D1`（[../work/ISSUES.md](../work/ISSUES.md)）。
 
 **什么情况下重开**：产线真的配了能跑文件传输的 Golden 节点，而且客户要求报告里出现速率这一行。
 
