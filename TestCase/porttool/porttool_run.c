@@ -11,7 +11,6 @@
 
 #if PORTTOOL_ENABLE
 
-#include "porttool_handover.h"   /* the one-way entries that share this hardware */
 #include "ETH/eth_test.h"
 #include "SD/sd_test.h"
 #include "SDRAM/sdram_test.h"
@@ -71,22 +70,6 @@ static void run_sdram_sweep(const char *args, char *out, uint32_t len)
              (unsigned long)s.words_each, (unsigned long)s.mismatches,
              (unsigned long)s.first_bad_offset, (unsigned long)s.first_bad_pattern,
              (unsigned long)s.write_ms, (unsigned long)s.verify_ms);
-}
-
-/* One write/wait/read-back cycle. How many cycles a station runs is the plan's
- * business, not the firmware's - the handover entry is the one that loops. */
-static void run_sdram_retention(const char *args, char *out, uint32_t len)
-{
-    (void)args;
-    sdram_retention_t r;
-
-    (void) SDRAM_Test_RetentionOnce(&r);
-
-    snprintf(out, len,
-             "ready=%u checked=%lu failed=%lu wait_ms=%lu first_bad=0x%08lX seed=0x%08lX",
-             (unsigned)r.ready, (unsigned long)r.checked, (unsigned long)r.failed,
-             (unsigned long)r.wait_ms, (unsigned long)r.first_bad_addr,
-             (unsigned long)r.seed);
 }
 
 /* The port tool runs from main.c's Phase 1, where MX_RTC_Init() has not run
@@ -180,29 +163,63 @@ static void run_sd_probe(const char *args, char *out, uint32_t len)
              (unsigned long)p.hal_error);
 }
 
+/* Write a file, read it back, compare - passes= times.
+ *
+ * *** One target, not two. *** A stress run is this repeated (sd_test.h), so
+ * how many rounds counts as proof is a parameter, the same way how many bytes
+ * already was. passes= defaults to 1.
+ *
+ * identical is the verdict in one flag: every round came back byte for byte.
+ * The parts are reported too - a card that mounts and writes but reads back
+ * wrong is a different repair from one that never mounted. */
 static void run_sd_integrity(const char *args, char *out, uint32_t len)
 {
-    sd_integrity_t r;
     uint32_t bytes = 0;
+    uint32_t passes = 0;
 
-    /* 0 leaves the default. A plan says how much to move; nothing here caps it
-     * beyond what the card and the filesystem will take, because "how big a
-     * transfer counts as proof" is a production decision, not a firmware one
-     * (DECISIONS.md 22). */
     (void) PortCmd_GetU32(args, "bytes", &bytes);
+    (void) PortCmd_GetU32(args, "passes", &passes);
+    if (passes == 0U) {
+        passes = 1U;
+    }
 
-    (void) SD_Test_IntegrityOnce(bytes, &r);
+    /* *** One round keeps the CRCs, many rounds keep the round numbers. ***
+     * Both carry mounted / identical / passes / passed / bytes, so a plan can
+     * judge either the same way; what differs is the diagnosis each shape can
+     * offer. A single round can say WHICH bytes came back wrong - the two CRCs
+     * differing is the evidence - and a stress run cannot, because it would
+     * have to keep 64 pairs of them. A stress run can say which round first
+     * failed, and a single round has no such thing to report. */
+    if (passes == 1U) {
+        sd_integrity_t r;
 
-    /* identical is the whole verdict in one flag, but the parts are reported
-     * too: a card that mounts and writes but reads back wrong is a different
-     * problem from one that never mounted, and the PC should not have to guess
-     * which from a single bit. */
-    snprintf(out, len,
-             "mounted=%u wrote=%u read_back=%u identical=%u bytes=%lu"
-             " write_crc=0x%08lX read_crc=0x%08lX fresult=%d",
-             (unsigned)r.mounted, (unsigned)r.wrote, (unsigned)r.read_back,
-             (unsigned)r.identical, (unsigned long)r.bytes,
-             (unsigned long)r.write_crc, (unsigned long)r.read_crc, r.fresult);
+        (void) SD_Test_IntegrityOnce(bytes, &r);
+        snprintf(out, len,
+                 "mounted=%u identical=%u passes=1 passed=%u wrote=%u read_back=%u"
+                 " bytes_each=%lu bytes_total=%lu write_crc=0x%08lX read_crc=0x%08lX"
+                 " fresult=%d",
+                 (unsigned)r.mounted, (unsigned)r.identical,
+                 (unsigned)(r.identical ? 1U : 0U),
+                 (unsigned)r.wrote, (unsigned)r.read_back,
+                 (unsigned long)r.bytes, (unsigned long)r.bytes,
+                 (unsigned long)r.write_crc, (unsigned long)r.read_crc, r.fresult);
+        return;
+    }
+
+    {
+        sd_stress_t s;
+
+        (void) SD_Test_StressOnce(bytes, passes, &s);
+        snprintf(out, len,
+                 "mounted=%u identical=%u passes=%lu passed=%lu bytes_each=%lu"
+                 " bytes_total=%lu elapsed_ms=%lu first_bad_pass=%lu fresult=%d",
+                 (unsigned)s.mounted,
+                 (unsigned)((s.passes > 0U) && (s.passed == s.passes)),
+                 (unsigned long)s.passes, (unsigned long)s.passed,
+                 (unsigned long)s.bytes_each, (unsigned long)s.bytes_total,
+                 (unsigned long)s.elapsed_ms, (unsigned long)s.first_bad_pass,
+                 s.fresult);
+    }
 }
 
 /* The PHY over MDIO only - no lwIP, no DMA, no RMII reference clock. See
@@ -245,31 +262,6 @@ static void run_sd_speed(const char *args, char *out, uint32_t len)
              (unsigned long)r.write_ms, (unsigned long)r.read_ms,
              (unsigned long)r.write_bps, (unsigned long)r.read_bps,
              r.fresult);
-}
-
-static void run_sd_stress(const char *args, char *out, uint32_t len)
-{
-    sd_stress_t s;
-    uint32_t bytes = 0;
-    uint32_t passes = 0;
-
-    /* 0 leaves the defaults. Both are the plan's call: fewer larger rounds and
-     * more smaller ones stress different things about a card. */
-    (void) PortCmd_GetU32(args, "bytes", &bytes);
-    (void) PortCmd_GetU32(args, "passes", &passes);
-
-    (void) SD_Test_StressOnce(bytes, passes, &s);
-
-    /* passes is what was attempted and passed is what came back identical, so
-     * a run that stopped early is visible as the two differing rather than as
-     * a smaller-looking but apparently clean result. */
-    snprintf(out, len,
-             "mounted=%u passes=%lu passed=%lu bytes_each=%lu bytes_total=%lu"
-             " elapsed_ms=%lu first_bad_pass=%lu fresult=%d",
-             (unsigned)s.mounted, (unsigned long)s.passes,
-             (unsigned long)s.passed, (unsigned long)s.bytes_each,
-             (unsigned long)s.bytes_total, (unsigned long)s.elapsed_ms,
-             (unsigned long)s.first_bad_pass, s.fresult);
 }
 
 /* Why the board last came up.
@@ -331,10 +323,9 @@ static void run_sdram_crc(const char *args, char *out, uint32_t len)
 
 /* PD4 (/RE and DE together) and PD5 (TX) driven as plain GPIO and read back.
  *
- * This is phase R1 of the standalone RS485 test (../RS485/rs485_test.c), and
- * it is the one thing that test could do which the session could not, so it
- * comes across as a target rather than keeping a whole handover entry alive
- * for it (DECISIONS.md 40).
+ * This is phase R1 of the standalone RS485 test (../RS485/rs485_test.c) - the
+ * one thing that test could do which the session cannot, so it comes across as
+ * a target of its own.
  *
  * *** What it separates: "no cable" from "this pin is dead". *** Nothing needs
  * to be attached. A pin that will not read back what was just written to it is
@@ -404,17 +395,13 @@ static const run_target_t targets[] = {
     { "sd.probe",        "sd", PORTTOOL_BOARD_BRIDGE, "-", "J6", run_sd_probe,
       "detect pin, card identification, capacity and class" },
     { "sd.integrity",    "sd", PORTTOOL_BOARD_BRIDGE, "-", "J6", run_sd_integrity,
-      "one write/read/verify round through FatFs; reports both CRCs" },
-    { "sd.stress",       "sd", PORTTOOL_BOARD_BRIDGE, "-", "J6", run_sd_stress,
-      "64 write/read/verify rounds; reports rounds passed and elapsed time" },
+      "write/read/verify through FatFs, passes= rounds of bytes= each" },
     { "sd.speed",        "sd", PORTTOOL_BOARD_BRIDGE, "-", "J6", run_sd_speed,
       "how fast the card moves data each way; does not verify content" },
     { "sdram.probe",     "sdram", PORTTOOL_BOARD_BRIDGE, "-", "U6", run_sdram_probe,
       "FMC bring-up, data bus and address bus; reports the window and three flags" },
     { "sdram.sweep",     "sdram", PORTTOOL_BOARD_BRIDGE, "-", "U6", run_sdram_sweep,
       "all 64 MiB, four patterns; reports mismatches and where the first was" },
-    { "sdram.retention", "sdram", PORTTOOL_BOARD_BRIDGE, "-", "U6", run_sdram_retention,
-      "one write/wait-5s/read-back cycle over 64 random addresses" },
     { "eth.link",        "eth", PORTTOOL_BOARD_BRIDGE, "-", "J1", run_eth_link,
       "PHY identity, link, and the speed/duplex auto-negotiation settled on" },
     { "rtc.read",        "rtc", PORTTOOL_BOARD_BRIDGE, "-", "-",  run_rtc_read,
@@ -471,14 +458,11 @@ static int first_of_port(uint32_t i)
 }
 
 /* One row per piece of hardware, not one per target - four rows for eight
- * targets. sd and sdram anchor here rather than on a handover row of their
- * own, and their one-way entries come along in targets=: two caps rows with
- * the same port= would give the panel two cards for one piece of hardware
- * (DECISIONS.md 17). */
+ * targets. Two caps rows with the same port= would give the panel two cards
+ * for one piece of hardware (DECISIONS.md 17). */
 uint32_t PortTool_RunCaps(int emit)
 {
     char runs[96];
-    char deep[96];
     uint32_t lines = 0;
 
     for (uint32_t i = 0; i < TARGET_COUNT; i++) {
@@ -497,15 +481,11 @@ uint32_t PortTool_RunCaps(int emit)
         }
 
         (void) PortTool_RunTargetsFor(targets[i].port, runs, sizeof(runs));
-        uint32_t n = PortTool_HandoverTargetsFor(targets[i].port, deep, sizeof(deep));
 
         printf("OK port=%s board=%s kind=run blk=%s term=%s channels=1 "
                "loop=none runs=%s",
                targets[i].port, targets[i].board, targets[i].blk,
                targets[i].term, runs);
-        if (n > 0U) {
-            printf(" targets=%s", deep);
-        }
         printf("\r\n");
     }
 
