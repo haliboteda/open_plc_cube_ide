@@ -135,5 +135,3 @@
 | 12 | **`kind=run` 目标是阻塞的** | 跑的时候独占 CPU，不能和「持续」的会话混在一轮里 | `porttool_run.c`、`PORTTOOL-FLOW.md:64` |
 | 13 | **`ain` 现在整条测不了** | 那两个引脚彻底悬空，等硬件焊 JP5/JP6/JP8/JP9 | `AIN-JUMPER-REQUEST.md` |
 | 14 | **`aout` 的期望值取决于 JP3/JP4 焊没焊** | 没焊：`mv=1:500` → 4.883 mA。焊了就变 4–20 mA live-zero，那两个期望值不成立 | `HARDWARE-FACTS.md` |
-
-⚠️ **以下两条随交权入口退出而消失**（[DECISIONS.md 第 40 条](../design/DECISIONS.md)），列在这里是为了说明它们为什么不在上表里：`pt.handover pwm` 和 `dout` 抢 PA9；交权一次只能进一个且不返回。

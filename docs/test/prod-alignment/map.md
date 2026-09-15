@@ -21,7 +21,6 @@
 | `DECISIONS.md` 37 | 测试方式 = 单次 / 持续（选时长），`soak` 端口已删 |
 | `DECISIONS.md` 38 | **上位机是监工**：板子只干活并把执行日志全发回来 |
 | `DECISIONS.md` 39 | **没有陪测板、没有外接仪器**，板子自证 + log 上来；板子测不了任何电压电流 |
-| `DECISIONS.md` 40 | 14 个交权入口全部退出面板，能力改成会话参数 |
 | `DECISIONS.md` 41 | **测试的每一项都是上位机配置项**：分类 + 说明 + 用法 + 互斥。总表 [PROD-CONFIG-ITEMS.md](../PROD-CONFIG-ITEMS.md) |
 
 **权威链**：硬件事实只能出自 `Hardware/`（原理图、netlist、GPIO 分配表、数据手册）。固件和面板都是抄件。
@@ -29,11 +28,10 @@
 ## Decisions so far
 
 - [没有陪测板和外接仪器时产测的边界](issues/00-scope-from-user.md)：板子自证的全做成会话/`pt.run`，板子没通路的（功耗、3V3/5V/5V_EXT、高边电流、继电器电流）列为人工项，硬件自己跳线量。已落 `DECISIONS.md` 39。
-- [交权 14 个入口全部退出](issues/01-handover-retreat.md)：`can.scope` 后两步 = 会话的 `extloop`/`normal`；`can.echo` = 会话加一个 `mode=echo`；KNX 逐帧 `raw=/inv=/crc=` 会话已有。已落 `DECISIONS.md` 40。
 - [配置项总表](../PROD-CONFIG-ITEMS.md)：九个分类、每项的说明与用法、**十四条互斥关系及其出处**。已落 `DECISIONS.md` 41；落到面板上是 [配置项落进面板](issues/07-config-items-in-panel.md)。
 - [五个通信口的判据形状](issues/03-comm-criteria-shape.md)：`eth`/`usb` 留速率；`can`/`rs485`/`knx` 改成**帧数 + 丢帧率 + 总线错误计数器归零**。已落 `DECISIONS.md` 42。⚠️ 「异常可恢复」仍开着。
 - [逐项三分：板子自证 / 人工 / 不做](issues/04-board-selfproof-matrix.md)：文档 24 项软件需求 → **16 项能自动判**（14 项已在跑 + 2 项要跳线）、**6 项人工**（板子无采样通路）、2 项不做。⚠️ 顺带查出 **高边输出和继电器现在是「回显判据」，坏板子照样过**。
-- [校准先算后存](issues/05-calibration-fit.md)：拟合在 **`$TOOL/internal/ptcal`**（和 `ptcheck` 同一条理由：面板和产线不能分叉）。**直线拟合，但把残差摆在增益前面** —— 响应不是直线时残差会当场说出来，所以现在拟直线是安全的。系数只进报告，**不写板子**。**写的人 2026-09-14 定了是上位机（经 JLINK），固件不加写入命令**；写哪 2026-09-14 也定了：**状态扇区最后 8 个槽，reclaim 负责搬**（[DECISIONS.md 45](../../design/DECISIONS.md)）。代码还没写。
+- [校准先算后存](issues/05-calibration-fit.md)：拟合在 **`$TOOL/internal/ptcal`**（和 `ptcheck` 同一条理由：面板和产线不能分叉）。**直线拟合，但把残差摆在增益前面** —— 响应不是直线时残差会当场说出来，所以现在拟直线是安全的。系数**只显示在面板上**，不落盘也不写板子。**写的人 2026-09-14 定了是上位机（经 JLINK），固件不加写入命令**；写哪 2026-09-14 也定了：**状态扇区最后 8 个槽，reclaim 负责搬**（[DECISIONS.md 45](../../design/DECISIONS.md)）。代码还没写。
 
 - [老化按上位机监工落地](issues/06-aging-mode.md)：文档 3.8 逐条对过。**复位拆成两半** —— 上位机从 tick 倒退发现「复位了」（原来会当成 49.7 天绕圈吞掉），`pt.run reset.cause` 答「为什么」；`aout` 帧补 `ef1=`/`ef2=`（**这板上唯一能到 MCU 的输出故障信号**）。极性写在方案文件里、由硬件工程师给（[DECISIONS.md 44](../../design/DECISIONS.md)）。
 
