@@ -117,10 +117,10 @@ DI 八路读回、DO 八路 + 软件 PWM、继电器逐路驱动、温度两路�
 | 名称 | 内容 | 现状 |
 |---|---|---|
 | SWD 连接 / 烧录 | 上位机经**外部 JLINK** 读 DUT 状态判定 | ❌ `TestCase/` 全仓没有 SWD 相关代码 |
-| SDRAM 压力自测 | 经 RS232 让 DUT 自测。判据「识别 64 MB + 零错误」 | ✅ **2026-09-08 齐了**：`pt.run sdram.probe`（容量 + 两条总线）、`sdram.sweep`（**整片 64 MiB 四花样**，报 `mismatches` 与 `first_bad`）、`sdram.retention`（写 64 个随机地址等 5 秒读回，证明自动刷新在跑）。全部报原始值，主机判。⚠️ `sweep` 要几十秒 |
+| SDRAM 压力自测 | 经 RS232 让 DUT 自测。判据「识别 64 MB + 零错误」 | ✅ **2026-09-08 齐了**：`pt.run sdram.probe`（容量 + 两条总线）、`sdram.sweep`（**整片 64 MiB 四花样**，报 `mismatches` 与 `first_bad`），保持力由 `sdram` 会话跑。全部报原始值，主机判。⚠️ `sweep` 要几十秒 |
 | 以太网通信 | DUT 与固定网络设备传文件，报速率 | ✅ **2026-09-08 齐了**：`eth` 会话是板上一个 TCP server（`porttool_eth.c`），三个模式 —— `echo` 闭环计数、`sink` 收大文件、`source` 发大文件，每帧报 `rx_bytes` / `tx_bytes` / `kbps`。`eth.link`（MDIO 探 PHY）仍在同一行上。⚠️ **kbps 是板子自己算的窗口速率，不是判据** —— 多少算合格由上位机定。**真板子上还没跑过** |
 | USB 通信 | 同上，固定 USB 设备 | ✅ **2026-09-08 齐了**：`usb` 会话把 CDC 管道当数据通道用（`porttool_usb.c`），四个模式 —— `echo` 闭环计数、`sink` 收大文件、`source` 发大文件、`info` 只报枚举状态。帧里 `state=`（枚举到哪一步）、`enum=`（枚举变了几次）、`busy=`（主机不读了，和线断了是两回事）。⚠️ **板子是 Device 不是 Host**，对端是产线 PC 打开那个虚拟串口。**真板子上还没跑过** |
-| SD 读写压力 | DUT 自测并报结果 | ✅ **2026-09-08 齐了**：`pt.probe` 之外加了 `pt.run sd.stress` —— **64 轮** 4 KiB 写/读/CRC，报 `passes` `passed` `bytes_total` `elapsed_ms` `first_bad_pass`。⚠️ **判据必须同时看 `passes` 和 `passed`**：中途卡死时 `passes` 跟着变小，只看 `passed` 会把「跑一轮就放弃」判成通过 |
+| SD 读写压力 | DUT 自测并报结果 | ✅ **2026-09-08 齐了**：`pt.probe` 之外加了 `pt.run sd.integrity passes=64` —— **64 轮** 4 KiB 写/读/CRC，报 `passes` `passed` `bytes_total` `elapsed_ms` `first_bad_pass`。⚠️ **判据必须同时看 `passes` 和 `passed`**：中途卡死时 `passes` 跟着变小，只看 `passed` 会把「跑一轮就放弃」判成通过 |
 | RTC 读 + 写校准值 + 回读 | — | 🔨 **读有了**：`pt.run rtc.read`（自己按需 `MX_RTC_Init()`，报 `init/clk/date/time`）。**写校准没有** —— 备份域里住着 iap_auth 的 nonce 计数器，写那里的测试等于能把安全计数器回滚。⚠️ 而且 `rtc.c:74` 选的是 **LSI 不是 LSE**，精度先天不够，谈校准之前要先定这个 |
 | 指示灯 | 上位机弹窗，人工看、人工选 | ✅ **两半都有了**：`pt.run led.blink` 闪 `PE2` 六次（`MX_GPIO_Init()` 不配这个脚，目标自己配），回复里是 `observed=unknown`（没有回读）；判定由 `UserConfirm` 步骤问人。工站 6 方案里就是这两步连着 |
 | 老化模式 | 全项通过后进老化模式：全负载开、DUT 自监控、异常灯告警、自计时 2–4 h 到点自动退回测试模式 | ✅ **面板的「持续」模式**：勾多个端口、选 1/2/3/4 小时或一直跑，一次启动。⚠️ **计时在上位机，不在板子**（[DECISIONS.md](DECISIONS.md) 第 37 条）；异常灯也由上位机判完再点（`pt.led fault=1`），因为板子不判任何东西。**上位机死了那一类情况由看门狗兜底**：`pt.hold` 每 2 秒续一次，6 秒没续上板子自己关输出并点灯。原来那个 `soak` 端口和 `plans/soak-2h.json` 已删 |
