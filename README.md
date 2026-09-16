@@ -3,10 +3,9 @@
 > This README covers flashing the bootloader onto a board and the Arduino-side
 > installation only.
 >
-> This repository's own behaviour and security model are documented in `docs/`,
-> which is the single source for both. Requirement and verification status is
-> product-level and lives in the AI-Skills checkout, under `OpenPLC/docs/`. Do
-> not restate any of it here.
+> Every document for this product lives in the OpenPLC_Docs repository: this
+> repository's behaviour and security model, and the requirement and verification
+> status alike. They moved there on 2026-09-16. Do not restate any of it here.
 
 # Prerequisities (Win or Linux)
 a- Download and install STM32-Cube IDE lastest [Link](https://www.st.com/en/development-tools/stm32cubeide.html)  

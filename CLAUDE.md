@@ -55,4 +55,3 @@ arm-none-eabi-gcc -fsyntax-only -mcpu=cortex-m7 -mthumb \
 | [README.md](README.md) | 英文，对外：烧 bootloader、Arduino 侧怎么装 |
 | [RELEASE-NOTES.md](RELEASE-NOTES.md) | 英文，对外：升级规则、known issues、未验证项、发版检查单。**升级风险只靠它兜着** |
 | `$PROD/docs/build/BOOTLOADER-PROJECT-LAYOUT.md` | 工程结构：flash 分区、尺寸预算、模块清单、lwIP 配置、构建配置 |
-| docs/INDEX.md | 本仓库项目笔记的路由表 |
