@@ -13,7 +13,7 @@
 // the controller's bus-monitoring mode, not a transceiver setting. The
 // isolated side is powered by U7; if U7 is dead the controller looks healthy
 // and the bus does nothing. Terminal C07/C08. Details and sources in
-// ../../docs/design/HARDWARE-FACTS.md.
+// $PROD/docs/hardware/HARDWARE-FACTS.md.
 //
 // *** The kernel clock is HSE. *** The bit timings below are exact only for
 // HSE, and the reset default happens to be HSE too - but PortCan_Open()

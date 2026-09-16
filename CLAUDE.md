@@ -2,7 +2,9 @@
 
 **这份文件是给 AI 会话看的。** 它只回答三件事：这个仓库是什么、源码在哪、改它有哪些硬规矩。
 
-> **所有文档和待决的问题都在 `OpenPLC_Docs` 仓库**（`$PROD`），入口是它根目录的 `README.md` 和 `WHERE-THINGS-LIVE.md`。本机位置：机器配置里的 `DOCS_REPO`，或跑 `$TOOL/TestCase` 里的 `python tools/common.py --probe`。
+> **产品文档在 `OpenPLC_Docs`**（`$PROD`）—— 全部文档和待决的问题，入口它的 `README.md`（本机位置见 `DOCS_REPO`）。
+>
+> 东西产出来该往哪放，读它的 `WHERE-THINGS-LIVE.md`。
 >
 > 这个仓库 2026-08-24 之前是「文档主仓」；**2026-09-16 起它一份文档都不留**，只剩这份入口和面向客户的 `RELEASE-NOTES.md`。
 

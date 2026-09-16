@@ -45,7 +45,7 @@ int PortAdc_VddaTrusted(void);
 /* Analog In 1 (PC3_C, terminal D12) or 2 (PA6, D13). Returns 0 if the
  * conversion failed. *** No front-end scaling: raw and the voltage at the MCU
  * pin only. The terminal value depends on which range the board is bridged for,
- * which is a soldered choice - see docs/design/HARDWARE-FACTS.md. */
+ * which is a soldered choice - see $PROD/docs/hardware/HARDWARE-FACTS.md. */
 int PortAdc_ReadAin(int ch, uint32_t *raw, uint32_t *mv);
 
 /* Analog In 1 with the PC3 analog switch closed, for comparison against the

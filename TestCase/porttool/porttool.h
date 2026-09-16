@@ -36,7 +36,7 @@
 // only samples. pt.hold is the one thing the board decides on its own, and it
 // decides whether anyone is still listening - not whether the board is good.
 // Without it a PC that dies leaves the outputs driven until somebody presses
-// reset. See docs/design/DECISIONS.md 37.
+// reset. See $PROD/docs/tables/DECISIONS.md 37.
 
 #ifndef TESTCASE_PORTTOOL_PORTTOOL_H_
 #define TESTCASE_PORTTOOL_PORTTOOL_H_

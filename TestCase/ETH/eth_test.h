@@ -37,7 +37,7 @@
 #include <stdint.h>
 
 /* Reported as measured, with no verdict: the limit belongs to the PC (see
- * ../../docs/design/DECISIONS.md 22). */
+ * $PROD/docs/tables/DECISIONS.md 22). */
 typedef struct {
     uint8_t  mdio_ready;   /* the MDIO interface was set up */
     uint8_t  found;        /* a PHY answered at some address */

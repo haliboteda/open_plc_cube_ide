@@ -295,7 +295,7 @@ static uint32_t SD_Test_Rand(uint32_t *state)
  *
  * This is the body the forever loop below used to hold inline. It was pulled
  * out so pt.run can perform exactly one round and come back with numbers - the
- * PC decides whether they are acceptable (../../docs/design/DECISIONS.md 22),
+ * PC decides whether they are acceptable ($PROD/docs/tables/DECISIONS.md 22),
  * which a loop that prints PASS and sleeps five seconds cannot support. */
 /* One chunk's worth of buffer, whatever the total is.
  *

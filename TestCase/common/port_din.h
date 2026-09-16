@@ -8,7 +8,7 @@
 //
 // Every line already carries an external 10k pull-up to +3V3 through a 50R
 // series resistor and shares its node with an LM339LV open-collector comparator
-// output (see docs/design/HARDWARE-FACTS.md), so no internal pull is configured
+// output (see $PROD/docs/hardware/HARDWARE-FACTS.md), so no internal pull is configured
 // - one would fight the board and distort the reading.
 
 #ifndef TESTCASE_COMMON_PORT_DIN_H_

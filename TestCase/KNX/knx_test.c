@@ -1020,7 +1020,7 @@ static knx_bus_t knx_bus_state(uint8_t *vccOk, uint8_t *busOk, uint8_t *rxIdle)
 	 *
 	 * Frame-level proof that the bus works regardless: 47 GroupValueWrites
 	 * sent, 47 heard back with the check octet passing, 47 acknowledged by a
-	 * real device on the installation. See docs/design/HARDWARE-FACTS.md. */
+	 * real device on the installation. See $PROD/docs/hardware/HARDWARE-FACTS.md. */
 	return (v != 0u) ? KNX_BUS_OK : KNX_BUS_DEAD;
 }
 

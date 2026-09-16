@@ -14,7 +14,7 @@
 // *** The reply carries measurements, never a verdict. *** No target here
 // prints PASS or FAIL. The limit lives in the PC's plan file, which is what
 // lets production change a limit without reflashing every board -
-// ../../docs/design/DECISIONS.md 22.
+// $PROD/docs/tables/DECISIONS.md 22.
 
 #ifndef TESTCASE_PORTTOOL_PORTTOOL_RUN_H_
 #define TESTCASE_PORTTOOL_PORTTOOL_RUN_H_

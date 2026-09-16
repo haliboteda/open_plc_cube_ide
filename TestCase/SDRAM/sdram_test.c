@@ -231,7 +231,7 @@ static int SDRAM_Test_FullSweep(sdram_sweep_t *acc)
  *
  * Same three checks the capacity entry runs, but it returns, and it reports
  * what it measured instead of a verdict. The verdict belongs to the PC (see
- * ../../docs/design/DECISIONS.md 22), which is what lets a production limit
+ * $PROD/docs/tables/DECISIONS.md 22), which is what lets a production limit
  * change without reflashing.
  *
  * The prose above still goes out on the log line: this is what a person reads

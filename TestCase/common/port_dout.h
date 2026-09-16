@@ -4,7 +4,7 @@
 // able to hold a level or run its own PWM duty cycle.
 //
 // The wiring gotchas for this port are kept in the bring-up notes; the pin and
-// timer facts are in docs/design/HARDWARE-FACTS.md.
+// timer facts are in $PROD/docs/hardware/HARDWARE-FACTS.md.
 //
 // *** Why software PWM and not the timer channels: all eight pins do sit on a
 // *** timer channel, but they pair up - DO1/DO5 are TIM1_CH1 and its
@@ -12,7 +12,7 @@
 // *** TIM15_CH1. Two pins sharing one capture/compare unit cannot hold
 // *** different duty cycles, so hardware PWM would give four, not eight, and
 // *** "you ticked DO1 and DO5 moved" is not something a panel can explain.
-// *** See docs/design/DECISIONS.md 10.
+// *** See $PROD/docs/tables/DECISIONS.md 10.
 //
 // *** The switching limit of the VNQ5160K-E high-side driver in front of these
 // *** terminals is NOT known - it is a smart switch with a charge pump, not a

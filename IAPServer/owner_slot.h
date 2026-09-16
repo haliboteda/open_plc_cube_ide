@@ -1,7 +1,7 @@
 /*
  * owner_slot.h -- which public key this board trusts as its signing root.
  *
- * Requirement C10. Design: docs/design/OWNERSHIP.md.
+ * Requirement C10. Design: $PROD/docs/security/OWNERSHIP.md.
  *
  * An append-only record area in the top 8K of the bootloader's own flash
  * sector, reserved by STM32H743IIKX_FLASH.ld (FLASH LENGTH is 120K, not the
@@ -16,7 +16,7 @@
  * Fully implemented: init/claim/set_owner/factory_reset all write real
  * records, and owner_slot_root() walks the verified chain (resolve_chain() in
  * the .c file) rather than trusting the compiled-in root unconditionally.
- * docs/design/OWNERSHIP.md is the design source; this header only states the
+ * $PROD/docs/security/OWNERSHIP.md is the design source; this header only states the
  * on-flash layout.
  */
 
@@ -47,7 +47,7 @@
 #define OWNER_FLAG_CLEARED     0x00000001UL   /* factory reset: fall back to R0 */
 
 /*
- * Layout is fixed by docs/design/OWNERSHIP.md and locked by a _Static_assert in the
+ * Layout is fixed by $PROD/docs/security/OWNERSHIP.md and locked by a _Static_assert in the
  * .c file. format_ver exists from the first version on purpose, so a later
  * format change is an upgrade rather than a breaking migration.
  *
@@ -93,7 +93,7 @@ void owner_slot_init(void);
  *
  * ⚠️ The first claim carries no signature and cannot: there is no owner yet to
  * sign it. It is trust-on-first-use, gated by physical presence, and whoever
- * gets there first wins. docs/design/OWNERSHIP.md states this plainly -- a factory
+ * gets there first wins. $PROD/docs/security/OWNERSHIP.md states this plainly -- a factory
  * board's security ceiling is "anyone who can press the button", and that only
  * closes once the board is claimed.
  *
@@ -136,7 +136,7 @@ uint32_t owner_slot_generation(void);
  * Append a cleared record: the board goes back to the built-in root and can be
  * claimed again.
  *
- * Carries no signature, and that is the trade docs/design/OWNERSHIP.md makes on
+ * Carries no signature, and that is the trade $PROD/docs/security/OWNERSHIP.md makes on
  * purpose. Requiring the current owner's signature would leave a customer who
  * lost their private key with a board only ST-Link could rescue -- and the
  * customer is exactly who does not have one. The cost is that anybody who can
@@ -173,7 +173,7 @@ void owner_slot_report(void);
  * ⚠️ The question is NOT "is the owner slot empty". A customer who compiled the
  * firmware with their own key has an empty slot and a perfectly safe board;
  * warning them every boot would teach everyone to ignore the line, and then it
- * protects nobody. See docs/design/OWNERSHIP.md.
+ * protects nobody. See $PROD/docs/security/OWNERSHIP.md.
  */
 bool owner_slot_root_is_public(void);
 

@@ -7,7 +7,7 @@
  * the private key has to be on the user's machine. A board becomes defended
  * when it is claimed (IAPTool takeown) or when a customer compiles the board
  * package with their own root (keys/rotate_keys.sh). See
- * ../docs/design/OWNERSHIP.md for the derivation.
+ * $PROD/docs/security/OWNERSHIP.md for the derivation.
  */
 
 #ifndef IAPSERVER_FW_PUBKEY_H_

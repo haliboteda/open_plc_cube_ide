@@ -2,7 +2,7 @@
  * iap_cert.h -- leaf certificates: "this key is authorised to sign firmware
  * (and session-auth challenges) on behalf of a trusted root".
  *
- * Requirement C11. Design: docs/design/OWNERSHIP.md.
+ * Requirement C11. Design: $PROD/docs/security/OWNERSHIP.md.
  *
  * A board no longer asks "was this signed by the root directly" -- it asks
  * "was this signed by a leaf whose certificate the root vouches for". Simple

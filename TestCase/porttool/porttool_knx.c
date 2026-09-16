@@ -25,7 +25,7 @@
 // raw = the octets as received pass the check octet, inv = they pass only
 // bit-inverted, bad = neither. Both readings' octets are reported either way,
 // so a person can still look; but nobody has to decide by eye. The RX chain's
-// polarity is unsettled on this board - see docs/design/HARDWARE-FACTS.md.
+// polarity is unsettled on this board - see $PROD/docs/hardware/HARDWARE-FACTS.md.
 //
 // *** The default group address is 31/7/255, the last one that exists. ***
 // A GroupValueWrite actuates whatever subscribes to the address it carries, so
