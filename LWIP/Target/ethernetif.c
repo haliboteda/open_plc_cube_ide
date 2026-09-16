@@ -187,10 +187,11 @@ static void low_level_init(struct netif *netif)
 
   /* USER CODE BEGIN MACADDRESS */
   /* Give every board its own MAC: the generated one above is a build-time
-   * constant, so two boards on one LAN would collide.
-   * Same derivation as openplc_make_mac_from_uid() in the Arduino core
-   * (libraries/OpenPLC_Net/src/ethernetif.c). A user application is free to
-   * pick its own instead -- devices are located by UID, not by address. */
+   * constant, so two boards on one LAN would collide. An application may pick
+   * its own instead -- devices are located by UID, not by address.
+   * Mirrored as openplc_make_mac_from_uid() in the Arduino core.
+   * Why, and the derivation itself: $PROD/docs/boot/BOOT-SEQUENCE.md
+   * "MAC 地址从芯片 UID 派生". */
   {
     uint32_t u0 = HAL_GetUIDw0();
     uint32_t u1 = HAL_GetUIDw1();
