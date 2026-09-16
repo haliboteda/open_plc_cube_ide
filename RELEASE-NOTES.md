@@ -239,7 +239,7 @@ also runs the host-side tests. Run it before working through the rest by hand.
       enforces this — the two live in different repositories with no shared
       build. → `$TOOL/TestCase/tools/check_version_sync.py`
 - [ ] Every mirrored file is in sync across the three repositories (see
-      `$PROD/docs/design/ARCHITECTURE.md`, "跨仓镜像的代码"). A divergence does not fail the
+      `$PROD/docs/repo/ARCHITECTURE.md`, "跨仓镜像的代码"). A divergence does not fail the
       build; it shows up at runtime as something unrelated.
       → `$TOOL/TestCase/tools/check_mirror_sync.py`
 - [ ] Everything verified in the live Arduino15 package has been copied back
