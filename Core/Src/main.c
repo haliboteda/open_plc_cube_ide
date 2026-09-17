@@ -189,7 +189,7 @@ static IAP_Method s_boot_mode = IAP_NONE;
 #define BOOT0_WINDOW_RELAYS    3U
 
 /* Keep holding past the decision point and it becomes a second gesture:
- * factory reset (requirement C10). Ten seconds is far enough from
+ * factory reset (requirement R2-02). Ten seconds is far enough from
  * the 1.5 s mark that nobody reaches it by holding "a bit longer to be sure". */
 #define BOOT0_FACTORY_HOLD_MS  10000U
 

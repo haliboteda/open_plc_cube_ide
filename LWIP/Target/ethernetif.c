@@ -190,7 +190,7 @@ static void low_level_init(struct netif *netif)
    * constant, so two boards on one LAN would collide. An application may pick
    * its own instead -- devices are located by UID, not by address.
    * Mirrored as openplc_make_mac_from_uid() in the Arduino core.
-   * Why, and the derivation itself: $PROD/docs/boot/BOOT-SEQUENCE.md
+   * Why, and the derivation itself: $PROD/docs/modules/M1/BOOT-SEQUENCE.md
    * "MAC 地址从芯片 UID 派生". */
   {
     uint32_t u0 = HAL_GetUIDw0();

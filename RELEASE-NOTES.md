@@ -246,7 +246,7 @@ also runs the host-side tests. Run it before working through the rest by hand.
       into the core package's git repository and committed.
       → `$TOOL/TestCase/tools/check_core_sync.py`
 - [ ] The published-root warning still fires on an unclaimed board
-      (`$TOOL/TestCase/tools/check_public_root.py`, case P6). It is the only
+      (`$TOOL/TestCase/tools/check_public_root.py`, case T2-06). It is the only
       thing telling a customer their board is undefended, and it goes quiet
       the moment the fingerprint it compares against drifts.
 - [ ] Bootloader flashed over ST-Link/DFU and the application uploaded over

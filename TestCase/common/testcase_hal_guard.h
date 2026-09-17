@@ -28,7 +28,7 @@
  *
  * Include this FIRST in every TestCase file that fakes a HAL module.
  *
- * ⚠️ Skipped when PORTTOOL_HOST_TEST is defined -- case H4 compiles some of
+ * ⚠️ Skipped when PORTTOOL_HOST_TEST is defined -- case T4-01 compiles some of
  * these files natively, and a host toolchain has headers of its own with these
  * names. mingw ships an <adc.h> (Windows Application Data Corruption), so the
  * check fired there and claimed CubeMX had gained an ADC peripheral. There is

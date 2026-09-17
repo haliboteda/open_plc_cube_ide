@@ -314,7 +314,7 @@ static void dout_caps(char *out, uint32_t out_len)
      * *** duty can be reported masked; zero is BELOW the frequency floor, so
      * *** a masked freq line makes the panel send freq=5:0 the moment somebody
      * *** ticks channel 5 - and the board refuses the whole command. Found by
-     * *** case H5 against the board on 2026-09-10; the simulated board could
+     * *** case T4-02 against the board on 2026-09-10; the simulated board could
      * *** not show it, because nothing there re-selects channels. */
     PortCmd_FormatPairs(actual, (1U << PORT_DOUT_COUNT) - 1U,
                         PORT_DOUT_COUNT, freq, sizeof(freq));

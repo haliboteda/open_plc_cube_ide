@@ -51,7 +51,7 @@ static bool discovery_reply_allowed(void)
   if (replies_in_window >= DISCOVERY_MAX_REPLIES_PER_SEC) {
     /* Only the first refusal of each window speaks: the log port is far slower
      * than the flood, so per-packet logging would be the worse denial of service.
-     * Why, in full: $PROD/docs/boot/BOOT-SEQUENCE.md "网络发现：限流". */
+     * Why, in full: $PROD/docs/modules/M1/BOOT-SEQUENCE.md "网络发现：限流". */
     if (replies_in_window == DISCOVERY_MAX_REPLIES_PER_SEC) {
       replies_in_window++;
       printf("[UDP] discovery capped at %u replies/s - something is flooding us\r\n",

@@ -7,7 +7,7 @@
  * commands with no proof of authorization at all.
  *
  * The board keeps no secret at all for this -- only public keys and
- * certificates. Why that shape was chosen: $PROD/docs/security/OWNERSHIP.md.
+ * certificates. Why that shape was chosen: $PROD/docs/modules/M2-ownership.md.
  *
  * Protocol: client requests a challenge, device replies with a nonce that
  * can only ever be used once and expires after IAP_AUTH_NONCE_TTL_MS; client

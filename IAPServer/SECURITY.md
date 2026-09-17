@@ -167,7 +167,7 @@ board is worth extracting.
       handing the board to a new root (`IAPTool setowner`), which voids every
       certificate the old root issued -- including the firmware already
       installed, which must be re-uploaded. Naming a single certificate
-      instead is requirement C12; the `serial` field exists for it.
+      instead is requirement R2-04; the `serial` field exists for it.
 - [ ] **Consolidate `iap_auth.c`/`iap_cert.c`/`sha256.c` across the three
       repos** into one shared source instead of hand-synced copies. What
       guards them meanwhile is `check_mirror_sync.py` (case P2), which
