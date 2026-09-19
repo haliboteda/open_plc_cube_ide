@@ -159,7 +159,11 @@ void iap_auth_report_backup_domain(void)
 				"** Domain contents survived; treating the witness read as unreliable. **\r\n",
 				counter);
 	} else {
-		printf("** Backup domain was lost - RTC battery absent or empty. **\r\n"
+		/* Do not name a cause here. A mismatched RTCSEL between bootloader and
+		 * application wipes this domain with a healthy battery in place, and
+		 * blaming the battery cost a full day of debugging (2026-09-18).
+		 * See $PROD/docs/tables/DECISIONS.md, decision 57. */
+		printf("** Backup domain was lost - VBAT supply or RTC clock source changed. **\r\n"
 				"** Nonce counter is zero; replay protection is weakened. **\r\n");
 	}
 
