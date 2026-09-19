@@ -196,7 +196,7 @@ click.
   application. Only one board was available, so uniqueness *between* boards has
   never been observed. Put it on the production checklist.
 - ~~Behaviour when power is lost mid-upgrade.~~ **Verified 2026-09-01** (test
-  cases S4a/S4b): losing power during the transfer is harmless — the old
+  cases T1-21/T1-22): losing power during the transfer is harmless — the old
   application starts normally and the application region is untouched. Losing
   power during the erase/write window leaves the board reporting `metadata
   present` with `App signature invalid or absent`, and re-uploading recovers

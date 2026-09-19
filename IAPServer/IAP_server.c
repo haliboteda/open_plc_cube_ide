@@ -21,6 +21,8 @@
 
 #include "main.h"
 
+#include "fmc.h"            /* iap_sdram_selftest_passed(), for the reject text */
+#include "lwip/netif.h"     /* netif_default, to notice a link that never came up */
 #include "usart.h"          /* huart4, de-initialised before jumping to the app */
 #include "usbd_cdc_flash.h"
 
@@ -395,7 +397,16 @@ void process_command() {
 			if (expected_checksum != ~caledCRC) {
 				printf("Checksum FAIL. Expected: %08" PRIX32 ", Got: %08" PRIX32 "\r\n",
 						expected_checksum, ~caledCRC);
-				send_response("Checksum Failed");
+				/* Name the staging buffer when it is the likely cause. The
+				 * self-test already says so on the log port, but whoever is
+				 * upgrading may only be watching the upload channel, where a
+				 * bare "Checksum Failed" sends them after their own image
+				 * first. See $PROD/docs/modules/M1-firmware-upgrade.md. */
+				if (!iap_sdram_selftest_passed()) {
+					send_response("Checksum Failed - SDRAM staging buffer failed its self-test");
+				} else {
+					send_response("Checksum Failed");
+				}
 				bootloader_state_log_event(IAP_EVT_CRC_FAIL, (uint32_t)current_method, peer_ip, nowTick, authCtr);
 			} else if (!have_expected_signature) {
 				printf("No valid signature was provided with this upload - refusing to trust it.\r\n");
@@ -670,6 +681,16 @@ void server_jump_to_app(void) {
  */
 void IAP_servers_start(IAP_Method mode) {
 	if ((mode == IAP_ETHERNET) || (mode == IAP_ALL)) {
+		/* Say so when the link is not usable. ethernetif.c returns silently
+		 * when LAN8742_Init() fails -- it only calls netif_set_link_down() and
+		 * netif_set_down() -- and that code sits in a CubeMX-generated region,
+		 * so the report has to happen here instead. Without it a dead PHY and
+		 * an unplugged cable both present to the operator as "the tool cannot
+		 * find the board", with nothing in the log either way. */
+		if ((netif_default == NULL) || !netif_is_link_up(netif_default)) {
+			printf("** Ethernet link is DOWN - this board will not answer discovery. **\r\n"
+			       "** Check the cable; if it is in, the PHY did not initialise. **\r\n");
+		}
 		tcp_server_start();
 		openplc_udp_server_start();
 	}
