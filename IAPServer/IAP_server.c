@@ -285,7 +285,7 @@ void process_command() {
 				}
 			}
 		} else if (strncmp((char *)RXBuffer, "revoke ", 7) == 0) {
-			// "revoke <generation> <leaf_prefix_hex> <sig_hex>"
+			// "revoke <leaf_prefix_hex> <sig_hex>"
 			//
 			// leaf_prefix_hex names ONE leaf (the first OWNER_REVOKE_PREFIX_LEN
 			// bytes of its public key, 32 hex chars) -- IAPTool's `revoke` takes
@@ -296,16 +296,19 @@ void process_command() {
 			//
 			// No BOOT0, same reasoning as setowner: the current owner's
 			// signature IS the authorisation.
-			uint32_t gen = 0U;
+			//
+			// No generation on the wire either: an 'R' record is not a link in
+			// the ownership chain, so it has no position in one (decision 59).
 			char leafhex[(OWNER_REVOKE_PREFIX_LEN * 2U) + 1U];
 			char sighex[129];
 			uint8_t revoked[OWNER_REVOKE_SLOTS][OWNER_REVOKE_PREFIX_LEN];
 			uint8_t sig[64];
 			bool ok = true;
+			bool already = false;
 			uint32_t i;
 
-			if (sscanf((char *)RXBuffer + 7, "%" SCNu32 " %32s %128s",
-					&gen, leafhex, sighex) != 3) {
+			if (sscanf((char *)RXBuffer + 7, "%32s %128s",
+					leafhex, sighex) != 2) {
 				send_response("Bad args");
 			} else if ((strlen(leafhex) != (OWNER_REVOKE_PREFIX_LEN * 2U)) ||
 					(strlen(sighex) != 128U)) {
@@ -330,8 +333,12 @@ void process_command() {
 				}
 				if (!ok) {
 					send_response("Bad hex");
-				} else if (owner_slot_revoke(gen, revoked, sig)) {
-					send_response("OK");
+				} else if (owner_slot_revoke(revoked, sig, &already)) {
+					// "already" keeps a repeat call honest: it succeeded, but
+					// nothing was written. IAPTool matches on "OK", so the
+					// extra words reach the operator without changing the
+					// verdict.
+					send_response(already ? "OK already revoked" : "OK");
 				} else {
 					send_response("Refused");
 				}

@@ -196,12 +196,11 @@ bool owner_slot_factory_reset(bool physically_confirmed);
  * business writing a revocation, and resolve_chain() enforces that requiring
  * a signature.
  */
-bool owner_slot_revoke(uint32_t generation,
-		const uint8_t revoked[OWNER_REVOKE_SLOTS][OWNER_REVOKE_PREFIX_LEN],
-		const uint8_t sig[64]);
+bool owner_slot_revoke(const uint8_t revoked[OWNER_REVOKE_SLOTS][OWNER_REVOKE_PREFIX_LEN],
+		const uint8_t sig[64], bool *already);
 
 /*
- * Has this leaf been revoked by a signed 'R' record in the trusted chain?
+ * Has this leaf been revoked by an 'R' record written for this board?
  * Compares only the first OWNER_REVOKE_PREFIX_LEN bytes of `leaf_pubkey`, the
  * same slice a revocation names.
  *

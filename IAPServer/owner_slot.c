@@ -183,16 +183,15 @@ static void resolve_chain(void)
 {
 	const owner_record_t *current = NULL;
 	uint32_t last_gen = 0U;
+	uint32_t i;
 	bool first = true;
 	bool prev_cleared = false;
 	uint8_t my_uid[IAP_MACHINE_ID_SIZE];
 
 	iap_keyderive_get_machine_id(my_uid);
-	s_revoke_count = 0U;
 
 	for (;;) {
 		const owner_record_t *next = NULL;
-		uint32_t i;
 
 		/* Lowest generation strictly above the one just applied. 51 slots, so
 		 * a linear pass per link is cheaper than sorting. */
@@ -200,6 +199,14 @@ static void resolve_chain(void)
 			const owner_record_t *r = record_at(i);
 
 			if (!record_is_structurally_valid(r)) {
+				continue;
+			}
+			/* 'R' records are not links in the chain -- see the revocation pass
+			 * below. Walking them here is what limited a board to a single
+			 * revocation: owner_slot_revoke() derives the generation from the
+			 * effective owner, which a revocation never advances, so the second
+			 * one always collided with the first and was skipped. */
+			if (r->type == (uint8_t)OWNER_RECORD_TYPE_REVOKE) {
 				continue;
 			}
 			if (!first && (r->generation <= last_gen)) {
@@ -213,8 +220,7 @@ static void resolve_chain(void)
 			break;
 		}
 
-		bool is_revoke = (next->type == (uint8_t)OWNER_RECORD_TYPE_REVOKE);
-		bool cleared = !is_revoke && ((next->flags & OWNER_FLAG_CLEARED) != 0UL);
+		bool cleared = ((next->flags & OWNER_FLAG_CLEARED) != 0UL);
 
 		if (!cleared && (memcmp(next->uid, my_uid, sizeof(my_uid)) != 0)) {
 			/* Structurally fine and possibly even correctly signed -- just not
@@ -244,7 +250,7 @@ static void resolve_chain(void)
 			 * that: revocation has no first-use case, because nothing can be
 			 * revoked before an owner exists to have signed it.
 			 */
-			if (is_revoke || (!first && !cleared && !prev_cleared)) {
+			if (!first && !cleared && !prev_cleared) {
 				s_unauthorised_count++;
 				break;
 			}
@@ -265,19 +271,46 @@ static void resolve_chain(void)
 			}
 		}
 
-		if (is_revoke) {
-			if (s_revoke_count < OWNER_SLOT_MAX_RECORDS) {
-				s_revoke_records[s_revoke_count++] = next;
-			}
-		} else {
-			current = next;
-		}
+		current = next;
 		last_gen = next->generation;
 		prev_cleared = cleared;
 		first = false;
 	}
 
 	s_effective = current;
+
+	/*
+	 * Revocations are a table, not a step in the ownership history: collected
+	 * in their own pass, structure and uid only.
+	 *
+	 * No signature check and no generation here, deliberately (decision 59).
+	 * The gate is on the way IN -- owner_slot_revoke() verifies the current
+	 * owner's signature before a single byte is written -- and a record that
+	 * got past that gate is a fact from then on. Re-verifying at boot would
+	 * also mean deciding which past root should still count, and the answer
+	 * that matters is already settled: what was written stays revoked.
+	 *
+	 * Forging one buys only denial of service (a legitimate leaf stops working)
+	 * and no privilege at all, and the only way to write flash without passing
+	 * the gate is SWD -- which can rewrite the whole bootloader anyway.
+	 */
+	s_revoke_count = 0U;
+	for (i = 0U; i < OWNER_SLOT_MAX_RECORDS; i++) {
+		const owner_record_t *r = record_at(i);
+
+		if (!record_is_structurally_valid(r)) {
+			continue;
+		}
+		if (r->type != (uint8_t)OWNER_RECORD_TYPE_REVOKE) {
+			continue;
+		}
+		if (memcmp(r->uid, my_uid, sizeof(my_uid)) != 0) {
+			continue;   /* written for a different board */
+		}
+		if (s_revoke_count < OWNER_SLOT_MAX_RECORDS) {
+			s_revoke_records[s_revoke_count++] = r;
+		}
+	}
 }
 
 void owner_slot_init(void)
@@ -569,9 +602,8 @@ bool owner_slot_factory_reset(bool physically_confirmed)
 	return true;
 }
 
-bool owner_slot_revoke(uint32_t generation,
-		const uint8_t revoked[OWNER_REVOKE_SLOTS][OWNER_REVOKE_PREFIX_LEN],
-		const uint8_t sig[64])
+bool owner_slot_revoke(const uint8_t revoked[OWNER_REVOKE_SLOTS][OWNER_REVOKE_PREFIX_LEN],
+		const uint8_t sig[64], bool *already)
 {
 	owner_record_t rec;
 	uint8_t digest[SHA256_DIGEST_SIZE];
@@ -580,21 +612,54 @@ bool owner_slot_revoke(uint32_t generation,
 
 	owner_slot_init();
 
+	if (already != NULL) {
+		*already = false;
+	}
+
 	if (s_effective == NULL) {
 		printf("** revoke refused: board is unclaimed - use takeown first **\r\n");
 		return false;
 	}
-	if (generation != (s_effective->generation + 1U)) {
-		printf("** revoke refused: generation must be %" PRIu32 ", got %" PRIu32
-				" **\r\n", s_effective->generation + 1U, generation);
-		return false;
+
+	/*
+	 * Revoking is idempotent: naming a leaf that is already revoked changes
+	 * nothing and must not spend a slot. That is also what stops a replayed
+	 * request from filling the area -- replaying it a hundred times still
+	 * costs one record, so no anti-replay field is needed (decision I-D1).
+	 */
+	{
+		bool all_known = true;
+
+		for (i = 0U; i < OWNER_REVOKE_SLOTS; i++) {
+			uint8_t probe[64];
+
+			if (payload_slice_is_zero(revoked[i], OWNER_REVOKE_PREFIX_LEN)) {
+				continue;
+			}
+			memset(probe, 0, sizeof(probe));
+			memcpy(probe, revoked[i], OWNER_REVOKE_PREFIX_LEN);
+			if (!owner_slot_is_revoked(probe)) {
+				all_known = false;
+				break;
+			}
+		}
+		if (all_known) {
+			printf("** already revoked - nothing written **\r\n");
+			if (already != NULL) {
+				*already = true;
+			}
+			return true;
+		}
 	}
 
 	memset(&rec, 0xFF, sizeof(rec));
 	rec.type = (uint8_t)OWNER_RECORD_TYPE_REVOKE;
 	rec.reserved0 = 0U;
 	rec.format_ver = (uint16_t)OWNER_FORMAT_VER;
-	rec.generation = generation;
+	/* An 'R' record is not a link in the chain, so it has no position
+	 * in one. The field stays in the struct because 'O' needs it and both
+	 * share the layout; fixing it at 0 keeps the signed prefix deterministic. */
+	rec.generation = 0UL;
 	rec.flags = 0UL;
 	memcpy(rec.revoked, revoked, sizeof(rec.revoked));
 	iap_keyderive_get_machine_id(rec.uid);
@@ -638,7 +703,7 @@ bool owner_slot_revoke(uint32_t generation,
 		}
 	}
 
-	printf("** Revocation recorded at generation %" PRIu32 ". **\r\n", generation);
+	printf("** Revocation recorded. **\r\n");
 	return true;
 }
 
