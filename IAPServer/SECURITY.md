@@ -163,11 +163,13 @@ board is worth extracting.
       protects a board that still trusts the published key, and the vendor
       cannot fix that by rotating -- see the section above. This is an
       operational step, not a code change.
-- [ ] **Revoking one delegated certificate.** Today the only revocation is
-      handing the board to a new root (`IAPTool setowner`), which voids every
-      certificate the old root issued -- including the firmware already
-      installed, which must be re-uploaded. Naming a single certificate
-      instead is requirement R2-04; the `serial` field exists for it.
+- [ ] **Revoking one delegated certificate.** Written, not yet proven on a
+      board. `IAPTool revoke` appends an `'R'` record naming the leaf by the
+      first 16 bytes of its public key, and every certificate check consults
+      it. Until that has run on real hardware, the revocation to rely on is
+      still handing the board to a new root (`IAPTool setowner`), which voids
+      every certificate the old root issued -- including the firmware already
+      installed, which must be re-uploaded.
 - [ ] **Consolidate `iap_auth.c`/`iap_cert.c`/`sha256.c` across the three
       repos** into one shared source instead of hand-synced copies. What
       guards them meanwhile is `check_mirror_sync.py` (case P2), which

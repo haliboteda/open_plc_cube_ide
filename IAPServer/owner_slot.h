@@ -18,6 +18,12 @@
  * the .c file) rather than trusting the compiled-in root unconditionally.
  * $PROD/docs/modules/M2-ownership.md is the design source; this header only states the
  * on-flash layout.
+ *
+ * v3 (2026-09-20) adds a second record type, 'R' (revoke), living in the same
+ * append-only area and the same generation sequence as 'O' records -- see
+ * OWNER_RECORD_TYPE_REVOKE below. This is a hard cut, not a migration: `slots`
+ * is gone (nothing ever used it; variable-length records were never built),
+ * so a v2 record is structurally invalid to v3 firmware and vice versa.
  */
 
 #ifndef IAPSERVER_OWNER_SLOT_H_
@@ -38,13 +44,25 @@
 #define OWNER_RECORD_SIZE      160U
 #define OWNER_SLOT_MAX_RECORDS (OWNER_SLOT_SIZE / OWNER_RECORD_SIZE)   /* 51 */
 
-#define OWNER_RECORD_TYPE      'O'
-#define OWNER_RECORD_ERASED    0xFFU
-#define OWNER_FORMAT_VER       2U
-#define OWNER_RECORD_SLOTS     5U
+#define OWNER_RECORD_TYPE         'O'
+#define OWNER_RECORD_TYPE_REVOKE  'R'
+#define OWNER_RECORD_ERASED       0xFFU
+#define OWNER_FORMAT_VER          3U
 
-/* flags */
+/* flags (meaningful for 'O' records only; 'R' always writes 0) */
 #define OWNER_FLAG_CLEARED     0x00000001UL   /* factory reset: fall back to R0 */
+
+/* An 'R' record names up to this many revoked leaves. Revocation today has one
+ * caller (owner_slot_revoke()) that fills one slot per call; the other three
+ * exist so a future caller can batch without a format change. Unused slots are
+ * all-zero and skipped by owner_slot_is_revoked(). */
+#define OWNER_REVOKE_SLOTS       4U
+/* A leaf is named by the first 16 bytes of its 64-byte public key -- not the
+ * whole key. Full P-256 points are effectively random, so 128 bits of prefix
+ * make a collision (revoking the wrong leaf, or failing to revoke the right
+ * one) astronomically unlikely, and it lets one record hold four names instead
+ * of one. See $PROD/maps/owner-revoke-and-boot-upgrade/issues/OWN-01-revoke-by-serial-or-by-pubkey.md. */
+#define OWNER_REVOKE_PREFIX_LEN  16U
 
 /*
  * Layout is fixed by $PROD/docs/modules/M2-ownership.md and locked by a _Static_assert in the
@@ -54,30 +72,41 @@
  * v2 (2026-09-04): added `uid`, binding a record to the one board it was
  * issued for -- without it, the raw bytes of one board's record area could be
  * copied onto another board's and verify just as well, since nothing in the
- * signed prefix said which board it was for. `uid` sits between root_pubkey
- * and prev_sig, inside OWNER_SIGNED_PREFIX_LEN, so it is covered by the same
- * signature as everything else -- a field the signature does not cover is not
- * actually bound to anything.
+ * signed prefix said which board it was for. `uid` sits between the union
+ * below and `prev_sig`, inside OWNER_SIGNED_PREFIX_LEN, so it is covered by
+ * the same signature as everything else -- a field the signature does not
+ * cover is not actually bound to anything.
  *
- * No v1 compatibility: nothing in the field carries a v1 record forward, so
- * OWNER_FORMAT_VER is a hard cut, not a migration. record_is_structurally_valid()
- * rejects format_ver != 2 outright.
+ * v3 (2026-09-20): dropped `slots` (nothing ever read it -- variable-length
+ * records were never built) in favour of a `reserved0` byte that keeps every
+ * other field at the same offset, and gave the payload two interpretations:
+ * `root_pubkey` for an 'O' record, `revoked` for an 'R' one. Only one is ever
+ * live in a given record, decided by `type`; the union just means an 'R'
+ * record does not need a second struct to hold the same 64 bytes.
+ *
+ * No compatibility with earlier versions: nothing in the field carries an
+ * older record forward, so OWNER_FORMAT_VER is a hard cut, not a migration.
+ * record_is_structurally_valid() rejects format_ver != 3 outright.
  */
 typedef struct {
-	uint8_t  type;             /*   0  'O', or 0xFF when erased               */
-	uint8_t  slots;            /*   1  5                                       */
-	uint16_t format_ver;       /*   2  2                                       */
-	uint32_t generation;       /*   4  monotonic; highest valid record wins     */
-	uint32_t flags;            /*   8  bit0 = cleared                          */
-	uint8_t  root_pubkey[64];  /*  12  secp256r1 X||Y; all zero when cleared    */
+	uint8_t  type;             /*   0  'O', 'R', or 0xFF when erased           */
+	uint8_t  reserved0;        /*   1  was `slots`; always 0 now                */
+	uint16_t format_ver;       /*   2  3                                        */
+	uint32_t generation;       /*   4  monotonic; walked oldest-first, see below */
+	uint32_t flags;            /*   8  bit0 = cleared ('O' only)                */
+	union {
+		uint8_t root_pubkey[64];                             /* 'O' */
+		uint8_t revoked[OWNER_REVOKE_SLOTS][OWNER_REVOKE_PREFIX_LEN]; /* 'R' */
+	};                         /*  12  64 bytes either way; all zero when cleared */
 	uint8_t  uid[12];          /*  76  this board's HAL_GetUIDw0/1/2(), big-endian
 	                            *      UIDW2||UIDW1||UIDW0. Zero for a cleared
 	                            *      record (there is no "this board" claim
 	                            *      left once cleared).                     */
 	uint8_t  prev_sig[64];     /*  88  previous root's signature over bytes 0..87
 	                            *      all zero for the first claim and for a
-	                            *      cleared record -- those are gated by a
-	                            *      physical action, not by a signature      */
+	                            *      cleared 'O' record -- those are gated by a
+	                            *      physical action, not by a signature. An
+	                            *      'R' record is never exempt (see below)    */
 	uint8_t  reserved[8];      /* 152                                          */
 } owner_record_t;
 
@@ -148,6 +177,46 @@ uint32_t owner_slot_generation(void);
  * unstated property of the call site.
  */
 bool owner_slot_factory_reset(bool physically_confirmed);
+
+/*
+ * Append a record revoking up to OWNER_REVOKE_SLOTS leaves. `revoked` is
+ * exactly the 64 bytes the record will carry -- an unused slot must be all
+ * zero, and the caller decides how many of the four are filled. Like
+ * owner_slot_set_owner(), `generation` must be exactly one past the record in
+ * force and `sig` must verify over the signed prefix of the record as it will
+ * actually be written: the caller has to know the board's uid in advance to
+ * produce that signature, the same requirement set_owner already has.
+ *
+ * No physical gate, for the same reason set_owner has none: the signature IS
+ * the authorisation, and a departed colleague's key needs revoking without
+ * anyone standing at the board.
+ *
+ * There is no unsigned case for 'R', unlike 'O': revocation has no equivalent
+ * of "the first claim, TOFU" -- a board with nothing to revoke from has no
+ * business writing a revocation, and resolve_chain() enforces that requiring
+ * a signature.
+ */
+bool owner_slot_revoke(uint32_t generation,
+		const uint8_t revoked[OWNER_REVOKE_SLOTS][OWNER_REVOKE_PREFIX_LEN],
+		const uint8_t sig[64]);
+
+/*
+ * Has this leaf been revoked by a signed 'R' record in the trusted chain?
+ * Compares only the first OWNER_REVOKE_PREFIX_LEN bytes of `leaf_pubkey`, the
+ * same slice a revocation names.
+ *
+ * R4: the root currently in force can never revoke itself -- an entry that
+ * happens to equal owner_slot_root()'s own prefix is skipped, not honoured.
+ * This is deliberately a per-entry skip, not a reason to reject the whole
+ * record: one record holds four names, and a self-naming mistake (or a
+ * captured record replayed after the board changed hands) must not cost the
+ * other three their effect.
+ *
+ * Not something callers need to remember on their own -- iap_cert_verify()
+ * and iap_cert_verify_image() (iap_cert.h) both take the answer as a
+ * parameter, so a call site that forgets to ask does not compile.
+ */
+bool owner_slot_is_revoked(const uint8_t leaf_pubkey[64]);
 
 /*
  * The root to verify firmware against: the last verified link in the on-flash

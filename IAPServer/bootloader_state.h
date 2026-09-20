@@ -43,33 +43,36 @@ extern "C" {
 /* One STM32H7 flash word: the smallest thing that can be programmed, and a word
  * may only be programmed once. A log entry is exactly one of these, so the
  * journal holds as many events as the hardware can possibly fit. Metadata needs
- * eight (the signature and certificate alone are 196 bytes). */
+ * seven (the signature and certificate alone are 192 bytes). */
 #define IAP_JOURNAL_SLOT_SIZE 32U
-#define IAP_METADATA_SLOTS    8U
+#define IAP_METADATA_SLOTS    7U
 
 /*
- * Firmware metadata payload: 4+32+64+132+16 = 248 bytes, which with the
- * 8-byte record header fills IAP_METADATA_SLOTS slots exactly (256 = 8x32).
+ * Firmware metadata payload: 4+64+128+20 = 216 bytes, which with the 8-byte
+ * record header fills IAP_METADATA_SLOTS slots exactly (224 = 7x32).
  *
  * `cert` is the certificate whose leaf key produced `signature` -- stored
  * whole, not just the leaf pubkey, because re-verification at every boot
  * (server_decide()) has to re-check root_sig too. That is what makes a
- * setowner handover retroactively invalidate the currently-installed
- * firmware: the stored cert's root_sig only verifies against the root that
- * signed it, and owner_slot_root() changes the moment ownership changes. A
- * cached "last known good leaf_pubkey" would silently defeat that -- do not
- * add one.
+ * setowner handover -- or a revocation -- retroactively invalidate the
+ * currently-installed firmware: the stored cert's root_sig only verifies
+ * against the root that signed it, owner_slot_root() changes the moment
+ * ownership changes, and owner_slot_is_revoked() is checked fresh every time
+ * against the leaf this cert names. A cached "last known good leaf_pubkey"
+ * would silently defeat both -- do not add one.
  *
- * Grew from 4 to 8 slots for this (was reserved[20], now cert[132]+reserved[16]).
- * One update now costs 9 journal slots instead of 5 (8 metadata + 1 log);
- * 4096/9 =~ 455 updates before reclaim, still no practical concern.
+ * 2026-09-20: dropped `sha256` (never read anywhere -- the signature already
+ * binds the hash, so a stored copy of the hash added no security and nothing
+ * ever compared it) and `cert` shrank from 132 to 128 bytes when its `serial`
+ * field went away (see iap_cert.h). Slots dropped from 8 to 7 as a result: one
+ * update now costs 8 journal slots instead of 9 (7 metadata + 1 log);
+ * 4096/8 = 512 updates before reclaim, still no practical concern.
  */
 typedef struct {
 	uint32_t   app_size;
-	uint8_t    sha256[32];
 	uint8_t    signature[64];   /* by the cert's leaf key, not necessarily the root */
 	iap_cert_t cert;
-	uint8_t    reserved[16];
+	uint8_t    reserved[20];
 } iap_fw_metadata_t;
 
 /* The log record itself is iap_log_rec_t in bootloader_state.c. */
@@ -101,9 +104,13 @@ bool bootloader_state_get_metadata(iap_fw_metadata_t *out);
 /* Appends a new metadata record after a successful, signature-verified
  * update. Does not erase/overwrite the previous record. `cert` is stored
  * whole (see the comment on iap_fw_metadata_t above) -- it is the certificate
- * whose leaf key produced `signature`. */
-void bootloader_state_save_metadata(uint32_t app_size,
-                                     const uint8_t sha256[32], const uint8_t signature[64],
+ * whose leaf key produced `signature`.
+ *
+ * No hash parameter: `iap_fw_metadata_t` used to store one, but nothing ever
+ * read it back (the signature already binds the hash it was computed over,
+ * so a second stored copy checked against nothing was dead weight). Removed
+ * 2026-09-20 along with the field. */
+void bootloader_state_save_metadata(uint32_t app_size, const uint8_t signature[64],
                                      const iap_cert_t *cert);
 
 /* Appends a tamper-chained log entry. Each entry's stored hash covers the

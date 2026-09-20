@@ -118,9 +118,15 @@ bool iap_auth_verify_and_consume(const uint8_t *msg, uint32_t msg_len,
 
 	/* Not folded into the signed message: the certificate isn't secret or
 	 * session-specific (its own validity is anchored by root_sig, not by
-	 * nonce freshness), so it is checked as its own independent step. */
-	if (!iap_cert_verify(cert, owner_slot_root())) {
-		printf("Auth rejected: certificate does not verify against the trusted root\r\n");
+	 * nonce freshness), so it is checked as its own independent step.
+	 *
+	 * Revocation is checked here too, not only at upload time -- a revoked
+	 * colleague should not be able to open a session at all, whether or not
+	 * they follow it with an upload. */
+	if (!iap_cert_verify(cert, owner_slot_root(),
+			owner_slot_is_revoked(cert->leaf_pubkey))) {
+		printf("Auth rejected: certificate does not verify against the trusted "
+				"root, or the leaf has been revoked\r\n");
 		return false;
 	}
 

@@ -61,6 +61,13 @@ static uint32_t s_unauthorised_count;    /* structurally fine, not entitled to a
 static const owner_record_t *s_latest;   /* highest generation, structurally valid */
 static const owner_record_t *s_effective; /* end of the trusted chain, or NULL */
 
+/* Every 'R' record resolve_chain() accepted into the trusted chain -- not just
+ * the last one, because revocation is cumulative (v3 design: "a new record
+ * only ever adds names, it never has to repeat the old ones"). Bounded by
+ * OWNER_SLOT_MAX_RECORDS since that is the most any single scan can find. */
+static const owner_record_t *s_revoke_records[OWNER_SLOT_MAX_RECORDS];
+static uint32_t s_revoke_count;
+
 static const owner_record_t *record_at(uint32_t index)
 {
 	return (const owner_record_t *)(OWNER_SLOT_BASE + (index * OWNER_RECORD_SIZE));
@@ -74,18 +81,33 @@ static const owner_record_t *record_at(uint32_t index)
  */
 static bool record_is_structurally_valid(const owner_record_t *r)
 {
-	if (r->type != (uint8_t)OWNER_RECORD_TYPE) {
-		return false;
-	}
-	if (r->slots != (uint8_t)OWNER_RECORD_SLOTS) {
+	if ((r->type != (uint8_t)OWNER_RECORD_TYPE) &&
+			(r->type != (uint8_t)OWNER_RECORD_TYPE_REVOKE)) {
 		return false;
 	}
 	if (r->format_ver != (uint16_t)OWNER_FORMAT_VER) {
-		/* No v1 fallback: v1 had no uid field, so there is nothing safe to do
-		 * with one here. A different format is not corruption -- it is a
-		 * record this firmware is too old (or too new) to understand.
-		 * Counted separately so the boot line can say which it is. */
+		/* No fallback to an earlier version: v2 had no room for a revoke
+		 * record type and no `reserved0` byte in its place, so there is
+		 * nothing safe to do with one here. A different format is not
+		 * corruption -- it is a record this firmware is too old (or too new)
+		 * to understand. Counted separately so the boot line can say which
+		 * it is. */
 		return false;
+	}
+	return true;
+}
+
+/* True when every byte of a 64-byte payload slice is zero -- an unused
+ * OWNER_REVOKE_SLOTS entry, or (for a defensive check elsewhere) an all-zero
+ * root_pubkey that should never have been signed in the first place. */
+static bool payload_slice_is_zero(const uint8_t *p, uint32_t len)
+{
+	uint32_t i;
+
+	for (i = 0U; i < len; i++) {
+		if (p[i] != 0U) {
+			return false;
+		}
 	}
 	return true;
 }
@@ -147,6 +169,15 @@ static bool sig_is_absent(const owner_record_t *r)
  * assert anything about which board the record was for, it only says "fall
  * back to the built-in root", which is safe regardless of whose bytes these
  * were.
+ *
+ * v3: 'R' (revoke) records share this same walk, the same generation
+ * sequence, and the same signature rule as 'O' records -- but never get a
+ * TOFU pass (an unsigned 'R' is refused unconditionally, "first" or not: a
+ * board with nothing signed yet has no owner who could have revoked anything)
+ * and never change `current` -- a revocation does not hand the board to
+ * anyone. Accepted 'R' records are collected into s_revoke_records[] instead,
+ * for owner_slot_is_revoked() to consult later; `flags`/OWNER_FLAG_CLEARED has
+ * no meaning for 'R' and is ignored.
  */
 static void resolve_chain(void)
 {
@@ -157,6 +188,7 @@ static void resolve_chain(void)
 	uint8_t my_uid[IAP_MACHINE_ID_SIZE];
 
 	iap_keyderive_get_machine_id(my_uid);
+	s_revoke_count = 0U;
 
 	for (;;) {
 		const owner_record_t *next = NULL;
@@ -181,7 +213,8 @@ static void resolve_chain(void)
 			break;
 		}
 
-		bool cleared = ((next->flags & OWNER_FLAG_CLEARED) != 0UL);
+		bool is_revoke = (next->type == (uint8_t)OWNER_RECORD_TYPE_REVOKE);
+		bool cleared = !is_revoke && ((next->flags & OWNER_FLAG_CLEARED) != 0UL);
 
 		if (!cleared && (memcmp(next->uid, my_uid, sizeof(my_uid)) != 0)) {
 			/* Structurally fine and possibly even correctly signed -- just not
@@ -195,7 +228,7 @@ static void resolve_chain(void)
 			/*
 			 * Unsigned records are allowed in exactly three places, all of
 			 * which are ones where a signature is either impossible or would
-			 * defeat the purpose:
+			 * defeat the purpose -- and none of them apply to 'R':
 			 *
 			 *   first          the initial claim -- there is no owner yet to
 			 *                  sign it, so physical presence is the only gate
@@ -207,9 +240,11 @@ static void resolve_chain(void)
 			 *                  in TOFU, so this is the "first" case again
 			 *
 			 * Anywhere else, an unsigned record is exactly what an attacker
-			 * would write, and is refused.
+			 * would write, and is refused. An unsigned 'R' is always exactly
+			 * that: revocation has no first-use case, because nothing can be
+			 * revoked before an owner exists to have signed it.
 			 */
-			if (!first && !cleared && !prev_cleared) {
+			if (is_revoke || (!first && !cleared && !prev_cleared)) {
 				s_unauthorised_count++;
 				break;
 			}
@@ -230,7 +265,13 @@ static void resolve_chain(void)
 			}
 		}
 
-		current = next;
+		if (is_revoke) {
+			if (s_revoke_count < OWNER_SLOT_MAX_RECORDS) {
+				s_revoke_records[s_revoke_count++] = next;
+			}
+		} else {
+			current = next;
+		}
 		last_gen = next->generation;
 		prev_cleared = cleared;
 		first = false;
@@ -372,7 +413,7 @@ bool owner_slot_set_owner(uint32_t generation, const uint8_t new_root[64],
 
 	memset(&rec, 0xFF, sizeof(rec));
 	rec.type = (uint8_t)OWNER_RECORD_TYPE;
-	rec.slots = (uint8_t)OWNER_RECORD_SLOTS;
+	rec.reserved0 = 0U;
 	rec.format_ver = (uint16_t)OWNER_FORMAT_VER;
 	rec.generation = generation;
 	rec.flags = 0UL;
@@ -436,7 +477,7 @@ bool owner_slot_claim(const uint8_t root_pubkey[64], bool boot0_held)
 
 	memset(&rec, 0xFF, sizeof(rec));
 	rec.type = (uint8_t)OWNER_RECORD_TYPE;
-	rec.slots = (uint8_t)OWNER_RECORD_SLOTS;
+	rec.reserved0 = 0U;
 	rec.format_ver = (uint16_t)OWNER_FORMAT_VER;
 	/* Past everything already written, so the chain keeps its order after a
 	 * reset-then-reclaim. Not always 1. */
@@ -493,7 +534,7 @@ bool owner_slot_factory_reset(bool physically_confirmed)
 
 	memset(&rec, 0xFF, sizeof(rec));
 	rec.type = (uint8_t)OWNER_RECORD_TYPE;
-	rec.slots = (uint8_t)OWNER_RECORD_SLOTS;
+	rec.reserved0 = 0U;
 	rec.format_ver = (uint16_t)OWNER_FORMAT_VER;
 	rec.generation = s_effective->generation + 1U;
 	rec.flags = OWNER_FLAG_CLEARED;
@@ -526,6 +567,111 @@ bool owner_slot_factory_reset(bool physically_confirmed)
 	printf("** FACTORY RESET DONE at generation %" PRIu32 ". Back to the built-in "
 			"root; the board can be claimed again. **\r\n", rec.generation);
 	return true;
+}
+
+bool owner_slot_revoke(uint32_t generation,
+		const uint8_t revoked[OWNER_REVOKE_SLOTS][OWNER_REVOKE_PREFIX_LEN],
+		const uint8_t sig[64])
+{
+	owner_record_t rec;
+	uint8_t digest[SHA256_DIGEST_SIZE];
+	const uint8_t *current;
+	uint32_t i;
+
+	owner_slot_init();
+
+	if (s_effective == NULL) {
+		printf("** revoke refused: board is unclaimed - use takeown first **\r\n");
+		return false;
+	}
+	if (generation != (s_effective->generation + 1U)) {
+		printf("** revoke refused: generation must be %" PRIu32 ", got %" PRIu32
+				" **\r\n", s_effective->generation + 1U, generation);
+		return false;
+	}
+
+	memset(&rec, 0xFF, sizeof(rec));
+	rec.type = (uint8_t)OWNER_RECORD_TYPE_REVOKE;
+	rec.reserved0 = 0U;
+	rec.format_ver = (uint16_t)OWNER_FORMAT_VER;
+	rec.generation = generation;
+	rec.flags = 0UL;
+	memcpy(rec.revoked, revoked, sizeof(rec.revoked));
+	iap_keyderive_get_machine_id(rec.uid);
+	memcpy(rec.prev_sig, sig, sizeof(rec.prev_sig));
+	memset(rec.reserved, 0, sizeof(rec.reserved));
+
+	/* Checked before writing, same reasoning as set_owner: a record that would
+	 * not apply should never occupy one of 51 slots that cannot be reclaimed
+	 * without erasing the bootloader. */
+	current = s_effective->root_pubkey;
+	sha256((const uint8_t *)&rec, OWNER_SIGNED_PREFIX_LEN, digest);
+	if (!fw_verify_signature_with_key(current, digest, rec.prev_sig)) {
+		printf("** revoke refused: signature does not verify against the "
+				"current owner **\r\n");
+		return false;
+	}
+
+	if (!append_record(&rec)) {
+		return false;
+	}
+
+	/* Re-read rather than assume, same reasoning as every other write here.
+	 * Unlike claim/set_owner/factory_reset there is no s_effective field to
+	 * compare against -- a revoke record never becomes the effective owner
+	 * record -- so confirmation means asking owner_slot_is_revoked() about
+	 * each name just written and expecting it to now say yes. */
+	s_scanned = false;
+	owner_slot_init();
+	for (i = 0U; i < OWNER_REVOKE_SLOTS; i++) {
+		uint8_t probe[64];
+
+		if (payload_slice_is_zero(revoked[i], OWNER_REVOKE_PREFIX_LEN)) {
+			continue;   /* unused slot, nothing to confirm */
+		}
+		memset(probe, 0, sizeof(probe));
+		memcpy(probe, revoked[i], OWNER_REVOKE_PREFIX_LEN);
+		if (!owner_slot_is_revoked(probe)) {
+			printf("** revoke wrote a record but it did not take effect - "
+					"see the boot log **\r\n");
+			return false;
+		}
+	}
+
+	printf("** Revocation recorded at generation %" PRIu32 ". **\r\n", generation);
+	return true;
+}
+
+bool owner_slot_is_revoked(const uint8_t leaf_pubkey[64])
+{
+	const uint8_t *root;
+	uint32_t i, j;
+
+	owner_slot_init();
+	root = owner_slot_root();
+
+	for (i = 0U; i < s_revoke_count; i++) {
+		const owner_record_t *r = s_revoke_records[i];
+
+		for (j = 0U; j < OWNER_REVOKE_SLOTS; j++) {
+			const uint8_t *entry = r->revoked[j];
+
+			if (payload_slice_is_zero(entry, OWNER_REVOKE_PREFIX_LEN)) {
+				continue;   /* unused slot */
+			}
+			/* R4: the root in force can never revoke itself. Skipping this one
+			 * entry, not the whole record -- see owner_slot_revoke()'s header
+			 * comment on why a self-naming entry must not cost the other three
+			 * their effect. */
+			if (memcmp(entry, root, OWNER_REVOKE_PREFIX_LEN) == 0) {
+				continue;
+			}
+			if (memcmp(entry, leaf_pubkey, OWNER_REVOKE_PREFIX_LEN) == 0) {
+				return true;
+			}
+		}
+	}
+	return false;
 }
 
 bool owner_slot_root_is_public(void)
@@ -622,6 +768,48 @@ void owner_slot_report(void)
 		printf("** %" PRIu32 " owner record(s) NOT in effect: not signed by the "
 				"owner in force at that point in the chain. The board is using "
 				"the last root it could verify. **\r\n", s_unauthorised_count);
+	}
+
+	/* Free slots and the size of the revocation set: this area only ever
+	 * appends, so both numbers matter to whoever is deciding whether it is
+	 * time to reflash and reclaim. See $PROD/maps/owner-revoke-and-boot-upgrade/map.md. */
+	{
+		uint32_t used = s_valid_count + s_ignored_count + s_torn_count;
+		uint32_t free_slots = (used < OWNER_SLOT_MAX_RECORDS)
+				? (OWNER_SLOT_MAX_RECORDS - used) : 0U;
+		uint32_t revoked_names = 0U;
+		uint32_t ri, rj;
+		bool self_named = false;
+		const uint8_t *root = owner_slot_root();
+
+		for (ri = 0U; ri < s_revoke_count; ri++) {
+			for (rj = 0U; rj < OWNER_REVOKE_SLOTS; rj++) {
+				const uint8_t *entry = s_revoke_records[ri]->revoked[rj];
+
+				if (payload_slice_is_zero(entry, OWNER_REVOKE_PREFIX_LEN)) {
+					continue;
+				}
+				if (memcmp(entry, root, OWNER_REVOKE_PREFIX_LEN) == 0) {
+					self_named = true;
+					continue;
+				}
+				revoked_names++;
+			}
+		}
+
+		printf("Owner slot: %" PRIu32 "/%" PRIu32 " slot(s) free, %" PRIu32
+				" leaf(s) revoked\r\n", free_slots, (uint32_t)OWNER_SLOT_MAX_RECORDS,
+				revoked_names);
+
+		/* R4 in practice, not just in the check: this can only happen from a
+		 * captured 'R' record replayed after the board changed hands, since
+		 * owner_slot_revoke() never lets the current owner name itself. Either
+		 * way the board is fine -- the entry is ignored, not honoured -- but a
+		 * revocation nobody expected is worth a loud line, not a silent skip. */
+		if (self_named) {
+			printf("** A revocation names the root currently in force - ignored "
+					"(a root can never revoke itself, R4). **\r\n");
+		}
 	}
 
 	report_root_trust();

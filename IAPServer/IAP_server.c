@@ -284,6 +284,58 @@ void process_command() {
 					send_response("Refused");
 				}
 			}
+		} else if (strncmp((char *)RXBuffer, "revoke ", 7) == 0) {
+			// "revoke <generation> <leaf_prefix_hex> <sig_hex>"
+			//
+			// leaf_prefix_hex names ONE leaf (the first OWNER_REVOKE_PREFIX_LEN
+			// bytes of its public key, 32 hex chars) -- IAPTool's `revoke` takes
+			// one --leaf per call, so this command mirrors that rather than
+			// exposing all four OWNER_REVOKE_SLOTS at the wire level. The other
+			// three stay zero, same as an --also-unsigned-style partially filled
+			// record anywhere else this format shows up.
+			//
+			// No BOOT0, same reasoning as setowner: the current owner's
+			// signature IS the authorisation.
+			uint32_t gen = 0U;
+			char leafhex[(OWNER_REVOKE_PREFIX_LEN * 2U) + 1U];
+			char sighex[129];
+			uint8_t revoked[OWNER_REVOKE_SLOTS][OWNER_REVOKE_PREFIX_LEN];
+			uint8_t sig[64];
+			bool ok = true;
+			uint32_t i;
+
+			if (sscanf((char *)RXBuffer + 7, "%" SCNu32 " %32s %128s",
+					&gen, leafhex, sighex) != 3) {
+				send_response("Bad args");
+			} else if ((strlen(leafhex) != (OWNER_REVOKE_PREFIX_LEN * 2U)) ||
+					(strlen(sighex) != 128U)) {
+				send_response("Bad length");
+			} else {
+				memset(revoked, 0, sizeof(revoked));
+				for (i = 0U; i < OWNER_REVOKE_PREFIX_LEN; i++) {
+					unsigned int lb;
+					if (sscanf(&leafhex[i * 2U], "%2x", &lb) != 1) {
+						ok = false;
+						break;
+					}
+					revoked[0][i] = (uint8_t)lb;
+				}
+				for (i = 0U; ok && (i < 64U); i++) {
+					unsigned int sb;
+					if (sscanf(&sighex[i * 2U], "%2x", &sb) != 1) {
+						ok = false;
+						break;
+					}
+					sig[i] = (uint8_t)sb;
+				}
+				if (!ok) {
+					send_response("Bad hex");
+				} else if (owner_slot_revoke(gen, revoked, sig)) {
+					send_response("OK");
+				} else {
+					send_response("Refused");
+				}
+			}
 		} else if (strncmp((char *)RXBuffer, "flash", 5) == 0) {
 			// decode flash command:
 			//   "flash <size> <crc32hex> <signature_hex> <cert_hex> <noncesig_hex>"
@@ -297,7 +349,14 @@ void process_command() {
 			char sig_hex[129] = {0};
 			char cert_hex[(IAP_CERT_SIZE * 2U) + 1U] = {0};
 			char noncesig_hex[129] = {0};
-			int nParsed = sscanf((char *)RXBuffer, "flash %" SCNu32 " %" SCNx32 " %128s %264s %128s",
+			/* %256s is IAP_CERT_SIZE*2 written out: scanf field widths are
+			 * literals, not something the preprocessor can substitute a macro
+			 * into. Update this by hand if IAP_CERT_SIZE ever changes again --
+			 * it did once already (132 -> 128 bytes, 2026-09-20, when the
+			 * certificate's `serial` field was dropped) and this number was
+			 * found stale then. The mirror of this parser in open_plc_arduino's
+			 * udp_server.c has the same literal for the same reason. */
+			int nParsed = sscanf((char *)RXBuffer, "flash %" SCNu32 " %" SCNx32 " %128s %256s %128s",
 					&expected_size, &expected_checksum, sig_hex, cert_hex, noncesig_hex);
 
 			have_expected_signature = false;
@@ -425,8 +484,11 @@ void process_command() {
 				/* Hashes the staging buffer, not the app region -- the app region
 				 * still holds the previous image at this point. */
 				bootloader_state_hash_app(IAP_STAGE_BASE, expected_size, hash);
-				if (!iap_cert_verify_image(hash, expected_signature, &expected_cert, owner_slot_root())) {
-					printf("Signature verification FAILED - firmware not trusted. "
+				if (!iap_cert_verify_image(hash, expected_signature, &expected_cert,
+						owner_slot_root(),
+						owner_slot_is_revoked(expected_cert.leaf_pubkey))) {
+					printf("Signature verification FAILED - firmware not trusted "
+							"(bad signature, or the leaf has been revoked). "
 							"Application region untouched.\r\n");
 					send_response("Signature Failed");
 					bootloader_state_log_event(IAP_EVT_SIG_FAIL, (uint32_t)current_method, peer_ip, nowTick, authCtr);
@@ -437,7 +499,7 @@ void process_command() {
 					bootloader_state_log_event(IAP_EVT_FLASH_WRITE_FAIL, (uint32_t)current_method, peer_ip, nowTick, authCtr);
 				} else {
 					printf("Checksum and signature OK. Rebooting...\r\n");
-					bootloader_state_save_metadata(expected_size, hash, expected_signature, &expected_cert);
+					bootloader_state_save_metadata(expected_size, expected_signature, &expected_cert);
 					bootloader_state_log_event(IAP_EVT_UPDATE_OK, (uint32_t)current_method, peer_ip, nowTick, authCtr);
 					HAL_Delay(500);
 					HAL_NVIC_SystemReset();
@@ -547,8 +609,16 @@ IAP_Method server_decide(uint8_t boot0Pressed) {
 			 * that is what makes a setowner handover retroactively invalidate
 			 * firmware certified by the old owner: the stored cert's root_sig
 			 * only verifies against the root that signed it, and owner_slot_root()
-			 * has since moved on. */
-			app_signature_valid = iap_cert_verify_image(hash, meta.signature, &meta.cert, owner_slot_root());
+			 * has since moved on.
+			 *
+			 * The revocation check belongs here for the same reason: a leaf
+			 * revoked after this image was installed must stop the image from
+			 * booting on the VERY NEXT reset, not merely block the next upload
+			 * attempt. Without this, revoking someone would not do anything
+			 * until somebody happened to try uploading with their key again --
+			 * their already-installed firmware would keep running indefinitely. */
+			app_signature_valid = iap_cert_verify_image(hash, meta.signature, &meta.cert,
+					owner_slot_root(), owner_slot_is_revoked(meta.cert.leaf_pubkey));
 		}
 	}
 	bootloader_state_set_app_valid(app_signature_valid);
