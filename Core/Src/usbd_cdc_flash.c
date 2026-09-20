@@ -89,33 +89,50 @@ uint16_t Flash_If_Erase(uint32_t Add, uint32_t NbSectors)
 
 uint16_t Flash_If_Write(uint8_t *DataAddress, uint8_t *FlashAddress, uint32_t Len)
 {
-  uint32_t i = 0;
+  uint32_t i;
+  uint16_t result = HAL_OK;
+
   SCB_DisableICache();
   HAL_FLASH_Unlock();
 
   for (i = 0; i < Len; i += 32)
   {
+    uint32_t w;
+
     /* Device voltage range supposed to be [2.7V to 3.6V], the operation will
      * be done by byte */
     if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_FLASHWORD, (uint32_t)(FlashAddress + i),
-                          (uint32_t)(DataAddress + i)) == HAL_OK)
-    {
-      /* Check the written value */
-      if (*(uint64_t *)(DataAddress + i) != *(uint64_t *)(FlashAddress + i))
-      {
-        /* Flash content doesn't match SRAM content */
-        return 2;
-      }
-    }
-    else
+                          (uint32_t)(DataAddress + i)) != HAL_OK)
     {
       /* Error occurred while writing data in Flash memory */
-      return HAL_ERROR;
+      result = HAL_ERROR;
+      break;
+    }
+
+    /* Read the whole flash word back. One program call commits all 32 bytes,
+     * so comparing just the first 8 would let a word that went wrong past the
+     * eighth byte pass as written. */
+    for (w = 0U; w < 32U; w += 8U)
+    {
+      if (*(uint64_t *)(DataAddress + i + w) != *(uint64_t *)(FlashAddress + i + w))
+      {
+        /* Flash content doesn't match SRAM content */
+        result = 2;
+        break;
+      }
+    }
+    if (result != HAL_OK)
+    {
+      break;
     }
   }
+
+  /* One exit, so the lock and the I-cache are restored on every path. Returning
+   * straight out of the loop left the I-cache disabled for the rest of the run
+   * -- a failed write silently slowed everything after it. */
   HAL_FLASH_Lock();
   SCB_EnableICache();
-  return HAL_OK;
+  return result;
 }
 
 /**
