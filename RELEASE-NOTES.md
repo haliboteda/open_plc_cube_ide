@@ -39,16 +39,36 @@ already has firmware on it.
 - **New journal event** for "image verified but the flash write failed",
   distinct from a signature failure — the two need different diagnosis.
 
+- **Every sketch must now declare its own version.** Add one line near the top:
+  `OPENPLC_APP_VERSION(1, 0, 0);`. A sketch without it **does not compile** —
+  this is deliberate, the upload tool needs a version to compare against.
+  Existing sketches will fail on their first build with the new package and the
+  error says which line to add.
+- **Uploads refuse to go backwards.** If the image is older than what the board
+  reports running, the upload stops. To flash it anyway set
+  *Tools ▸ Force flash (allow older version)* to **Yes**; that is **one-shot**
+  and is refused again until the menu goes back to **No**.
+  ⚠️ **This only works over ETH Transfer.** On CDC the board running an
+  application answers nothing (the sketch owns the CDC pipe), so its version
+  cannot be read; SWD and Serial bypass the tool entirely. The check is a guard
+  against pushing a stale build by mistake — it is not a security control.
+- **The board reports two versions now.** The discovery reply gained a fifth
+  field: `name_uid_role_<package version>_<sketch version>`. The bootloader has
+  no sketch version to report and sends `-`.
+- **The event log is gone.** The eight journal events supported no requirement
+  and nothing ever read them back. The state sector now holds firmware metadata
+  only, with its first 8 KiB reserved for calibration data.
+
 ### Upgrade rules
 
 > **The bootloader and the application must be upgraded together. This is not a
 > recommendation.**
 
-Application metadata (size, hash, signature) lives in the bootloader's journal,
-and 0.1.3 changed both the journal format and the metadata record itself - the
-version field is gone, because nothing compares versions any more. A 0.1.3
-bootloader cannot read a journal written by 0.1.2, and a metadata record
-written by an earlier 0.1.3 build no longer lines up either:
+Application metadata (size, hash, signature) lives in the last flash sector,
+and 0.1.3 changed its layout more than once. The current layout reserves the
+first 8 KiB of that sector for calibration data and starts the metadata area
+after it, so a record written by any earlier build no longer lines up. Neither
+does a journal written by 0.1.2. In every one of those cases:
 
 1. It finds no metadata for the application already in flash.
 2. It therefore declares that application invalid.
@@ -74,6 +94,17 @@ recording events — it will not erase a sector on the strength of a record it
 cannot read. The next successful update reclaims the sector, and logging
 resumes. Observed going from a full 4096 slots to 10 on the upload that
 followed.
+
+### Upgrade in this order
+
+**Board package first, bootloader second.** The intermediate state is usable
+that way round: a sketch built with the new package runs fine on an old
+bootloader (the metadata format it writes has not changed, and the extra
+identity field only makes an old tool's display untidy). The other way round
+leaves the board sitting in `BOOTLD-INVALID` until the application is re-sent.
+
+Either way the application has to be uploaded once after the bootloader is
+replaced — see [Upgrade rules](#upgrade-rules).
 
 ### The upload tool has to be upgraded too
 

@@ -163,12 +163,22 @@ void iap_identity_string(char *out, uint32_t out_len)
 {
 	char uid_hex[IAP_MACHINE_ID_HEX_LEN + 1U] = {0};
 	/* Split on "_" by the PC tool (parseBoardInfoFromReply), so no field may
-	 * contain one. */
+	 * contain one. Five fields: name_uid_role_pkgversion_appversion.
+	 *
+	 * The last field is "-", not a version: only a running application knows
+	 * which sketch version is installed, and by the time the bootloader is
+	 * answering, it is not running. Writing 0.0.0 here would read as a real
+	 * version rather than an absent one. The tool keys off `role` anyway --
+	 * it only compares versions when the answer came from CUSAPP.
+	 *
+	 * The core builds the same string in libraries/OpenPLC_IAP/src/udp_server.c
+	 * and the two cannot share code; the pair is a tracked cross-repo mirror
+	 * (see $PROD/docs/repo/ARCHITECTURE.md, checked by P2). */
 	const char *role = bootloader_state_app_is_valid() ? UDP_SERVER_NAME : UDP_SERVER_NAME "-INVALID";
 
 	iap_keyderive_get_machine_id_hex(uid_hex);
-	(void)snprintf(out, out_len, "%s_%s_%s_%s",
-			OPENPLC_DEVICE_NAME, uid_hex, role, OPENPLC_FW_VERSION);
+	(void)snprintf(out, out_len, "%s_%s_%s_%s_%s",
+			OPENPLC_DEVICE_NAME, uid_hex, role, OPENPLC_FW_VERSION, "-");
 }
 
 void process_command() {
@@ -432,8 +442,6 @@ void process_command() {
 		if (received_bytes + len_in_RX_buffer > IAP_STAGE_SIZE) {
 			printf("Staging overflow: %" PRIu32 " + %" PRIu32 " exceeds %" PRIu32 " bytes. Aborting.\r\n",
 					received_bytes, len_in_RX_buffer, (uint32_t)IAP_STAGE_SIZE);
-			bootloader_state_log_event(IAP_EVT_OVERFLOW_ABORT, (uint32_t)current_method,
-					tcp_server_get_client_ip(), HAL_GetTick(), iap_auth_get_counter());
 			/* Answer before resetting: reset_buf() clears current_method, and
 			 * send_response() routes on it -- afterwards the reply goes nowhere. */
 			send_response("Failed");
@@ -456,9 +464,6 @@ void process_command() {
 			/* CRC, hash and signature are all computed over the staging buffer.
 			 * Flash is not touched until every one of them has passed. */
 			uint32_t caledCRC = HAL_CRC_Calculate(&hcrc, (uint32_t *)IAP_STAGE_BASE, expected_size);
-			uint32_t peer_ip = tcp_server_get_client_ip();
-			uint32_t nowTick = HAL_GetTick();
-			uint32_t authCtr = iap_auth_get_counter();
 
 			if (expected_checksum != ~caledCRC) {
 				printf("Checksum FAIL. Expected: %08" PRIX32 ", Got: %08" PRIX32 "\r\n",
@@ -473,11 +478,9 @@ void process_command() {
 				} else {
 					send_response("Checksum Failed");
 				}
-				bootloader_state_log_event(IAP_EVT_CRC_FAIL, (uint32_t)current_method, peer_ip, nowTick, authCtr);
 			} else if (!have_expected_signature) {
 				printf("No valid signature was provided with this upload - refusing to trust it.\r\n");
 				send_response("No Signature");
-				bootloader_state_log_event(IAP_EVT_SIG_FAIL, (uint32_t)current_method, peer_ip, nowTick, authCtr);
 			} else if (!bootloader_state_crypto_selftest_passed()) {
 				// Same precondition server_decide() applies to the boot-time
 				// check (Step 1) -- don't trust a signature verification
@@ -485,7 +488,6 @@ void process_command() {
 				// already found broken at boot.
 				printf("Crypto self-test failed earlier - refusing to trust signature verification.\r\n");
 				send_response("Signature Failed");
-				bootloader_state_log_event(IAP_EVT_SIG_FAIL, (uint32_t)current_method, peer_ip, nowTick, authCtr);
 			} else {
 				uint8_t hash[32];
 				/* Hashes the staging buffer, not the app region -- the app region
@@ -498,16 +500,13 @@ void process_command() {
 							"(bad signature, or the leaf has been revoked). "
 							"Application region untouched.\r\n");
 					send_response("Signature Failed");
-					bootloader_state_log_event(IAP_EVT_SIG_FAIL, (uint32_t)current_method, peer_ip, nowTick, authCtr);
 				} else if (!stage_commit_to_flash()) {
 					printf("The image was good but the flash write was not - "
 							"retry the upload.\r\n");
 					send_response("Flash Failed");
-					bootloader_state_log_event(IAP_EVT_FLASH_WRITE_FAIL, (uint32_t)current_method, peer_ip, nowTick, authCtr);
 				} else {
 					printf("Checksum and signature OK. Rebooting...\r\n");
 					bootloader_state_save_metadata(expected_size, expected_signature, &expected_cert);
-					bootloader_state_log_event(IAP_EVT_UPDATE_OK, (uint32_t)current_method, peer_ip, nowTick, authCtr);
 					HAL_Delay(500);
 					HAL_NVIC_SystemReset();
 				}
@@ -661,15 +660,6 @@ IAP_Method server_decide(uint8_t boot0Pressed) {
 		default:
 			if (!app_signature_valid) {
 				printf("** App signature invalid or absent - staying in bootloader **\r\n");
-				/* Only the first boot in a run of failures is recorded: this path
-				 * needs no credential, so logging every power-up would let anyone
-				 * with a power switch fill the journal and push older evidence out.
-				 * Counter is 0 here by definition: no challenge has been issued
-				 * this boot, and the RTC is not initialised until Phase 2. */
-				if (bootloader_state_last_log_event() != (uint32_t)IAP_EVT_BOOT_VERIFY_FAIL) {
-					bootloader_state_log_event(IAP_EVT_BOOT_VERIFY_FAIL, (uint32_t)IAP_NONE, 0U,
-							HAL_GetTick(), 0U);
-				}
 				mode = IAP_ALL;
 				reason = "no valid application";
 			}
@@ -831,8 +821,6 @@ void IAP_data_recv(IAP_Method iapM, uint8_t *Buf, uint32_t Len) {
 			printf("RX overflow: Len %" PRIu32 " exceeds remaining buffer %" PRIu32 ". Aborting transfer.\r\n",
 					Len, remaining);
 			send_response("ERR");
-			bootloader_state_log_event(IAP_EVT_OVERFLOW_ABORT, (uint32_t)current_method,
-					tcp_server_get_client_ip(), HAL_GetTick(), iap_auth_get_counter());
 			reset_buf();
 			fflush(stdout);
 			return;

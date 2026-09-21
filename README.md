@@ -88,7 +88,16 @@ e2- Or You could select upload method "ETH Transfer"
 ![image](DOC/pic/15.png)  
 
 f- write your sketch  
+
+**Every sketch must declare its own version.** The line below is required - a
+sketch without it does not compile. The upload tool compares it against the
+version the board is already running and refuses to go backwards; to flash an
+older build anyway, set *Tools > Force flash (allow older version)* to **Yes**
+(one-shot: it is refused again until that menu goes back to **No**).
+
 ```c
+OPENPLC_APP_VERSION(1, 0, 0);   // required, bump it when you release a new build
+
 void setup() {
   // put your setup code here, to run once:
   pinMode(LED3_Pin, OUTPUT);

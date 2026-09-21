@@ -75,21 +75,6 @@ typedef struct {
 	uint8_t    reserved[20];
 } iap_fw_metadata_t;
 
-/* The log record itself is iap_log_rec_t in bootloader_state.c. */
-typedef enum {
-	IAP_EVT_UPDATE_OK          = 1,
-	IAP_EVT_CRC_FAIL           = 2,
-	IAP_EVT_SIG_FAIL           = 3,
-	IAP_EVT_AUTH_FAIL          = 4,
-	IAP_EVT_OVERFLOW_ABORT     = 5,
-	IAP_EVT_BOOT_VERIFY_FAIL   = 6,
-	IAP_EVT_JOURNAL_RECLAIMED  = 7,
-	/* Image verified, but copying it out of the staging buffer into the app
-	 * region failed. Distinct from SIG_FAIL on purpose: the image was good, the
-	 * flash write was not, and the two need completely different diagnosis. */
-	IAP_EVT_FLASH_WRITE_FAIL   = 8
-} bootloader_event_type_t;
-
 void bootloader_state_init(void);
 
 /* True if sha256_selftest() passed during bootloader_state_init(). If this
@@ -112,32 +97,6 @@ bool bootloader_state_get_metadata(iap_fw_metadata_t *out);
  * 2026-09-20 along with the field. */
 void bootloader_state_save_metadata(uint32_t app_size, const uint8_t signature[64],
                                      const iap_cert_t *cert);
-
-/* Appends a tamper-chained log entry. Each entry's stored hash covers the
- * previous entry's full raw bytes, so deleting/altering a past entry breaks
- * the chain for everything after it.
- *
- * tick_ms: HAL_GetTick() at the time of the event -- relative to this boot
- * only (there is no synchronized wall-clock source in the bootloader), but
- * still useful to see how far apart repeated events in one session were.
- * auth_counter: iap_auth_get_counter() at the time of the event -- ties the
- * entry to a specific challenge/response attempt, not just "an auth
- * failure happened at some point". Pass 0 for events with no meaningful
- * association (e.g. none issued yet). */
-void bootloader_state_log_event(bootloader_event_type_t event, uint32_t method, uint32_t peer_ip,
-                                 uint32_t tick_ms, uint32_t auth_counter);
-
-/* Event of the most recent log record, or 0 when the journal holds none. Lets a
- * caller skip appending a repeat of an event that would otherwise be written on
- * every single boot. */
-uint32_t bootloader_state_last_log_event(void);
-
-/* True once the journal has no room left for further log entries. Cleared by
- * the next successful update, which reclaims the sector. */
-bool bootloader_state_journal_full(void);
-
-/* How many log entries have been dropped because the journal was full. */
-uint32_t bootloader_state_dropped_events(void);
 
 #define IAP_AUTH_FAIL_LOG_SIZE 32U
 
