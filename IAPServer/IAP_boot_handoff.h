@@ -70,8 +70,9 @@ typedef struct {
 } boot_handoff_t;
 
 /* What boot_handoff_take() found, for callers that want to log it. Kept out of
- * the return value so that this file needs no knowledge of the bootloader's
- * event journal (the application-side mirror has no journal at all). */
+ * the return value so that a caller can report it however it likes, and so the
+ * bootloader and the application-side mirror can differ in that without this
+ * file changing. */
 typedef enum {
     BOOT_HANDOFF_OK = 0,           /* record consumed, or legitimately empty */
     BOOT_HANDOFF_COLD_BOOT,        /* power-on reset: record initialised, no request */

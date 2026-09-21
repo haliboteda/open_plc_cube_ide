@@ -8,10 +8,6 @@
  *
  * Layout and the reasoning behind it: $PROD/docs/modules/M1/SECTOR-15.md and
  * DECISIONS.md #61.
- *
- * NOTE: the IAP_JOURNAL_* names predate the split and now refer to the
- * metadata area only. Renaming them touches the host test scripts too, so it
- * is tracked separately in $PROD/work/TODO.md.
  */
 
 #include "bootloader_state.h"
@@ -32,9 +28,9 @@ extern uint16_t Flash_If_Erase(uint32_t Add, uint32_t NbSectors);
 #define IAP_CALIB_BASE          IAP_STATE_SECTOR_ADDR
 #define IAP_CALIB_SIZE          (8U * 1024U)
 
-#define IAP_JOURNAL_BASE        (IAP_STATE_SECTOR_ADDR + IAP_CALIB_SIZE)
-#define IAP_JOURNAL_REGION_SIZE ((128U * 1024U) - IAP_CALIB_SIZE)
-#define IAP_JOURNAL_SLOT_COUNT  (IAP_JOURNAL_REGION_SIZE / IAP_JOURNAL_SLOT_SIZE)
+#define IAP_META_BASE        (IAP_STATE_SECTOR_ADDR + IAP_CALIB_SIZE)
+#define IAP_META_REGION_SIZE ((128U * 1024U) - IAP_CALIB_SIZE)
+#define IAP_META_SLOT_COUNT  (IAP_META_REGION_SIZE / IAP_META_SLOT_SIZE)
 
 /* Erased Flash reads as 0xFF, so that is "no record here". 'M' is now the only
  * record type -- the eight event types and their 'L' records were removed
@@ -54,7 +50,7 @@ typedef struct {
 
 /* These sizes are the on-Flash format. A stray padding byte would shift every
  * field of every record already written, so fail the build instead. */
-_Static_assert(sizeof(iap_meta_rec_t) == (IAP_METADATA_SLOTS * IAP_JOURNAL_SLOT_SIZE),
+_Static_assert(sizeof(iap_meta_rec_t) == (IAP_METADATA_SLOTS * IAP_META_SLOT_SIZE),
 		"metadata record must fill its slots exactly");
 
 static uint32_t s_next_free_slot;
@@ -68,7 +64,7 @@ static uint32_t s_auth_fail_total;
 
 static const void *slot_ptr(uint32_t index)
 {
-	return (const void *)(IAP_JOURNAL_BASE + index * IAP_JOURNAL_SLOT_SIZE);
+	return (const void *)(IAP_META_BASE + index * IAP_META_SLOT_SIZE);
 }
 
 static uint8_t slot_type(uint32_t index)
@@ -82,14 +78,14 @@ static uint8_t slot_count_of(uint32_t index)
 }
 
 /* Slots still free. Records are appended, never split. */
-static uint32_t journal_room(void)
+static uint32_t meta_room(void)
 {
-	return (s_next_free_slot >= IAP_JOURNAL_SLOT_COUNT)
-			? 0U : (IAP_JOURNAL_SLOT_COUNT - s_next_free_slot);
+	return (s_next_free_slot >= IAP_META_SLOT_COUNT)
+			? 0U : (IAP_META_SLOT_COUNT - s_next_free_slot);
 }
 
-static void journal_write(const void *record, uint32_t slots);
-static void journal_reclaim(void);
+static void meta_write(const void *record, uint32_t slots);
+static void meta_reclaim(void);
 static bool calib_area_is_blank(void);
 static bool metadata_area_full(void);
 void bootloader_state_init(void)
@@ -101,11 +97,11 @@ void bootloader_state_init(void)
 		printf("** CRYPTO SELFTEST FAILED - firmware verification cannot be trusted! **\r\n");
 	}
 
-	s_next_free_slot = IAP_JOURNAL_SLOT_COUNT; /* assume full unless a blank slot is found below */
+	s_next_free_slot = IAP_META_SLOT_COUNT; /* assume full unless a blank slot is found below */
 	s_last_metadata_slot = 0xFFFFFFFFU;
 	s_format_unknown = false;
 
-	for (i = 0; i < IAP_JOURNAL_SLOT_COUNT; ) {
+	for (i = 0; i < IAP_META_SLOT_COUNT; ) {
 		const uint8_t type = slot_type(i);
 		const uint8_t slots = slot_count_of(i);
 
@@ -126,13 +122,13 @@ void bootloader_state_init(void)
 		 * it, which loses nothing: that update rewrites the metadata anyway. */
 		printf("** State sector holds an unrecognised record at slot %" PRIu32
 				" - it stays read-only until the next successful update erases %08" PRIX32 " **\r\n",
-				i, (uint32_t)IAP_JOURNAL_BASE);
+				i, (uint32_t)IAP_META_BASE);
 		s_format_unknown = true;
 		break;
 	}
 
 	printf("Bootloader state: %" PRIu32 "/%" PRIu32 " metadata slots used, metadata %s\r\n",
-			s_next_free_slot, (uint32_t)IAP_JOURNAL_SLOT_COUNT,
+			s_next_free_slot, (uint32_t)IAP_META_SLOT_COUNT,
 			(s_last_metadata_slot == 0xFFFFFFFFU) ? "absent" : "present");
 	if (metadata_area_full()) {
 		printf("** Metadata area full - the next successful update reclaims it. **\r\n");
@@ -141,7 +137,7 @@ void bootloader_state_init(void)
 
 static bool metadata_area_full(void)
 {
-	return s_format_unknown || (journal_room() == 0U);
+	return s_format_unknown || (meta_room() == 0U);
 }
 
 bool bootloader_state_crypto_selftest_passed(void)
@@ -166,8 +162,8 @@ void bootloader_state_save_metadata(uint32_t app_size, const uint8_t signature[6
 	/* The only place that ever erases. Safe precisely here: the application
 	 * this metadata will describe has just been written, so whatever the old
 	 * record said is already untrue. */
-	if ((journal_room() < IAP_METADATA_SLOTS) || s_format_unknown) {
-		journal_reclaim();
+	if ((meta_room() < IAP_METADATA_SLOTS) || s_format_unknown) {
+		meta_reclaim();
 	}
 
 	memset(&rec, 0, sizeof(rec));
@@ -177,7 +173,7 @@ void bootloader_state_save_metadata(uint32_t app_size, const uint8_t signature[6
 	memcpy(rec.meta.signature, signature, 64U);
 	memcpy(&rec.meta.cert, cert, sizeof(rec.meta.cert));
 
-	journal_write(&rec, IAP_METADATA_SLOTS);
+	meta_write(&rec, IAP_METADATA_SLOTS);
 	s_last_metadata_slot = s_next_free_slot - IAP_METADATA_SLOTS;
 }
 
@@ -221,11 +217,11 @@ bool bootloader_state_app_is_valid(void)
 	return s_app_valid;
 }
 
-static void journal_write(const void *record, uint32_t slots)
+static void meta_write(const void *record, uint32_t slots)
 {
-	const uint32_t addr = IAP_JOURNAL_BASE + (s_next_free_slot * IAP_JOURNAL_SLOT_SIZE);
+	const uint32_t addr = IAP_META_BASE + (s_next_free_slot * IAP_META_SLOT_SIZE);
 
-	(void)Flash_If_Write((uint8_t *)record, (uint8_t *)addr, slots * IAP_JOURNAL_SLOT_SIZE);
+	(void)Flash_If_Write((uint8_t *)record, (uint8_t *)addr, slots * IAP_META_SLOT_SIZE);
 	s_next_free_slot += slots;
 }
 
@@ -233,7 +229,7 @@ static void journal_write(const void *record, uint32_t slots)
  * header for why that one call site is the only safe moment to erase. The old
  * metadata is deliberately not carried over: the caller is about to write the
  * record that replaces it. */
-static void journal_reclaim(void)
+static void meta_reclaim(void)
 {
 	const uint32_t discarded = s_next_free_slot;
 

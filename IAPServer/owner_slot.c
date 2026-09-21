@@ -46,7 +46,7 @@ static const uint8_t k_published_root_sha256[32] = {
 /* The record must be exactly five 32-byte flash words. If a field is ever
  * added or the compiler pads differently, this stops the build rather than
  * letting a board write records the next firmware cannot read. Same reasoning
- * as the journal record in bootloader_state.h. */
+ * as the metadata record in bootloader_state.h. */
 _Static_assert(sizeof(owner_record_t) == OWNER_RECORD_SIZE,
 		"owner_record_t must be exactly 160 bytes (5 x 32-byte flash words)");
 _Static_assert(OWNER_SLOT_MAX_RECORDS == 51U,

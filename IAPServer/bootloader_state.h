@@ -1,32 +1,28 @@
 /*
  * bootloader_state.h
  *
- * Bootloader-owned Flash state: firmware metadata (size/hash/signature) and
- * a tamper-chained event log, both living in the reserved tail sector
- * (IAP_STATE_SECTOR_ADDR, see usbd_cdc_flash.h) that app updates can never
- * touch.
+ * Bootloader-owned Flash state: firmware metadata (size, signature,
+ * certificate) in the reserved tail sector (IAP_STATE_SECTOR_ADDR, see
+ * usbd_cdc_flash.h) that app updates can never touch.
  *
- * Physical layout: the whole 128K sector is one append-only journal of 32-byte
- * slots (4096 of them). Records are never overwritten in place -- every
- * successful update *appends* fresh metadata, and the "current" firmware is
- * simply the most recent metadata record. NOR Flash forces this: the smallest
- * erase is the whole sector, so overwriting metadata in place would wipe the
- * event log along with it on every single update.
+ * Physical layout: the sector's first 8 KiB is calibration data written by the
+ * production fixture; the rest is an append-only area of 32-byte slots (3840
+ * of them, 548 metadata records). Records are never overwritten in place --
+ * every successful update appends a fresh one, and the "current" firmware is
+ * the most recent. NOR Flash forces this: the smallest erase is the whole
+ * sector, which would take the calibration area with it on every update.
  *
- * When the journal fills up it is NOT erased on the spot. Erasing takes
- * hundreds of milliseconds, and losing power inside that window would take the
- * current metadata with it -- turning a healthy board into one that no longer
- * trusts its own application. Instead:
+ * A full area is NOT erased on the spot. Erasing takes hundreds of
+ * milliseconds, and losing power inside that window would take the current
+ * metadata with it -- turning a healthy board into one that no longer trusts
+ * its own application. Instead the erase happens only inside
+ * bootloader_state_save_metadata(), at the one moment the old metadata has
+ * already been made worthless by the update that just overwrote the
+ * application it described. Losing power there leaves the board needing a
+ * re-upload, which was already true from the moment the application region was
+ * erased, so the reclaim adds no failure mode the update did not already have.
  *
- *   - a full journal simply stops accepting log entries (they are counted, and
- *     the state is reported at boot and in the identity string) -- history is
- *     kept, nothing is silently thrown away;
- *   - the erase happens only inside bootloader_state_save_metadata(), i.e. at
- *     the one moment the old metadata has already been made worthless by the
- *     update that just overwrote the application it described. Losing power
- *     there leaves the board needing a re-upload, which was already true from
- *     the moment the application region was erased. The reclaim therefore adds
- *     no failure mode that the update itself did not already have.
+ * Layout and the reasoning behind it: $PROD/docs/modules/M1/SECTOR-15.md.
  */
 
 #ifndef IAPSERVER_BOOTLOADER_STATE_H_
@@ -41,10 +37,9 @@ extern "C" {
 #endif
 
 /* One STM32H7 flash word: the smallest thing that can be programmed, and a word
- * may only be programmed once. A log entry is exactly one of these, so the
- * journal holds as many events as the hardware can possibly fit. Metadata needs
- * seven (the signature and certificate alone are 192 bytes). */
-#define IAP_JOURNAL_SLOT_SIZE 32U
+ * may only be programmed once. One metadata record needs seven of them (the
+ * signature and certificate alone are 192 bytes). */
+#define IAP_META_SLOT_SIZE 32U
 #define IAP_METADATA_SLOTS    7U
 
 /*
@@ -64,9 +59,8 @@ extern "C" {
  * 2026-09-20: dropped `sha256` (never read anywhere -- the signature already
  * binds the hash, so a stored copy of the hash added no security and nothing
  * ever compared it) and `cert` shrank from 132 to 128 bytes when its `serial`
- * field went away (see iap_cert.h). Slots dropped from 8 to 7 as a result: one
- * update now costs 8 journal slots instead of 9 (7 metadata + 1 log);
- * 4096/8 = 512 updates before reclaim, still no practical concern.
+ * field went away (see iap_cert.h). One update costs 7 slots, so 3840/7 = 548
+ * updates before a reclaim.
  */
 typedef struct {
 	uint32_t   app_size;

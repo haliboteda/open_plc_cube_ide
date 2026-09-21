@@ -8,10 +8,10 @@
  * 128K of the sector, so the linker cannot place anything here). Empty means
  * the board falls back to the root compiled into fw_pubkey.c.
  *
- * Why this area and not the state sector: journal_reclaim() erases the state
- * sector whole. Copying owner records out and back would open a window the
- * width of an erase, and losing them there would silently return the board to
- * the factory root -- the one failure this must not have.
+ * Why this area and not the state sector: a reclaim there erases the whole
+ * sector. Copying owner records out and back would open a window the width of
+ * an erase, and losing them there would silently return the board to the
+ * factory root -- the one failure this must not have.
  *
  * Fully implemented: init/claim/set_owner/factory_reset all write real
  * records, and owner_slot_root() walks the verified chain (resolve_chain() in
