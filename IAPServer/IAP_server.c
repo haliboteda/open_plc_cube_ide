@@ -27,6 +27,7 @@
 #include "usbd_cdc_flash.h"
 
 #include "usbd_cdc_if.h"
+#include "boot_selfupgrade.h"
 
 pFunction JumpToApplication;
 
@@ -36,6 +37,7 @@ static uint8_t expected_signature[FW_SIGNATURE_SIZE];
 static bool have_expected_signature;
 static iap_cert_t expected_cert;   /* the leaf cert that (claims to) authorise expected_signature */
 static bool s_boot0_held;         /* BOOT0 was down at this boot's decision point */
+static bool s_staging_is_bootloader; /* this transfer is a flashboot, not a flash */
 
 // volatile: written from IAP_data_recv() (USB/lwIP receive callback context)
 // and read/cleared from IAP_task() (main superloop context) -- without it
@@ -112,6 +114,7 @@ void reset_buf(void) {
 	memset(RXBuffer, 0, IAP_RX_BUFFER_SIZE); //
 	current_status = IDLE;
 	current_method = IAP_NONE;
+	s_staging_is_bootloader = false;
 }
 
 // 接口特定的发送响应
@@ -353,7 +356,8 @@ void process_command() {
 					send_response("Refused");
 				}
 			}
-		} else if (strncmp((char *)RXBuffer, "flash", 5) == 0) {
+		} else if ((strncmp((char *)RXBuffer, "flashboot ", 10) == 0)
+				|| (strncmp((char *)RXBuffer, "flash ", 6) == 0)) {
 			// decode flash command:
 			//   "flash <size> <crc32hex> <signature_hex> <cert_hex> <noncesig_hex>"
 			// - signature_hex: 64-byte ECDSA r||s over the image, by the cert's
@@ -363,6 +367,17 @@ void process_command() {
 			// - noncesig_hex: 64-byte ECDSA r||s, by the same leaf key, over
 			//   sha256(nonce || "flash <size> <crc32hex> <signature_hex>") for the
 			//   nonce most recently returned by "authchallenge" (128 hex chars)
+			//
+			// "flashboot" is the same frame with a different destination: it
+			// replaces the bootloader in sector 0, its image signature is checked
+			// against the owner root rather than the cert's leaf, and an unclaimed
+			// board demands BOOT0 instead. Everything else -- staging, CRC,
+			// session auth, replay -- is this one path.
+			// $PROD/docs/modules/M1/FLASHBOOT.md.
+			const bool is_bootloader = (RXBuffer[5] == (uint8_t)'b');
+			const char *const verb = is_bootloader ? "flashboot" : "flash";
+			const uint32_t size_limit = is_bootloader
+					? boot_selfupgrade_max_size() : (uint32_t)IAP_APP_MAX_SIZE;
 			char sig_hex[129] = {0};
 			char cert_hex[(IAP_CERT_SIZE * 2U) + 1U] = {0};
 			char noncesig_hex[129] = {0};
@@ -373,7 +388,8 @@ void process_command() {
 			 * certificate's `serial` field was dropped) and this number was
 			 * found stale then. The mirror of this parser in open_plc_arduino's
 			 * udp_server.c has the same literal for the same reason. */
-			int nParsed = sscanf((char *)RXBuffer, "flash %" SCNu32 " %" SCNx32 " %128s %256s %128s",
+			int nParsed = sscanf((char *)RXBuffer + strlen(verb),
+					" %" SCNu32 " %" SCNx32 " %128s %256s %128s",
 					&expected_size, &expected_checksum, sig_hex, cert_hex, noncesig_hex);
 
 			have_expected_signature = false;
@@ -391,17 +407,23 @@ void process_command() {
 					&& hex_decode(cert_hex, (uint8_t *)&expected_cert, IAP_CERT_SIZE)
 					&& hex_decode(noncesig_hex, noncesigBytes, FW_SIGNATURE_SIZE)) {
 				char authMsg[220];
-				int authMsgLen = snprintf(authMsg, sizeof(authMsg), "flash %" PRIu32 " %" PRIx32 " %s",
-						expected_size, expected_checksum, sig_hex);
+				int authMsgLen = snprintf(authMsg, sizeof(authMsg), "%s %" PRIu32 " %" PRIx32 " %s",
+						verb, expected_size, expected_checksum, sig_hex);
 				authOk = iap_auth_verify_and_consume((const uint8_t *)authMsg, (uint32_t)authMsgLen,
 						&expected_cert, noncesigBytes);
 			}
 
 			if (nParsed >= 2) {
-				if (expected_size == 0 || expected_size > IAP_APP_MAX_SIZE) {
-					printf("Invalid flash size %" PRIu32 ", app region only has %" PRIu32 " bytes\r\n",
-							expected_size, (uint32_t)IAP_APP_MAX_SIZE);
+				if (expected_size == 0 || expected_size > size_limit) {
+					printf("Invalid %s size %" PRIu32 ", the target region only has %" PRIu32 " bytes\r\n",
+							verb, expected_size, size_limit);
 					send_response("ERR");
+				} else if (is_bootloader && owner_slot_root_is_public() && !s_boot0_held) {
+					/* No owner means no key that can authorise this, so the
+					 * authorisation is physical presence -- the same rule takeown
+					 * and factory reset follow. */
+					printf("flashboot on an unclaimed board needs BOOT0 held through startup - refusing\r\n");
+					send_response("Refused");
 				} else if (!have_expected_signature) {
 					// no valid signature was provided -- refuse before erasing
 					// anything, so a rejected/malformed upload can never
@@ -423,12 +445,13 @@ void process_command() {
 					printf("File size %" PRIu32 ", checksum %" PRIx32 ". Staging in SDRAM.\r\n",
 	                        expected_size, expected_checksum);
 					received_bytes = 0;
+					s_staging_is_bootloader = is_bootloader;
 					current_status = FLASH_RECEIVE;
 					send_response("OK");
 				}
 			} else {
-				printf("Invalid flash command: only %d of the required size+checksum fields parsed\r\n",
-						nParsed);
+				printf("Invalid %s command: only %d of the required size+checksum fields parsed\r\n",
+						verb, nParsed);
 				send_response("ERR");
 			}
 		} else {
@@ -493,13 +516,29 @@ void process_command() {
 				/* Hashes the staging buffer, not the app region -- the app region
 				 * still holds the previous image at this point. */
 				bootloader_state_hash_app(IAP_STAGE_BASE, expected_size, hash);
-				if (!iap_cert_verify_image(hash, expected_signature, &expected_cert,
-						owner_slot_root(),
-						owner_slot_is_revoked(expected_cert.leaf_pubkey))) {
+				/* A bootloader image answers to the owner root itself. A leaf
+				 * certificate authorises applications; replacing the bootloader
+				 * is the same weight of act as handing over ownership.
+				 * $PROD/docs/modules/M1/FLASHBOOT.md. */
+				if (s_staging_is_bootloader
+						? !fw_verify_signature_with_key(owner_slot_root(), hash, expected_signature)
+						: !iap_cert_verify_image(hash, expected_signature, &expected_cert,
+							owner_slot_root(),
+							owner_slot_is_revoked(expected_cert.leaf_pubkey))) {
 					printf("Signature verification FAILED - firmware not trusted "
 							"(bad signature, or the leaf has been revoked). "
-							"Application region untouched.\r\n");
+							"%s untouched.\r\n",
+							s_staging_is_bootloader ? "Bootloader" : "Application region");
 					send_response("Signature Failed");
+				} else if (s_staging_is_bootloader) {
+					/* Does not come back: it resets, because the code that
+					 * called it no longer exists once the sector is rewritten.
+					 * It returns only for failures it catches before erasing. */
+					(void)boot_selfupgrade_commit(expected_size);
+					/* Only reached when it refused before erasing. A successful
+					 * one resets, which the tool reads the same way it reads the
+					 * end of an ordinary flash. */
+					send_response("Flash Failed");
 				} else if (!stage_commit_to_flash()) {
 					printf("The image was good but the flash write was not - "
 							"retry the upload.\r\n");

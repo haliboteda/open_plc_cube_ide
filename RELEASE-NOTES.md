@@ -52,6 +52,19 @@ already has firmware on it.
 - **The board reports two versions now.** The discovery reply gained a fifth
   field: `name_uid_role_<package version>_<sketch version>`. The bootloader has
   no sketch version to report and sends `-`.
+- **The bootloader can now be replaced over the network**, with
+  `IAPTool flashboot <boot.bin> <ip> --key=<owner.pem>`, and the board stays
+  claimed: the owner records are carried across the erase. The key must be the
+  owner root -- a leaf certificate authorises applications, not bootloaders --
+  and an unclaimed board demands BOOT0 held through start-up instead.
+  ⚠️ **Do not cut power during it.** The board is running out of the sector
+  being rewritten. If it is interrupted the board will not start; hold BOOT0
+  through a reset to reach the ST ROM DFU and re-flash over USB. Whether
+  ownership survived depends on where it stopped, and the boot log says so.
+  ⚠️ Re-flashing over **ST-Link still wipes ownership** -- the owner records
+  live in the bootloader's own sector. Use `flashboot` to keep it.
+  ⚠️ Going *into* this release still loses ownership whichever way you do it:
+  the owner record format changed, so records written by 0.1.2 are not read.
 - **The event log is gone.** The eight journal events supported no requirement
   and nothing ever read them back. The state sector now holds firmware metadata
   only, with its first 8 KiB reserved for calibration data.
