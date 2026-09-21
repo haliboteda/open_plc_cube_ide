@@ -36,9 +36,6 @@ already has firmware on it.
   reissued the same nonce sequence. The witness has moved to a free register.
 - **The bootloader reports its own version correctly** (`0.1.3`; it said `0.1.2`
   before) and reports the reset cause as `PIN`, `SOFT` or `POR`.
-- **New journal event** for "image verified but the flash write failed",
-  distinct from a signature failure — the two need different diagnosis.
-
 - **Every sketch must now declare its own version.** Add one line near the top:
   `OPENPLC_APP_VERSION(1, 0, 0);`. A sketch without it **does not compile** —
   this is deliberate, the upload tool needs a version to compare against.
@@ -67,8 +64,8 @@ already has firmware on it.
 Application metadata (size, hash, signature) lives in the last flash sector,
 and 0.1.3 changed its layout more than once. The current layout reserves the
 first 8 KiB of that sector for calibration data and starts the metadata area
-after it, so a record written by any earlier build no longer lines up. Neither
-does a journal written by 0.1.2. In every one of those cases:
+after it, so a record written by any earlier build no longer lines up. In every
+one of those cases:
 
 1. It finds no metadata for the application already in flash.
 2. It therefore declares that application invalid.
@@ -88,12 +85,10 @@ There is no code-level mitigation for this, by decision. The old format is not
 readable and adding a compatibility path would mean carrying a parser for a
 format no released board is supposed to keep.
 
-**The event log goes quiet until that first upload, too.** The boot after a
-bootloader upgrade reports an unrecognised record and a full journal, and stops
-recording events — it will not erase a sector on the strength of a record it
-cannot read. The next successful update reclaims the sector, and logging
-resumes. Observed going from a full 4096 slots to 10 on the upload that
-followed.
+**The boot after a bootloader upgrade reports the metadata area as full**, for
+the same reason: it will not erase a sector on the strength of records it cannot
+read. The next successful upload reclaims it, carrying the calibration area
+across, and the count drops back. Observed on hardware 2026-09-21.
 
 ### Upgrade in this order
 
