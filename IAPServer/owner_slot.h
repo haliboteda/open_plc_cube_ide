@@ -285,6 +285,26 @@ void owner_slot_report(void);
 bool owner_slot_compact(uint8_t *out);
 
 /*
+ * Build the owner area a `setowner --wipe` should leave behind: erased
+ * everywhere except one 'O' record handing the board to `new_root`. `out` is
+ * OWNER_SLOT_SIZE bytes.
+ *
+ * Checks exactly what owner_slot_set_owner() checks -- claimed, generation one
+ * past the record in force, signature verifying against the current owner --
+ * because the record written here is the same record, only into an area that
+ * is about to be erased rather than appended to.
+ *
+ * `generation` continues from the record in force, not from the highest
+ * number found on flash: an unwalked record's generation is whatever whoever
+ * wrote it chose, and it is one of the things this wipe is discarding.
+ *
+ * Returns false and leaves `out` untouched if anything fails. Nothing here
+ * writes flash -- the caller does that, and only after this succeeds.
+ */
+bool owner_slot_build_wipe_area(uint32_t generation, const uint8_t new_root[64],
+		const uint8_t sig[64], uint8_t *out);
+
+/*
  * True when the root this board verifies firmware against is the one published
  * with the project -- the key whose PRIVATE half is in the repository, because
  * customers have to be able to sign their own sketches.

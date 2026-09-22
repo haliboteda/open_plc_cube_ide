@@ -258,13 +258,24 @@ void process_command() {
 			char genbuf[16];
 			snprintf(genbuf, sizeof(genbuf), "%" PRIu32, owner_slot_generation());
 			send_response(genbuf);
-		} else if (strncmp((char *)RXBuffer, "setowner ", 9) == 0) {
+		} else if ((strncmp((char *)RXBuffer, "setownerwipe ", 13) == 0)
+				|| (strncmp((char *)RXBuffer, "setowner ", 9) == 0)) {
 			// "setowner <generation> <newkey_hex> <sig_hex>"
+			// "setownerwipe <generation> <newkey_hex> <sig_hex>"
+			//
+			// Same handover, same signature over the same bytes. The wipe form
+			// erases sector 0 and rewrites it with this bootloader and an owner
+			// area holding nothing but the new record -- the only way to get
+			// revocation slots back, and the reason it is a separate command:
+			// the operator has to ask for the risk, the board must never decide
+			// to take it on their behalf (OWN-07).
 			//
 			// No BOOT0 here, deliberately: the current owner's signature IS the
 			// authorisation, and handing a board over remotely is a case the
 			// design supports. Physical presence gates only the operations that
 			// have no signature to check -- the first claim and factory reset.
+			const bool wipe = (RXBuffer[8] == (uint8_t)'w');
+			const char *const verb = wipe ? "setownerwipe" : "setowner";
 			uint32_t gen = 0U;
 			char keyhex[129];
 			char sighex[129];
@@ -273,7 +284,7 @@ void process_command() {
 			bool ok = true;
 			uint32_t i;
 
-			if (sscanf((char *)RXBuffer + 9, "%" SCNu32 " %128s %128s",
+			if (sscanf((char *)RXBuffer + strlen(verb), " %" SCNu32 " %128s %128s",
 					&gen, keyhex, sighex) != 3) {
 				send_response("Bad args");
 			} else if ((strlen(keyhex) != 128U) || (strlen(sighex) != 128U)) {
@@ -291,6 +302,12 @@ void process_command() {
 				}
 				if (!ok) {
 					send_response("Bad hex");
+				} else if (wipe) {
+					// A successful wipe resets the board, so there is no OK to
+					// send -- same as flashboot. Reaching the next line means
+					// it refused and nothing was erased.
+					(void)boot_selfupgrade_wipe_owner(gen, key, sig);
+					send_response("Refused");
 				} else if (owner_slot_set_owner(gen, key, sig)) {
 					send_response("OK");
 				} else {

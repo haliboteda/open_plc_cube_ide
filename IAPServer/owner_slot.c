@@ -463,12 +463,20 @@ uint32_t owner_slot_generation(void)
 	return (s_effective != NULL) ? s_effective->generation : 0U;
 }
 
-bool owner_slot_set_owner(uint32_t generation, const uint8_t new_root[64],
-		const uint8_t sig[64])
+/*
+ * The handover record itself: built and verified, but not written anywhere.
+ * Shared by the append path and the wipe-and-rewrite path so the two cannot
+ * come to different conclusions about what a valid handover looks like.
+ *
+ * Check before writing, not after. The scanner would reject a bad record on
+ * the next boot anyway, but it would still be sitting in flash consuming one
+ * of 32 'O' slots that can never be reclaimed without erasing the bootloader.
+ * Refusing costs nothing; accepting is permanent.
+ */
+static bool build_handover_record(uint32_t generation, const uint8_t new_root[64],
+		const uint8_t sig[64], owner_record_t *rec)
 {
-	owner_record_t rec;
 	uint8_t digest[SHA256_DIGEST_SIZE];
-	const uint8_t *current;
 
 	owner_slot_init();
 
@@ -482,28 +490,71 @@ bool owner_slot_set_owner(uint32_t generation, const uint8_t new_root[64],
 		return false;
 	}
 
-	memset(&rec, 0xFF, sizeof(rec));
-	rec.type = (uint8_t)OWNER_RECORD_TYPE;
-	rec.reserved0 = 0U;
-	rec.format_ver = (uint16_t)OWNER_FORMAT_VER;
-	rec.generation = generation;
-	rec.flags = 0UL;
-	memcpy(rec.root_pubkey, new_root, sizeof(rec.root_pubkey));
-	iap_keyderive_get_machine_id(rec.uid);
-	memcpy(rec.prev_sig, sig, sizeof(rec.prev_sig));
-	memset(rec.reserved, 0, sizeof(rec.reserved));
+	memset(rec, 0xFF, sizeof(*rec));
+	rec->type = (uint8_t)OWNER_RECORD_TYPE;
+	rec->reserved0 = 0U;
+	rec->format_ver = (uint16_t)OWNER_FORMAT_VER;
+	rec->generation = generation;
+	rec->flags = 0UL;
+	memcpy(rec->root_pubkey, new_root, sizeof(rec->root_pubkey));
+	iap_keyderive_get_machine_id(rec->uid);
+	memcpy(rec->prev_sig, sig, sizeof(rec->prev_sig));
+	memset(rec->reserved, 0, sizeof(rec->reserved));
 
-	/*
-	 * Check before writing, not after. The scanner would reject a bad record on
-	 * the next boot anyway, but it would still be sitting in flash consuming
-	 * one of 32 'O' slots that can never be reclaimed without erasing the
-	 * bootloader. Refusing costs nothing; accepting is permanent.
-	 */
-	current = s_effective->root_pubkey;
-	sha256((const uint8_t *)&rec, OWNER_SIGNED_PREFIX_LEN, digest);
-	if (!fw_verify_signature_with_key(current, digest, rec.prev_sig)) {
+	sha256((const uint8_t *)rec, OWNER_SIGNED_PREFIX_LEN, digest);
+	if (!fw_verify_signature_with_key(s_effective->root_pubkey, digest,
+			rec->prev_sig)) {
 		printf("** setowner refused: signature does not verify against the "
 				"current owner **\r\n");
+		return false;
+	}
+	return true;
+}
+
+bool owner_slot_build_wipe_area(uint32_t generation, const uint8_t new_root[64],
+		const uint8_t sig[64], uint8_t *out)
+{
+	owner_record_t rec;
+
+	if (!build_handover_record(generation, new_root, sig, &rec)) {
+		return false;
+	}
+
+	/*
+	 * The record goes in UNSIGNED, and it has to.
+	 *
+	 * Every link in the chain is authorised by the link before it, and this
+	 * wipe throws those away -- so a stored signature would be one the next
+	 * boot has nothing to check against. resolve_chain() would refuse it and
+	 * the board would come back on the built-in root, unowned, with nothing
+	 * to undo it.
+	 *
+	 * Written unsigned it reads as a first claim (TOFU), which is what the
+	 * area now is. Nothing is weakened: the signature was the authorisation
+	 * to erase, checked above before a byte moved, and it covers the
+	 * generation and this board's uid, so a captured command cannot be
+	 * replayed here or onto another board. Taking over a board that resolves
+	 * this way still needs either the new owner's key or physical presence,
+	 * exactly as before.
+	 */
+	memset(rec.prev_sig, 0, sizeof(rec.prev_sig));
+
+	memset(out, 0xFF, OWNER_SLOT_SIZE);
+	memcpy(out, &rec, sizeof(rec));
+
+	printf("** owner area will be rewritten with one unsigned record at "
+			"generation %" PRIu32 ": %" PRIu32 " owner record(s) and %" PRIu32
+			" revocation(s) dropped **\r\n",
+			generation, s_valid_count, s_revoke_used);
+	return true;
+}
+
+bool owner_slot_set_owner(uint32_t generation, const uint8_t new_root[64],
+		const uint8_t sig[64])
+{
+	owner_record_t rec;
+
+	if (!build_handover_record(generation, new_root, sig, &rec)) {
 		return false;
 	}
 

@@ -140,6 +140,50 @@ static void ram_burn(uint32_t image_words, const uint32_t *image, const uint32_t
 	}
 }
 
+static bool bytes_are_erased(const uint8_t *p, uint32_t len)
+{
+	uint32_t i;
+
+	for (i = 0U; i < len; i++) {
+		if (p[i] != 0xFFU) {
+			return false;
+		}
+	}
+	return true;
+}
+
+/*
+ * Everything from "the buffers are ready" to the point of no return. Shared
+ * so the two entry points cannot arm the hardware differently; `what` only
+ * names the operation in the log.
+ *
+ * Returns false only if the flash will not unlock. Otherwise it does not
+ * return: ram_burn() resets the board.
+ */
+static bool arm_and_burn(uint32_t image_size, const char *what)
+{
+	HAL_FLASH_Unlock();
+	if ((FLASH->CR1 & FLASH_CR_LOCK) != 0U) {
+		printf("%s: bank 1 will not unlock, nothing was erased\r\n", what);
+		return false;
+	}
+	FLASH->CCR1 = FLASH_FLAG_ALL_ERRORS_BANK1;
+
+	printf("%s: erasing and rewriting sector 0 (%" PRIu32 " bytes). "
+			"DO NOT CUT POWER.\r\n", what, image_size);
+	fflush(stdout);
+	HAL_Delay(200);   /* let that line leave the UART before interrupts stop */
+
+	/* The I-cache would otherwise keep serving instructions from a sector
+	 * that no longer holds them. Interrupts go last, so nothing between here
+	 * and the reset can vector into erased flash. */
+	SCB_DisableICache();
+	__disable_irq();
+
+	ram_burn(image_size / 4U, (const uint32_t *)IAP_STAGE_BASE,
+			(const uint32_t *)OWNER_CARRY_BASE);
+}
+
 bool boot_selfupgrade_commit(uint32_t image_size)
 {
 	/* HAL_FLASH_Program always commits a whole 32-byte flash word, so the
@@ -174,23 +218,44 @@ bool boot_selfupgrade_commit(uint32_t image_size)
 		}
 	}
 
-	HAL_FLASH_Unlock();
-	if ((FLASH->CR1 & FLASH_CR_LOCK) != 0U) {
-		printf("flashboot: bank 1 will not unlock, nothing was erased\r\n");
+	return arm_and_burn(padded, "flashboot");
+}
+
+/*
+ * The owner area shares sector 0 with the bootloader, so emptying it means
+ * erasing the bootloader too -- and writing it straight back. Same erase, same
+ * risk, same recovery as replacing it with a different image.
+ */
+bool boot_selfupgrade_wipe_owner(uint32_t generation, const uint8_t new_root[64],
+		const uint8_t sig[64])
+{
+	uint8_t *staged = (uint8_t *)IAP_STAGE_BASE;
+	const uint8_t *self = (const uint8_t *)BOOT_SECTOR_BASE;
+	uint32_t size = BOOT_IMAGE_MAX;
+	uint32_t i;
+
+	/* Refuse a handover this board would refuse anyway, before anything is
+	 * erased -- the whole point of checking first. */
+	if (!owner_slot_build_wipe_area(generation, new_root, sig,
+			(uint8_t *)OWNER_CARRY_BASE)) {
 		return false;
 	}
-	FLASH->CCR1 = FLASH_FLAG_ALL_ERRORS_BANK1;
 
-	printf("flashboot: erasing and rewriting sector 0 (%" PRIu32 " bytes). "
-			"DO NOT CUT POWER.\r\n", padded);
-	fflush(stdout);
-	HAL_Delay(200);   /* let that line leave the UART before interrupts stop */
+	/* Copy this bootloader out to write it back unchanged. Trailing erased
+	 * words are dropped: they are already 0xFF after the erase, and every one
+	 * of them would otherwise be a program operation lengthening the window
+	 * in which a power cut leaves the board unbootable. */
+	while ((size >= 32U) && bytes_are_erased(&self[size - 32U], 32U)) {
+		size -= 32U;
+	}
+	if (size == 0U) {
+		printf("setownerwipe: this sector reads as erased, refusing to rewrite "
+				"it from nothing\r\n");
+		return false;
+	}
+	for (i = 0U; i < size; i++) {
+		staged[i] = self[i];
+	}
 
-	/* The I-cache would otherwise keep serving instructions from a sector
-	 * that no longer holds them. Interrupts go last, so nothing between here
-	 * and the reset can vector into erased flash. */
-	SCB_DisableICache();
-	__disable_irq();
-
-	ram_burn(padded / 4U, (const uint32_t *)IAP_STAGE_BASE, (const uint32_t *)carry);
+	return arm_and_burn(size, "setownerwipe");
 }
