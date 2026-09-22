@@ -232,26 +232,47 @@ static void boot0_armed_signal(void)
 }
 
 /*
- * Which relay makes this boot's noise. Drawn fresh each start, so the wear
- * spreads across all six instead of always landing on the first three.
+ * Which relay makes this boot's noise, so the contact wear spreads over all
+ * six instead of always landing on the same ones.
  *
- * Seeded from SysTick because nothing else here varies: the RTC, the RNG and
- * the ADC all belong to phase 2, and an unseeded rand() would deal the same
- * relay every boot. SysTick has been counting since HAL_Init(), and the wait
- * for HSE/PLL lock inside SystemClock_Config() takes a slightly different
- * time on every start, which shifts everything after it. One tick spans
- * ~480000 counts at this clock, so a microsecond of that jitter is already
- * more than enough to move the low bits.
+ * Taken from the RTC, and nothing is written anywhere. A rotation counter
+ * would be exactly even where this is only even on average, but it has to
+ * live somewhere across power cycles, and the only somewhere is an RTC
+ * backup register -- a resource the bootloader, the Arduino core and any
+ * library a sketch pulls in all share with no allocator between them. The
+ * danger is not that somebody corrupts this counter (any value lands back in
+ * range through the modulus); it is that incrementing it every boot would
+ * quietly destroy whatever somebody else kept there. Reading costs nobody
+ * anything.
  *
- * ⚠️ Not a source of randomness anything may depend on -- it decides which
- * relay beeps, nothing else. If the jitter ever turned out to be zero the
- * same relay would simply click every time, which is the behaviour this
- * replaced.
+ * ⚠️ There is no other usable source here. Measured on 2026-09-22 over six
+ * boots: SysTick->VAL read 0 every time (the HAL tick runs off TIM6, so
+ * SysTick is never enabled), HAL_GetTick() read 14 every time and TIM6->CNT
+ * read 730 every time -- the path from reset to this function is
+ * bit-identical on every start. Only the RTC moves, because it keeps its own
+ * time across the reset. An earlier version seeded rand() from SysTick->VAL
+ * and therefore dealt RY1 on 24 boots out of 24, which is worse than the
+ * fixed first-three it replaced: all the wear went to one relay.
+ *
+ * SSR counts down inside the current second and TR carries the second
+ * itself, so the pair moves both for boots milliseconds apart and for boots
+ * days apart. Read straight from the registers because this runs before
+ * MX_RTC_Init() -- `hrtc` is still all zeroes and the HAL helpers would work
+ * off a null Instance. Reading DR afterwards releases the shadow registers,
+ * which reading TR freezes.
+ *
+ * If the backup domain has been lost the RTC restarts from a fixed time and
+ * the same relay clicks until the board has been up a while -- no worse than
+ * what this replaced, and the boot line says which relay it was either way.
  */
 static RELAY_Name boot_window_pick_relay(void)
 {
-	srand(SysTick->VAL);
-	return (RELAY_Name)(rand() % (int)RELAY_COUNT);
+	uint32_t ssr = RTC->SSR;
+	uint32_t tr = RTC->TR;
+
+	(void)RTC->DR;   /* releases the shadow registers that reading TR froze */
+
+	return (RELAY_Name)((ssr + tr) % (uint32_t)RELAY_COUNT);
 }
 
 static boot0_gesture_t boot_window_relay(void)
@@ -259,6 +280,12 @@ static boot0_gesture_t boot_window_relay(void)
 	const RELAY_Name beeper = boot_window_pick_relay();
 	uint32_t held_ms;
 	bool armed = false;
+
+	/* Printed BEFORE the clicks, not after: if the board resets partway
+	 * through the window, the line for the interrupted attempt still reaches
+	 * the log and the restart shows up as a second one. It is also what makes
+	 * the rotation checkable -- see tools/run_relay_pick_distribution.py. */
+	printf("Startup window: RY%u\r\n", (unsigned)beeper + 1U);
 
 	for (uint32_t i = 0U; i < BOOT0_WINDOW_BEEPS; i++) {
 		Relay_On(beeper);
