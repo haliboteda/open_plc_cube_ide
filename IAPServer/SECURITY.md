@@ -137,6 +137,13 @@ key, once a board has been claimed. See `$PROD/docs/modules/M2-ownership.md`.
   this is. `getapprevoked` answers whether the installed image's signer has
   been revoked, which is how an operator finds the boards wanting a re-upload.
   See `$PROD/docs/tables/DECISIONS.md` decisions 60 and 63.
+- **`sha256.c`, `iap_cert.c` and part of `iap_auth.c` exist twice**, once
+  here and once in the Arduino library, because the two are separate builds
+  with no shared source. Not a latent divergence: case P2 compares the first
+  two byte for byte, and for `iap_auth.c` it compares the shared functions plus
+  the bytes a challenge signature covers. The Go tool is not a third copy -- it
+  uses Go's standard library, and cases T1-19/T1-20 cross-check the two
+  implementations against each other.
 - `iap_auth.c`'s nonce state is a single global - only one challenge in
   flight at a time. Concurrent CDC + Ethernet challenge requests would have
   the second overwrite the first's nonce, failing the first session's
@@ -171,10 +178,12 @@ board is worth extracting.
       protects a board that still trusts the published key, and the vendor
       cannot fix that by rotating -- see the section above. This is an
       operational step, not a code change.
-- [ ] **Consolidate `iap_auth.c`/`iap_cert.c`/`sha256.c` across the three
-      repos** into one shared source instead of hand-synced copies. What
-      guards them meanwhile is `check_mirror_sync.py` (case P2), which
-      compares the format constants across all three.
+- [ ] **`iap_keyderive.c` is hand-copied and nothing compares the two
+      copies.** The machine ID's byte order and hex format have to agree
+      between this bootloader and the Arduino library or a board identifies
+      itself differently depending on which is running. The mechanism that
+      would close it exists -- case P2 gained a normalised-body comparison on
+      2026-09-22 -- but this file is not wired into it yet.
 
 Not on this list any more, and deliberately so:
 
