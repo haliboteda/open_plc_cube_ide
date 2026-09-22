@@ -266,12 +266,19 @@ void process_command() {
 			// boards want a re-upload after revoking somebody, and would have
 			// to re-flash every board to be sure.
 			//
-			// "none" is not "no": a board with no signed image has nothing to
+			// "none" is not "no": a board with no runnable image has nothing to
 			// re-upload, whereas "no" says the image present is fine. Merging
 			// them would read as a clean bill of health for a blank board.
+			//
+			// The metadata record alone does not prove there is an image: it
+			// lives in sector 15 and outlives an erase of the application. The
+			// question is whether the board would RUN what it has, which is
+			// what the boot decision already worked out. Since decision 60 that
+			// verdict ignores revocation, so it does not swallow the answer.
 			iap_fw_metadata_t meta;
 			char *answer = "none";
-			if (bootloader_state_get_metadata(&meta) && meta.app_size > 0U) {
+			if (bootloader_state_app_is_valid()
+					&& bootloader_state_get_metadata(&meta) && meta.app_size > 0U) {
 				answer = owner_slot_is_revoked(meta.cert.leaf_pubkey) ? "yes" : "no";
 			}
 			send_response(answer);
