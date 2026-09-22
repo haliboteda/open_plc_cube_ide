@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include <stdlib.h>   /* srand/rand: picks the startup relay */
 #include "usart.h"
 #include "gpio.h"
 
@@ -179,14 +180,21 @@ PUTCHAR_PROTOTYPE {
 static IAP_Method s_boot_mode = IAP_NONE;
 
 /* Startup window: the relay clicks are the operator's cue to press BOOT0.
- * 3 relays x 500 ms = 1.5 s, then one read.
+ * One relay, picked fresh each boot, clicks twice: 500 ms closed, 500 ms open,
+ * twice over = a 2 s window, then one read.
  *
- * ⚠️ The judgement is "was the button down at the 1.5 s mark", NOT "was it
- * held for 1.5 s". BOOT0 is not looked at while the relays click. Holding the
- * button throughout is just the practical way to be sure of covering that one
+ * The sound is all this is for, so which relay makes it does not matter -- and
+ * because it does not matter, it rotates. RY1..RY6 are the customer's relay
+ * outputs (see the Hardware repo), so a fixed choice puts every boot's contact
+ * wear on the same ones.
+ *
+ * ⚠️ The judgement is "was the button down at the 2 s mark", NOT "was it held
+ * for 2 s". BOOT0 is not looked at while the relay clicks. Holding the button
+ * throughout is just the practical way to be sure of covering that one
  * instant, which is what the banner is really telling the operator to do. */
 #define BOOT0_WINDOW_MS        500U
-#define BOOT0_WINDOW_RELAYS    3U
+#define BOOT0_WINDOW_BEEPS     2U
+#define BOOT0_WINDOW_MS_TOTAL  (BOOT0_WINDOW_BEEPS * 2U * BOOT0_WINDOW_MS)
 
 /* Keep holding past the decision point and it becomes a second gesture:
  * factory reset (requirement R2-02). Ten seconds is far enough from
@@ -223,15 +231,40 @@ static void boot0_armed_signal(void)
 	}
 }
 
+/*
+ * Which relay makes this boot's noise. Drawn fresh each start, so the wear
+ * spreads across all six instead of always landing on the first three.
+ *
+ * Seeded from SysTick because nothing else here varies: the RTC, the RNG and
+ * the ADC all belong to phase 2, and an unseeded rand() would deal the same
+ * relay every boot. SysTick has been counting since HAL_Init(), and the wait
+ * for HSE/PLL lock inside SystemClock_Config() takes a slightly different
+ * time on every start, which shifts everything after it. One tick spans
+ * ~480000 counts at this clock, so a microsecond of that jitter is already
+ * more than enough to move the low bits.
+ *
+ * ⚠️ Not a source of randomness anything may depend on -- it decides which
+ * relay beeps, nothing else. If the jitter ever turned out to be zero the
+ * same relay would simply click every time, which is the behaviour this
+ * replaced.
+ */
+static RELAY_Name boot_window_pick_relay(void)
+{
+	srand(SysTick->VAL);
+	return (RELAY_Name)(rand() % (int)RELAY_COUNT);
+}
+
 static boot0_gesture_t boot_window_relay(void)
 {
+	const RELAY_Name beeper = boot_window_pick_relay();
 	uint32_t held_ms;
 	bool armed = false;
 
-	for (uint32_t i = 0U; i < BOOT0_WINDOW_RELAYS; i++) {
-		Relay_On((RELAY_Name) i);
+	for (uint32_t i = 0U; i < BOOT0_WINDOW_BEEPS; i++) {
+		Relay_On(beeper);
 		HAL_Delay(BOOT0_WINDOW_MS);
-		Relay_Off((RELAY_Name) i);
+		Relay_Off(beeper);
+		HAL_Delay(BOOT0_WINDOW_MS);
 	}
 
 	if (boot0_is_pressed() == 0U) {
@@ -245,7 +278,7 @@ static boot0_gesture_t boot_window_relay(void)
 			"or let go now for upload mode **\r\n",
 			(unsigned)(BOOT0_FACTORY_HOLD_MS / 1000U));
 
-	held_ms = BOOT0_WINDOW_RELAYS * BOOT0_WINDOW_MS;
+	held_ms = BOOT0_WINDOW_MS_TOTAL;
 	while (boot0_is_pressed() != 0U) {
 		if (!armed && (held_ms >= BOOT0_FACTORY_HOLD_MS)) {
 			armed = true;
