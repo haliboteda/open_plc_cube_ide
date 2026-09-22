@@ -178,12 +178,11 @@ board is worth extracting.
       protects a board that still trusts the published key, and the vendor
       cannot fix that by rotating -- see the section above. This is an
       operational step, not a code change.
-- [ ] **`iap_keyderive.c` is hand-copied and nothing compares the two
-      copies.** The machine ID's byte order and hex format have to agree
-      between this bootloader and the Arduino library or a board identifies
-      itself differently depending on which is running. The mechanism that
-      would close it exists -- case P2 gained a normalised-body comparison on
-      2026-09-22 -- but this file is not wired into it yet.
+- [ ] **RTC backup register DR1 is claimed by this bootloader and defined,
+      unused, by the core's `backup.h`.** Nothing compares those two, so
+      whoever pulls in the STM32RTC library takes the nonce counter with them.
+      The allocation table in `$PROD/docs/repo/ARCHITECTURE.md` is the record;
+      case P2 scans only the two `iap_auth.c` files.
 
 Not on this list any more, and deliberately so:
 
