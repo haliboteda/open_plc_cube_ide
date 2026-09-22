@@ -54,9 +54,12 @@ already has firmware on it.
   no sketch version to report and sends `-`.
 - **The bootloader can now be replaced over the network**, with
   `IAPTool flashboot <boot.bin> <ip> --key=<owner.pem>`, and the board stays
-  claimed: the owner records are carried across the erase. The key must be the
-  owner root -- a leaf certificate authorises applications, not bootloaders --
-  and an unclaimed board demands BOOT0 held through start-up instead.
+  claimed: the owner records are carried across the erase, and compacted while
+  they are out of the way. The key must be the owner root -- a leaf certificate
+  authorises applications, not bootloaders -- and an unclaimed board demands
+  BOOT0 held through start-up instead. Verified on hardware: five bootloader
+  replacements in a row, ownership and the installed application intact after
+  each one.
   ⚠️ **Do not cut power during it.** The board is running out of the sector
   being rewritten. If it is interrupted the board will not start; hold BOOT0
   through a reset to reach the ST ROM DFU and re-flash over USB. Whether
@@ -64,7 +67,55 @@ already has firmware on it.
   ⚠️ Re-flashing over **ST-Link still wipes ownership** -- the owner records
   live in the bootloader's own sector. Use `flashboot` to keep it.
   ⚠️ Going *into* this release still loses ownership whichever way you do it:
-  the owner record format changed, so records written by 0.1.2 are not read.
+  the owner record format changed, so no record written by an earlier build is
+  read. From 0.1.3 onwards `flashboot` keeps it.
+- **A leaf certificate can be revoked**, so one departing colleague no longer
+  means re-keying everybody:
+
+  ```sh
+  IAPTool revoke <ip> --key=<owner.pem> --leaf=<the leaf's 128-hex public key>
+  ```
+
+  Signed by the current owner, so no button and no site visit. Revoking the
+  same leaf twice is free -- the board answers `OK already revoked` and writes
+  nothing, which is also what makes a replayed request harmless.
+  ⚠️ **A revocation also stops firmware that is already installed.** The board
+  re-checks the certificate on every boot, so a board running an application
+  signed by the revoked leaf stops at the bootloader after its next reset and
+  waits for a re-upload. Revoke, then plan to re-send.
+  ⚠️ **The root can never revoke itself**, by rule: an entry naming the root in
+  force is ignored rather than honoured.
+- **The owner record area holds 96 revocations**, in their own fixed segment
+  alongside 32 ownership records. The boot line reports both:
+  `Owner slot: 31/32 owner slot(s) free, 96/96 revoke slot(s) free`.
+  The area only ever appends, so the board starts warning with 8 revocation
+  slots left.
+  ⚠️ **Changing the root does not free those slots.** It retires every leaf the
+  old root issued -- so they need no individual revocation -- but the records
+  already written stay where they are. Only `setowner --wipe`, a `flashboot`,
+  or an ST-Link reflash reclaims them.
+- **`setowner --wipe` hands the board over and empties the record area**, which
+  is the only way to get revocation slots back without an ST-Link:
+
+  ```sh
+  IAPTool setowner <ip> --current-key=<a.pem> --new-key=<b.pem> --wipe
+  ```
+
+  The board erases and rewrites its own flash sector to do it, so it resets.
+  ⚠️ **Same power rule as `flashboot`**: a cut during the erase means holding
+  BOOT0 through a reset and re-flashing over USB DFU.
+  ⚠️ **After a wipe the board's ownership can no longer be proved back to the
+  factory.** Each ownership record is authorised by the one before it, and a
+  wipe discards them; the record it writes therefore carries no signature and
+  reads as a first claim. Nothing is weakened -- the signature authorising the
+  wipe is checked before a byte is erased, and it covers both the generation
+  and that board's UID -- but the chain is gone. Plain `setowner` keeps it.
+- **The upload tool no longer reports a refused image as a successful upload.**
+  The board checks the image signature only once it has the whole image, and
+  `IAPTool` used to stop listening before that verdict arrived: an image the
+  board threw away was reported as `File transfer complete.` with exit code 0.
+  It now reads the verdict, and confirms a success by watching the board come
+  back on the network.
 - **The event log is gone.** The eight journal events supported no requirement
   and nothing ever read them back. The state sector now holds firmware metadata
   only, with its first 8 KiB reserved for calibration data.
@@ -103,6 +154,22 @@ the same reason: it will not erase a sector on the strength of records it cannot
 read. The next successful upload reclaims it, carrying the calibration area
 across, and the count drops back. Observed on hardware 2026-09-21.
 
+### The upgrade into 0.1.3 needs somebody at the board
+
+This applies **once**, to the upgrade into this release, and not to any
+upgrade after it.
+
+An application built before 0.1.3 cannot reboot itself into the bootloader on
+a 0.1.3 board. It reads the owner records to decide who may ask it to reboot,
+and it does not understand the layout this release introduced, so it falls
+back to the published root and refuses a request signed by the board's real
+owner. The board is fine and still answers discovery — it just will not take
+that one command.
+
+**So the upgrade into 0.1.3 needs BOOT0 held through a reset**, unless the
+board is already sitting in its bootloader. Once a 0.1.3-built application is
+installed, `IAPTool` can drive the whole cycle over the network again.
+
 ### Upgrade in this order
 
 **Board package first, bootloader second.** The intermediate state is usable
@@ -128,15 +195,25 @@ an old path, will fail this way until it is pointed at the new one.
 
 ### Flashing the bootloader
 
-IAP writes the application region only — it can never update the bootloader.
-Use ST-Link or DFU.
+There are two ways, and they differ in what survives.
 
-> **Reflashing the bootloader also resets ownership.** The owner records live in
-> the top 8 KB of the bootloader's own flash sector, so erasing that sector to
-> write a new bootloader takes them with it. That is semantically right — anyone
-> who can attach ST-Link could reset the board anyway — but it stacks on top of
-> the rule above: **whoever replaces a bootloader on a claimed board must
-> re-upload the application *and* claim the board again.**
+| | `IAPTool flashboot` | ST-Link / DFU |
+|---|---|---|
+| Ownership | **kept** | **erased** |
+| Installed application | kept | kept (the image itself is never touched) |
+| Needs a cable at the board | no | yes |
+| Needs the owner's private key | yes | no |
+
+`flashboot` is the normal route from 0.1.3 onwards. ST-Link remains the way in
+when there is no owner key to sign with, and the way back when something went
+wrong.
+
+> **Reflashing over ST-Link resets ownership.** The owner records live in the
+> top 8 KB of the bootloader's own flash sector, so erasing that sector to write
+> a new bootloader takes them with it. That is semantically right — anyone who
+> can attach ST-Link could reset the board anyway — but it means **whoever
+> replaces a bootloader that way on a claimed board must claim it again**, and
+> re-upload the application because the new owner cannot verify the old one's.
 
 ## Board ownership
 
@@ -150,12 +227,13 @@ run firmware signed by anybody, and it says so on every boot:
 ```
 
 Claiming the board binds it to a key of your own, after which it runs nothing
-else. Three operations:
+else. Four operations:
 
 | Operation | How it is authorised |
 |---|---|
 | **Claim** (`takeown`) | Hold BOOT0 through the startup window. There is no owner yet to sign anything, so physical presence is the only possible gate — and until a board is claimed, whoever gets there first wins |
 | **Change owner** (`setowner`) | The current owner's signature. No button: signing *is* the authorisation, and handing a board over remotely is supported |
+| **Revoke a leaf** (`revoke`) | The current owner's signature. Withdraws one delegated certificate without touching the others. The root itself can never be revoked |
 | **Factory reset** | Hold BOOT0 for ten seconds after reset, until three rapid relay clicks, then release. Back to the published root, and claimable again |
 
 **Factory reset deliberately needs no signature.** Requiring the current owner's
@@ -174,12 +252,16 @@ IAPTool genkey owner                 writes owner.pem
 IAPTool getowner <ip>                which key the board trusts, at which generation
 IAPTool takeown  <ip> --key=owner.pem
 IAPTool setowner <ip> --current-key=owner.pem --new-key=next.pem
+IAPTool setowner <ip> --current-key=owner.pem --new-key=next.pem --wipe
+IAPTool revoke   <ip> --key=owner.pem --leaf=<128 hex characters>
 ```
 
-`takeown` needs BOOT0 held through the board's current boot; `setowner` needs
-only the current owner's key, so a handover can be done remotely. `takeown`
-refuses to fall back to the signing key from `local_config.json` — claiming a
-board with the wrong key can only be undone with an ST-Link.
+`takeown` needs BOOT0 held through the board's current boot; `setowner` and
+`revoke` need only the current owner's key, so both can be done remotely.
+`takeown` refuses to fall back to the signing key from `local_config.json` —
+claiming a board with the wrong key can only be undone with an ST-Link.
+`--wipe` additionally empties the record area, which costs a sector erase; see
+the bullet above before using it.
 
 ### Letting colleagues upload without the owner key
 
@@ -197,12 +279,17 @@ Uploading is unchanged from there, including from the Arduino IDE — the
 certificate is found beside the key it covers. **The owner private key never
 leaves the administrator's machine.**
 
-**Revoking a colleague means handing the board to a new owner** (`setowner`)
-and issuing fresh certificates to everyone still there. Certificates from the
-old owner stop verifying the moment the board's owner changes — including on
-firmware already installed, which the board will refuse at the next reset until
-someone uploads again. Plan a revocation as a maintenance window, not as a
-click.
+**Withdrawing one colleague's certificate is now a single command** — see
+`IAPTool revoke` above. It names that one leaf and leaves everybody else's
+certificates working.
+
+**Changing the root is still the bigger hammer**, and sometimes the right one:
+`setowner` retires every certificate the old root issued at once, which is what
+you want if the owner key itself is in doubt rather than one colleague's.
+
+Either way, firmware **already installed** and signed by an affected key is
+refused at the next reset until someone uploads again. Plan both as a
+maintenance window, not as a click.
 
 ### Known issues
 
@@ -227,6 +314,7 @@ click.
 - **Discovery rate limiting is a fixed window, not a token bucket.** Nominally
   50 replies/sec; a burst straddling a window boundary has been measured at 60.
   Treat 50 as approximate, not as a guarantee.
+
 ### Not verified
 
 - **MAC addresses are unique across boards.** Derivation from the chip UID
@@ -242,11 +330,12 @@ click.
   it. Measured pull-safe windows: **33.7 s** during transfer, **20.2 s** during
   erase/write.
 
-  **That erase/write window is wider and easier to hit than assumed** — the
-  upload tool exits as soon as it has sent the last byte, while the board is
-  still verifying, erasing and copying out of SDRAM. Anything automating an
-  upgrade should wait for the board's own `Checksum and signature OK` rather
-  than for the tool to exit.
+  **That erase/write window is wider and easier to hit than assumed**, and it
+  used to be worse: the tool exited as soon as it had sent the last byte, while
+  the board was still verifying, erasing and copying out of SDRAM. It now waits
+  for the board to finish and come back, so the tool's exit is a usable signal
+  again and automation no longer has to watch the serial log for
+  `Checksum and signature OK`.
 - Long-term stability under a real OpenPLC runtime.
 
 ### The shipped signing key is public on purpose
