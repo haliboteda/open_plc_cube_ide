@@ -300,12 +300,9 @@ void process_command() {
 		} else if (strncmp((char *)RXBuffer, "revoke ", 7) == 0) {
 			// "revoke <leaf_prefix_hex> <sig_hex>"
 			//
-			// leaf_prefix_hex names ONE leaf (the first OWNER_REVOKE_PREFIX_LEN
-			// bytes of its public key, 32 hex chars) -- IAPTool's `revoke` takes
-			// one --leaf per call, so this command mirrors that rather than
-			// exposing all four OWNER_REVOKE_SLOTS at the wire level. The other
-			// three stay zero, same as an --also-unsigned-style partially filled
-			// record anywhere else this format shows up.
+			// leaf_prefix_hex names ONE leaf: the first OWNER_REVOKE_PREFIX_LEN
+			// bytes of its public key, 32 hex chars. One 'R' record holds
+			// exactly one name (decision I-D3: batching was declined).
 			//
 			// No BOOT0, same reasoning as setowner: the current owner's
 			// signature IS the authorisation.
@@ -314,7 +311,7 @@ void process_command() {
 			// the ownership chain, so it has no position in one (decision 59).
 			char leafhex[(OWNER_REVOKE_PREFIX_LEN * 2U) + 1U];
 			char sighex[129];
-			uint8_t revoked[OWNER_REVOKE_SLOTS][OWNER_REVOKE_PREFIX_LEN];
+			uint8_t leaf_prefix[OWNER_REVOKE_PREFIX_LEN];
 			uint8_t sig[64];
 			bool ok = true;
 			bool already = false;
@@ -327,14 +324,14 @@ void process_command() {
 					(strlen(sighex) != 128U)) {
 				send_response("Bad length");
 			} else {
-				memset(revoked, 0, sizeof(revoked));
+				memset(leaf_prefix, 0, sizeof(leaf_prefix));
 				for (i = 0U; i < OWNER_REVOKE_PREFIX_LEN; i++) {
 					unsigned int lb;
 					if (sscanf(&leafhex[i * 2U], "%2x", &lb) != 1) {
 						ok = false;
 						break;
 					}
-					revoked[0][i] = (uint8_t)lb;
+					leaf_prefix[i] = (uint8_t)lb;
 				}
 				for (i = 0U; ok && (i < 64U); i++) {
 					unsigned int sb;
@@ -346,7 +343,7 @@ void process_command() {
 				}
 				if (!ok) {
 					send_response("Bad hex");
-				} else if (owner_slot_revoke(revoked, sig, &already)) {
+				} else if (owner_slot_revoke(leaf_prefix, sig, &already)) {
 					// "already" keeps a repeat call honest: it succeeded, but
 					// nothing was written. IAPTool matches on "OK", so the
 					// extra words reach the operator without changing the
