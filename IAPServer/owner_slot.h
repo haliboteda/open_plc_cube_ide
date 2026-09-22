@@ -267,6 +267,24 @@ uint32_t owner_slot_record_count(void);
 void owner_slot_report(void);
 
 /*
+ * Build the owner area as it should look after the sector has been erased and
+ * rewritten -- the only moment these slots can be reclaimed. `out` is
+ * OWNER_SLOT_SIZE bytes and comes back ready to program verbatim.
+ *
+ * Kept: the 'O' records the chain actually walked, in walk order, and every
+ * 'R' record still in effect. Dropped: 'O' records the chain never reached
+ * (a record past a broken link must NOT be promoted by compaction -- that
+ * would hand an attacker the link the verifier refused), torn and
+ * wrong-format records, and 'R' records naming the root in force, which
+ * R4 ignores anyway.
+ *
+ * Returns false and leaves `out` untouched if the result would lose the
+ * board's ownership -- the caller is expected to carry the area over verbatim
+ * instead, which is always safe and merely reclaims nothing.
+ */
+bool owner_slot_compact(uint8_t *out);
+
+/*
  * True when the root this board verifies firmware against is the one published
  * with the project -- the key whose PRIVATE half is in the repository, because
  * customers have to be able to sign their own sketches.

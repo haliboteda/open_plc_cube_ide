@@ -159,9 +159,19 @@ bool boot_selfupgrade_commit(uint32_t image_size)
 		((uint8_t *)IAP_STAGE_BASE)[i] = 0xFFU;
 	}
 
-	/* Read the owner records out while flash is still readable. */
-	for (i = 0U; i < OWNER_SLOT_SIZE; i++) {
-		carry[i] = owner[i];
+	/* Read the owner records out while flash is still readable.
+	 *
+	 * Compacted here, before interrupts go down, so the decisions are made by
+	 * ordinary code that can still print and still read flash -- ram_burn()
+	 * only ever programs the buffer it is handed. An erase is the one moment
+	 * these slots can be reclaimed, and nothing else reclaims them.
+	 *
+	 * If compaction refuses, the area goes over exactly as it stands: that
+	 * reclaims nothing but cannot lose ownership. */
+	if (!owner_slot_compact(carry)) {
+		for (i = 0U; i < OWNER_SLOT_SIZE; i++) {
+			carry[i] = owner[i];
+		}
 	}
 
 	HAL_FLASH_Unlock();

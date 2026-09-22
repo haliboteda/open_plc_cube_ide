@@ -64,6 +64,11 @@ static uint32_t s_unauthorised_count;    /* structurally fine, not entitled to a
 static const owner_record_t *s_latest;   /* highest generation, structurally valid */
 static const owner_record_t *s_effective; /* end of the trusted chain, or NULL */
 
+/* Every link the walk accepted, in walk order. Only owner_slot_compact()
+ * needs the whole sequence; everything else wants the end of it. */
+static const owner_record_t *s_chain[OWNER_SLOT_MAX_RECORDS];
+static uint32_t s_chain_count;
+
 /* Every structurally valid 'R' record written for this board. Revocation is
  * cumulative, so all of them matter, not just the last. */
 static const owner_revoke_rec_t *s_revoke_records[OWNER_REVOKE_MAX_RECORDS];
@@ -183,6 +188,7 @@ static void resolve_chain(void)
 	uint8_t my_uid[IAP_MACHINE_ID_SIZE];
 
 	iap_keyderive_get_machine_id(my_uid);
+	s_chain_count = 0U;
 
 	for (;;) {
 		const owner_record_t *next = NULL;
@@ -258,6 +264,9 @@ static void resolve_chain(void)
 		}
 
 		current = next;
+		if (s_chain_count < OWNER_SLOT_MAX_RECORDS) {
+			s_chain[s_chain_count++] = next;
+		}
 		last_gen = next->generation;
 		prev_cleared = cleared;
 		first = false;
@@ -729,6 +738,63 @@ bool owner_slot_is_revoked(const uint8_t leaf_pubkey[64])
 		}
 	}
 	return false;
+}
+
+bool owner_slot_compact(uint8_t *out)
+{
+	uint32_t kept_r = 0U;
+	uint32_t i, j;
+	const uint8_t *root;
+
+	owner_slot_init();
+	root = owner_slot_root();
+
+	/* A claimed board whose compacted chain is empty would come back
+	 * unowned, and nothing undoes that. Refuse instead and let the caller
+	 * carry the area over as it stands. */
+	if (!s_empty && (s_chain_count == 0U)) {
+		printf("** owner area not compacted: the chain resolved to nothing. "
+				"Carrying it over as it stands. **\r\n");
+		return false;
+	}
+
+	memset(out, 0xFF, OWNER_SLOT_SIZE);
+
+	for (i = 0U; i < s_chain_count; i++) {
+		memcpy(out + (i * OWNER_RECORD_SIZE), s_chain[i], OWNER_RECORD_SIZE);
+	}
+
+	for (i = 0U; i < s_revoke_count; i++) {
+		const owner_revoke_rec_t *r = s_revoke_records[i];
+		bool duplicate = false;
+
+		/* R4 already ignores these on every boot, so carrying them forward
+		 * would spend a slot on a record that can never do anything. */
+		if (memcmp(r->leaf_prefix, root, OWNER_REVOKE_PREFIX_LEN) == 0) {
+			continue;
+		}
+		for (j = 0U; j < kept_r; j++) {
+			const owner_revoke_rec_t *kept = (const owner_revoke_rec_t *)
+					(out + OWNER_SEG_O_SIZE + (j * OWNER_REVOKE_REC_SIZE));
+
+			if (memcmp(kept->leaf_prefix, r->leaf_prefix,
+					OWNER_REVOKE_PREFIX_LEN) == 0) {
+				duplicate = true;
+				break;
+			}
+		}
+		if (duplicate || (kept_r >= OWNER_REVOKE_MAX_RECORDS)) {
+			continue;
+		}
+		memcpy(out + OWNER_SEG_O_SIZE + (kept_r * OWNER_REVOKE_REC_SIZE),
+				r, OWNER_REVOKE_REC_SIZE);
+		kept_r++;
+	}
+
+	printf("** owner area compacted: %" PRIu32 " of %" PRIu32 " owner record(s) "
+			"and %" PRIu32 " of %" PRIu32 " revocation(s) kept **\r\n",
+			s_chain_count, s_valid_count, kept_r, s_revoke_used);
+	return true;
 }
 
 bool owner_slot_root_is_public(void)
