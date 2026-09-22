@@ -122,13 +122,21 @@ has no branch for the two cases -- it only ever asks whether the root it
 trusts signed the certificate in front of it.
 
 Which root that is comes from the owner-record area, not from the compiled-in
-key, once a board has been claimed. See `../docs/design/OWNERSHIP.md`.
+key, once a board has been claimed. See `$PROD/docs/modules/M2-ownership.md`.
 
 ## Accepted asymmetries (documented so they aren't mistaken for bugs)
 
 - CDC's 1200bps trigger has no auth - requires physical access, a different
   trust tier than network.
 - Discovery replies are unauthenticated by design - see Step 2.
+- **Revoking a leaf stops future uploads; it does not stop firmware that leaf
+  already signed.** Handing the board to a new root (`setowner`) does stop it,
+  on the very next reset. The two are deliberately different: revocation asks
+  whether a *person* is still trusted, and a colleague leaving should not stop
+  the boards they once touched, whereas a change of owner asks whose *board*
+  this is. `getapprevoked` answers whether the installed image's signer has
+  been revoked, which is how an operator finds the boards wanting a re-upload.
+  See `$PROD/docs/tables/DECISIONS.md` decisions 60 and 63.
 - `iap_auth.c`'s nonce state is a single global - only one challenge in
   flight at a time. Concurrent CDC + Ethernet challenge requests would have
   the second overwrite the first's nonce, failing the first session's
@@ -143,7 +151,7 @@ rotation.** Users write their own PLC programs; uploading one means signing it;
 the private key therefore has to be on the user's machine, and the project
 ships no per-customer material. A secret vendor key would mean users could only
 run firmware the vendor signed. The derivation is in
-`../docs/design/OWNERSHIP.md`.
+`$PROD/docs/modules/M2-ownership.md`.
 
 So everything above protects a factory board against corrupted images and
 remote injection, and against nothing else. **The board becomes defended when
@@ -163,13 +171,6 @@ board is worth extracting.
       protects a board that still trusts the published key, and the vendor
       cannot fix that by rotating -- see the section above. This is an
       operational step, not a code change.
-- [ ] **Revoking one delegated certificate.** Written, not yet proven on a
-      board. `IAPTool revoke` appends an `'R'` record naming the leaf by the
-      first 16 bytes of its public key, and every certificate check consults
-      it. Until that has run on real hardware, the revocation to rely on is
-      still handing the board to a new root (`IAPTool setowner`), which voids
-      every certificate the old root issued -- including the firmware already
-      installed, which must be re-uploaded.
 - [ ] **Consolidate `iap_auth.c`/`iap_cert.c`/`sha256.c` across the three
       repos** into one shared source instead of hand-synced copies. What
       guards them meanwhile is `check_mirror_sync.py` (case P2), which
@@ -182,6 +183,6 @@ Not on this list any more, and deliberately so:
   write primitive from overwriting the bootloader or its embedded root key,
   but clearing it needs physical SWD access, a reflash and a re-lock -- too
   sharp an edge to ship enabled. A customer who wants that protection can set
-  it themselves. See `../docs/design/OWNERSHIP.md`.
+  it themselves. See `$PROD/docs/modules/M2-ownership.md`.
 - **Per-device manufacturing secrets.** Retired: there is no shared secret
   left to replace.

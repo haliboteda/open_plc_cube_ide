@@ -79,12 +79,17 @@ already has firmware on it.
   Signed by the current owner, so no button and no site visit. Revoking the
   same leaf twice is free -- the board answers `OK already revoked` and writes
   nothing, which is also what makes a replayed request harmless.
-  ⚠️ **A revocation also stops firmware that is already installed.** The board
-  re-checks the certificate on every boot, so a board running an application
-  signed by the revoked leaf stops at the bootloader after its next reset and
-  waits for a re-upload. Revoke, then plan to re-send.
+  ⚠️ **Firmware that leaf already signed keeps running.** Revoking blocks the
+  next upload, not the machines already in service -- a colleague leaving
+  should not stop the lines they once commissioned. Ask a board whether it is
+  affected with `IAPTool getapprevoked <ip>`, and re-upload at your
+  convenience.
   ⚠️ **The root can never revoke itself**, by rule: an entry naming the root in
   force is ignored rather than honoured.
+- **`IAPTool getapprevoked <ip>`** answers whether that board's installed
+  firmware was signed by a leaf that has since been revoked: `REVOKED`, `OK`,
+  or no signed firmware at all. One board per call -- run it over the boards
+  discovery finds to draw up the re-upload list.
 - **The owner record area holds 96 revocations**, in their own fixed segment
   alongside 32 ownership records. The boot line reports both:
   `Owner slot: 31/32 owner slot(s) free, 96/96 revoke slot(s) free`.
@@ -254,6 +259,7 @@ IAPTool takeown  <ip> --key=owner.pem
 IAPTool setowner <ip> --current-key=owner.pem --new-key=next.pem
 IAPTool setowner <ip> --current-key=owner.pem --new-key=next.pem --wipe
 IAPTool revoke   <ip> --key=owner.pem --leaf=<128 hex characters>
+IAPTool getapprevoked <ip>           is this board's firmware signed by a revoked leaf?
 ```
 
 `takeown` needs BOOT0 held through the board's current boot; `setowner` and
@@ -287,9 +293,17 @@ certificates working.
 `setowner` retires every certificate the old root issued at once, which is what
 you want if the owner key itself is in doubt rather than one colleague's.
 
-Either way, firmware **already installed** and signed by an affected key is
-refused at the next reset until someone uploads again. Plan both as a
-maintenance window, not as a click.
+**The two differ in what happens to firmware already installed**, on purpose:
+
+| | Firmware already on the board | That key uploading again |
+|---|---|---|
+| `revoke` a leaf | **Keeps running** | Refused |
+| `setowner` (change of root) | **Refused at the next reset** | Refused |
+
+`revoke` asks whether a *person* is still trusted; `setowner` asks whose
+*board* this is, and a new owner rarely wants the previous one's firmware still
+running. So plan a change of root as a maintenance window; a revocation only
+needs a re-upload list, which `IAPTool getapprevoked` gives you.
 
 ### Known issues
 

@@ -258,6 +258,23 @@ void process_command() {
 			char genbuf[16];
 			snprintf(genbuf, sizeof(genbuf), "%" PRIu32, owner_slot_generation());
 			send_response(genbuf);
+		} else if (strncmp((char *)RXBuffer, "getapprevoked", 13) == 0) {
+			// Has the leaf that signed the installed image been revoked?
+			//
+			// Since decision 60 that image boots anyway, so nothing in the
+			// field shows it. Without this the operator cannot tell which
+			// boards want a re-upload after revoking somebody, and would have
+			// to re-flash every board to be sure.
+			//
+			// "none" is not "no": a board with no signed image has nothing to
+			// re-upload, whereas "no" says the image present is fine. Merging
+			// them would read as a clean bill of health for a blank board.
+			iap_fw_metadata_t meta;
+			char *answer = "none";
+			if (bootloader_state_get_metadata(&meta) && meta.app_size > 0U) {
+				answer = owner_slot_is_revoked(meta.cert.leaf_pubkey) ? "yes" : "no";
+			}
+			send_response(answer);
 		} else if ((strncmp((char *)RXBuffer, "setownerwipe ", 13) == 0)
 				|| (strncmp((char *)RXBuffer, "setowner ", 9) == 0)) {
 			// "setowner <generation> <newkey_hex> <sig_hex>"
@@ -678,14 +695,16 @@ IAP_Method server_decide(uint8_t boot0Pressed) {
 			 * only verifies against the root that signed it, and owner_slot_root()
 			 * has since moved on.
 			 *
-			 * The revocation check belongs here for the same reason: a leaf
-			 * revoked after this image was installed must stop the image from
-			 * booting on the VERY NEXT reset, not merely block the next upload
-			 * attempt. Without this, revoking someone would not do anything
-			 * until somebody happened to try uploading with their key again --
-			 * their already-installed firmware would keep running indefinitely. */
+			 * Revocation deliberately does NOT take part here: a revoked leaf's
+			 * already-installed image keeps booting, and revocation only blocks
+			 * the next upload. Revoking asks whether a person is still trusted,
+			 * and a colleague leaving must not stop the machines they once
+			 * touched. $PROD/docs/tables/DECISIONS.md, decision 60.
+			 *
+			 * The operator is not left blind: "getapprevoked" reports the
+			 * boolean this call no longer consumes (decision 63). */
 			app_signature_valid = iap_cert_verify_image(hash, meta.signature, &meta.cert,
-					owner_slot_root(), owner_slot_is_revoked(meta.cert.leaf_pubkey));
+					owner_slot_root(), false);
 		}
 	}
 	bootloader_state_set_app_valid(app_signature_valid);
