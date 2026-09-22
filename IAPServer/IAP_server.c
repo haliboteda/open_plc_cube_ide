@@ -560,6 +560,14 @@ void process_command() {
 				} else {
 					printf("Checksum and signature OK. Rebooting...\r\n");
 					bootloader_state_save_metadata(expected_size, expected_signature, &expected_cert);
+					/* No "OK" here, and it is not an oversight: one was
+					 * tried and measured on 2026-09-22. The board reaches
+					 * send_response() and tcp_write/tcp_output both report
+					 * success, but the two bytes never reach the peer -- the
+					 * reset below takes the MAC down with them. A success on
+					 * this path is therefore silent on the wire by nature,
+					 * and the tool confirms it by watching for the board to
+					 * come back instead. See $PROD/docs/modules/M1-firmware-upgrade.md. */
 					HAL_Delay(500);
 					HAL_NVIC_SystemReset();
 				}
