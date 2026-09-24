@@ -265,7 +265,8 @@ IAPTool getapprevoked <ip>           is this board's firmware signed by a revoke
 `takeown` needs BOOT0 held through the board's current boot; `setowner` and
 `revoke` need only the current owner's key, so both can be done remotely.
 `takeown` refuses to fall back to the signing key from `local_config.json` —
-claiming a board with the wrong key can only be undone with an ST-Link.
+a board claimed with the wrong key has to be factory reset (BOOT0, ten seconds)
+and claimed again.
 `--wipe` additionally empties the record area, which costs a sector erase; see
 the bullet above before using it.
 
@@ -293,10 +294,11 @@ certificates working.
 `setowner` retires every certificate the old root issued at once, which is what
 you want if the owner key itself is in doubt rather than one colleague's.
 
-**The two differ in what happens to firmware already installed**, on purpose:
+**They differ in what happens to firmware already installed**, on purpose:
 
 | | Firmware already on the board | That key uploading again |
 |---|---|---|
+| `takeown` (first claim) | **Refused at the next reset** — it was signed with the published key. Re-sign it with your own and upload again | Refused |
 | `revoke` a leaf | **Keeps running** | Refused |
 | `setowner` (change of root) | **Refused at the next reset** | Refused |
 
