@@ -115,6 +115,12 @@
 #undef LWIP_NETIF_STATUS_CALLBACK
 #define LWIP_NETIF_STATUS_CALLBACK 1
 
+/* TCP initial sequence numbers from the RNG; lwIP's default counts up from a
+ * fixed 6510. See IAPServer/net_rand.h. */
+#include <stdint.h>
+uint32_t net_rand_tcp_isn(void);
+#define LWIP_HOOK_TCP_ISN(local_ip, local_port, remote_ip, remote_port) net_rand_tcp_isn()
+
 /* USER CODE END 1 */
 
 #ifdef __cplusplus

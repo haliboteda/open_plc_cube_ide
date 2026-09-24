@@ -35,6 +35,7 @@
 #include "IAP_server.h"
 #include "IAP_boot_handoff.h"
 #include "iap_auth.h"
+#include "net_rand.h"
 #include "owner_slot.h"
 
 /* Board bring-up tests, v0.1.3-testcase branch. Set one of these to 1 to boot
@@ -462,6 +463,7 @@ int main(void)
   Enable_RX_RS232();
 
   MX_RNG_Init();   /* iap_auth draws the challenge nonce from it */
+  net_rand_seed(); /* before MX_LWIP_Init(): lwIP's LWIP_RAND() is rand() */
   MX_RTC_Init();   /* backup-domain witness, and the clock the relay pick reads */
   iap_auth_report_backup_domain();
   MX_CRC_Init();   /* upload checksum */
