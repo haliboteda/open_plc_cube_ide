@@ -59,7 +59,6 @@ static bool     s_format_unknown;
 static bool     s_crypto_selftest_ok;
 static bool     s_app_valid;
 
-static iap_auth_fail_entry_t s_auth_fail[IAP_AUTH_FAIL_LOG_SIZE];
 static uint32_t s_auth_fail_total;
 
 static const void *slot_ptr(uint32_t index)
@@ -177,29 +176,12 @@ void bootloader_state_save_metadata(uint32_t app_size, const uint8_t signature[6
 	s_last_metadata_slot = s_next_free_slot - IAP_METADATA_SLOTS;
 }
 
-void bootloader_state_note_auth_fail(uint32_t method, uint32_t peer_ip, uint32_t tick_ms)
+void bootloader_state_note_auth_fail(uint32_t peer_ip)
 {
-	iap_auth_fail_entry_t *slot = &s_auth_fail[s_auth_fail_total % IAP_AUTH_FAIL_LOG_SIZE];
-
-	slot->method = method;
-	slot->peer_ip = peer_ip;
-	slot->tick_ms = tick_ms;
 	s_auth_fail_total++;
 
 	printf("Auth rejected (attempt %" PRIu32 " this boot, peer %08" PRIX32 ")\r\n",
 			s_auth_fail_total, peer_ip);
-}
-
-uint32_t bootloader_state_auth_fail_count(void)
-{
-	return s_auth_fail_total;
-}
-
-const iap_auth_fail_entry_t *bootloader_state_auth_fail_log(uint32_t *out_count)
-{
-	*out_count = (s_auth_fail_total < IAP_AUTH_FAIL_LOG_SIZE)
-			? s_auth_fail_total : IAP_AUTH_FAIL_LOG_SIZE;
-	return s_auth_fail;
 }
 
 void bootloader_state_hash_app(uint32_t app_base, uint32_t size, uint8_t out_sha256[32])

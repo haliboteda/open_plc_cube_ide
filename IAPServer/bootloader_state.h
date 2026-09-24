@@ -92,25 +92,10 @@ bool bootloader_state_get_metadata(iap_fw_metadata_t *out);
 void bootloader_state_save_metadata(uint32_t app_size, const uint8_t signature[64],
                                      const iap_cert_t *cert);
 
-#define IAP_AUTH_FAIL_LOG_SIZE 32U
-
-typedef struct {
-	uint32_t method;
-	uint32_t peer_ip;
-	uint32_t tick_ms;
-} iap_auth_fail_entry_t;
-
-/* Records a rejected authentication attempt. Deliberately RAM-only: an
- * unauthenticated caller must not be able to reach Flash at all, or a flood of
- * rejected commands would wear the state sector and force reclaims. Lost on
- * power-off, which matches how comparable devices treat this log. */
-void bootloader_state_note_auth_fail(uint32_t method, uint32_t peer_ip, uint32_t tick_ms);
-
-/* Total rejections since boot; may exceed IAP_AUTH_FAIL_LOG_SIZE. */
-uint32_t bootloader_state_auth_fail_count(void);
-
-/* Most recent rejections, oldest first. Writes the entry count to out_count. */
-const iap_auth_fail_entry_t *bootloader_state_auth_fail_log(uint32_t *out_count);
+/* Logs a rejected authentication attempt with a count since boot. Log only,
+ * never Flash: an unauthenticated caller must not be able to reach Flash at
+ * all, or a flood of rejected commands would wear the state sector. */
+void bootloader_state_note_auth_fail(uint32_t peer_ip);
 
 /* SHA-256 over `size` bytes of the (memory-mapped) app region starting at
  * app_base, read directly from Flash -- no RAM staging of the whole image. */

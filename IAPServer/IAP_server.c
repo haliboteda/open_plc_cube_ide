@@ -476,10 +476,9 @@ void process_command() {
 				} else if (!authOk) {
 					printf("flash command failed authentication - refusing\r\n");
 					send_response("ERR");
-					/* RAM only: this is the one rejection path an unauthenticated
+					/* Log only: this is the one rejection path an unauthenticated
 					 * caller can reach, so it must never touch Flash. */
-					bootloader_state_note_auth_fail((uint32_t)current_method,
-							tcp_server_get_client_ip(), HAL_GetTick());
+					bootloader_state_note_auth_fail(tcp_server_get_client_ip());
 				} else {
 					/* Nothing is erased here any more: the image goes to SDRAM
 					 * first and the app region is only touched once it has
