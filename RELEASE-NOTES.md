@@ -270,6 +270,24 @@ and claimed again.
 `--wipe` additionally empties the record area, which costs a sector erase; see
 the bullet above before using it.
 
+### Where IAPTool finds the upload key
+
+The Arduino IDE passes no key, so IAPTool uses the first one it finds:
+
+| # | Where |
+|---|---|
+| 1 | `--key=<path>` |
+| 2 | `"signing_key"` in `local_config.json` beside IAPTool (write an absolute path) |
+| 3 | **`openplc/keys/fw_signing_key.pem` in your user config directory — put your key here.** Windows `%AppData%\openplc\keys\`, macOS `~/Library/Application Support/openplc/keys/`, Linux `~/.config/openplc/keys/`. It survives tool package upgrades |
+| 4 | `keys/fw_signing_key.pem` beside IAPTool — older setups; lost when the tool package is upgraded |
+| 5 | Uploads only: the published root key shipped beside IAPTool as `keys/published_root.TEST_ONLY.pem`. Only an unclaimed board accepts it, and IAPTool warns every time it uses it |
+
+A certificate goes beside the key it covers, as `<key>.cert`.
+When an Ethernet upload to a running board stops with *the board did not accept
+the reboot request*, the key it names is most likely not the one that board
+trusts; `IAPTool getowner <ip>` shows which one it does (the bootloader answers
+it, the running sketch does not).
+
 ### Letting colleagues upload without the owner key
 
 One person with one key needs nothing here. A team where one administrator
@@ -277,9 +295,9 @@ holds the owner key does: each colleague keeps a key of their own, and the
 administrator issues a certificate saying that key is authorised.
 
 ```
-colleague:      IAPTool pubkey keys/fw_signing_key.pem      → 128 hex characters
+colleague:      IAPTool pubkey                              → 128 hex characters
 administrator:  IAPTool cert <those characters> --key=owner.pem
-colleague:      save the reply as keys/fw_signing_key.pem.cert
+colleague:      save the reply beside the key as fw_signing_key.pem.cert
 ```
 
 Uploading is unchanged from there, including from the Arduino IDE — the
