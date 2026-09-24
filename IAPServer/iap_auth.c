@@ -1,15 +1,11 @@
 /*
  * iap_auth.c
  *
- * See iap_auth.h. No hardware RNG is enabled on this board (HAL_RNG is not
- * configured), so the nonce is built from a monotonic counter persisted in
- * an RTC backup register (survives reset/power-cycle as long as VBAT is
- * maintained) plus the device UID and the current tick count.
+ * See iap_auth.h. The nonce is 16 bytes straight from the RNG peripheral, so
+ * none of it has to survive a power cycle. It used to be a counter kept in an
+ * RTC backup register; that counter is gone, along with everything it needed to
+ * stay alive -- see $PROD/docs/tables/DECISIONS.md, decision 66.
  *
- * Note this counter stays in the backup register even though the boot-mode
- * request moved out to SRAM4 (IAP_boot_handoff.h): the two want opposite
- * lifetimes. A boot request must NOT survive a power cycle, whereas this counter
- * must, or nonces would repeat across power cycles and defeat the replay check.
  * Uniqueness -- not unpredictability -- is what defeats replay here: the leaf
  * private key is what an attacker actually needs, and observing nonces never
  * yields it.
@@ -22,27 +18,16 @@
 #include "sha256.h"
 #include "bootloader_state.h"
 #include "rtc.h"
+#include "rng.h"
 #include "main.h"
 #include <string.h>
 #include <stdio.h>
 #include <inttypes.h>
 
-#ifndef IAP_AUTH_COUNTER_BKP_REG
-#define IAP_AUTH_COUNTER_BKP_REG RTC_BKP_DR1
-#endif
-
-/* Second register holds a fixed witness value. It can only read back correctly
- * if the backup domain survived, which is what tells us the VBAT cell is doing
- * its job -- nonce uniqueness across power cycles depends on it.
- *
- * DR3, not DR2: the application image uses DR2 for its own nonce counter
- * (core libraries/OpenPLC_IAP/src/iap_auth.c). "The two never run at the same
- * time" is not the same as "they cannot collide" -- a backup register exists
- * precisely to carry state across that handover, so taking turns on one is a
- * collision. It broke both directions: the application's counter overwrote this
- * witness, making every boot report the backup domain as lost, and this
- * witness reset the application's counter to a fixed value, so the application
- * reissued the same nonce numbers after every visit to the bootloader.
+/* A fixed witness value. It can only read back correctly if the backup domain
+ * survived, which is what tells us the VBAT cell is doing its job. The nonce no
+ * longer depends on that (decision 66), but the RTC's own timekeeping does, and
+ * the startup relay is picked from the running RTC.
  *
  * Backup register allocation is shared state across three repositories with no
  * shared build -- see the table in $PROD/docs/repo/ARCHITECTURE.md before claiming one. */
@@ -55,34 +40,49 @@ static uint8_t  s_nonce[IAP_AUTH_NONCE_SIZE];
 static bool     s_nonce_pending;
 static uint32_t s_nonce_issue_tick;
 
-static uint32_t next_counter(void)
+/* Fills words[] from the RNG. False means the peripheral did not deliver, and
+ * the caller must then refuse to issue a challenge rather than use whatever the
+ * data register held -- that is usually zero, which would hand out the same
+ * nonce every time.
+ *
+ * Deliberately different from the Arduino-side copy: the two reach different RNG
+ * handles. Only iap_auth_issue_challenge() is compared across the repositories. */
+static bool rng_words(uint32_t *words, uint32_t n)
 {
-	uint32_t v = HAL_RTCEx_BKUPRead(&hrtc, IAP_AUTH_COUNTER_BKP_REG) + 1U;
-	HAL_PWR_EnableBkUpAccess();
-	HAL_RTCEx_BKUPWrite(&hrtc, IAP_AUTH_COUNTER_BKP_REG, v);
-	HAL_PWR_DisableBkUpAccess();
-	return v;
-}
-
-void iap_auth_issue_challenge(char *out_hex)
-{
-	uint32_t counter = next_counter();
-	uint32_t uid0 = HAL_GetUIDw0();
-	uint32_t tick = HAL_GetTick();
 	uint32_t i;
 
-	memcpy(s_nonce, &counter, 4U);
-	memcpy(s_nonce + 4, &uid0, 4U);
-	memcpy(s_nonce + 8, &tick, 4U);
-	memset(s_nonce + 12, 0, 4U);
+	for (i = 0; i < n; i++) {
+		if (HAL_RNG_GenerateRandomNumber(&hrng, &words[i]) != HAL_OK) {
+			printf("RNG failed (error 0x%08" PRIX32 "), refusing to issue a challenge\r\n",
+					HAL_RNG_GetError(&hrng));
+			return false;
+		}
+	}
+	return true;
+}
+
+bool iap_auth_issue_challenge(char *out_hex)
+{
+	uint32_t words[IAP_AUTH_NONCE_SIZE / 4U];
+	uint32_t i;
+
+	/* Dropped before the RNG is asked: a failed attempt must not leave the
+	 * previous nonce accepting answers. */
+	s_nonce_pending = false;
+
+	if (!rng_words(words, IAP_AUTH_NONCE_SIZE / 4U)) {
+		return false;
+	}
+	memcpy(s_nonce, words, IAP_AUTH_NONCE_SIZE);
 
 	s_nonce_pending = true;
-	s_nonce_issue_tick = tick;
+	s_nonce_issue_tick = HAL_GetTick();
 
 	for (i = 0; i < IAP_AUTH_NONCE_SIZE; i++) {
 		sprintf(out_hex + i * 2U, "%02x", s_nonce[i]);
 	}
 	out_hex[IAP_AUTH_NONCE_SIZE * 2U] = '\0';
+	return true;
 }
 
 bool iap_auth_verify_and_consume(const uint8_t *msg, uint32_t msg_len,
@@ -141,36 +141,22 @@ bool iap_auth_verify_and_consume(const uint8_t *msg, uint32_t msg_len,
 	return true;
 }
 
-uint32_t iap_auth_get_counter(void)
-{
-	return HAL_RTCEx_BKUPRead(&hrtc, IAP_AUTH_COUNTER_BKP_REG);
-}
-
 void iap_auth_report_backup_domain(void)
 {
 	uint32_t witness = HAL_RTCEx_BKUPRead(&hrtc, IAP_VBAT_WITNESS_BKP_REG);
-	uint32_t counter = HAL_RTCEx_BKUPRead(&hrtc, IAP_AUTH_COUNTER_BKP_REG);
 
 	if (witness == IAP_VBAT_WITNESS_VALUE) {
-		printf("Backup domain retained, nonce counter = %" PRIu32 "\r\n", counter);
-		return;
-	}
-
-	/* Losing the domain zeroes every register in it, so a counter that is still
-	 * counting means the witness read is wrong rather than the domain gone.
-	 * Report what was actually read: claiming replay protection is weakened when
-	 * it is not costs more than saying nothing. */
-	if (counter != 0U) {
-		printf("** Backup domain witness missing, but nonce counter = %" PRIu32 ". **\r\n"
-				"** Domain contents survived; treating the witness read as unreliable. **\r\n",
-				counter);
+		printf("Backup domain retained\r\n");
 	} else {
 		/* Do not name a cause here. A mismatched RTCSEL between bootloader and
 		 * application wipes this domain with a healthy battery in place, and
 		 * blaming the battery cost a full day of debugging (2026-09-18).
-		 * See $PROD/docs/tables/DECISIONS.md, decision 57. */
+		 * See $PROD/docs/tables/DECISIONS.md, decision 57.
+		 *
+		 * Says nothing about replay protection: since decision 66 the nonce does
+		 * not come from this domain. What is lost is the RTC's time. */
 		printf("** Backup domain was lost - VBAT supply or RTC clock source changed. **\r\n"
-				"** Nonce counter is zero; replay protection is weakened. **\r\n");
+				"** The RTC has restarted from a fixed time. **\r\n");
 	}
 
 	HAL_PWR_EnableBkUpAccess();

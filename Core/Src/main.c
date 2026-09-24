@@ -18,13 +18,13 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include <stdlib.h>   /* srand/rand: picks the startup relay */
 #include "usart.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 /* Phase 2 peripherals: CubeMX no longer emits their init calls. */
+#include "rng.h"
 #include "rtc.h"
 #include "crc.h"
 #include "fmc.h"
@@ -461,7 +461,8 @@ int main(void)
   /* MX_GPIO_Init() above drove RS232_Enable low again. */
   Enable_RX_RS232();
 
-  MX_RTC_Init();   /* iap_auth's nonce counter lives in a backup register */
+  MX_RNG_Init();   /* iap_auth draws the challenge nonce from it */
+  MX_RTC_Init();   /* backup-domain witness, and the clock the relay pick reads */
   iap_auth_report_backup_domain();
   MX_CRC_Init();   /* upload checksum */
   MX_FMC_Init();   /* external SDRAM: staging area for the incoming image */

@@ -35,9 +35,12 @@ extern "C" {
 #define IAP_AUTH_NONCE_SIZE   16U
 #define IAP_AUTH_NONCE_TTL_MS 30000U
 
-/* Issues a fresh, never-repeating nonce and hex-encodes it into out_hex
- * (caller must provide at least IAP_AUTH_NONCE_SIZE*2 + 1 bytes). */
-void iap_auth_issue_challenge(char *out_hex);
+/* Issues a fresh nonce and hex-encodes it into out_hex (caller must provide at
+ * least IAP_AUTH_NONCE_SIZE*2 + 1 bytes). The nonce comes straight from the RNG
+ * peripheral, so false means the RNG did not deliver and no nonce was issued --
+ * answer nothing rather than hand out a predictable one. A false return also
+ * clears any nonce still pending. */
+bool iap_auth_issue_challenge(char *out_hex);
 
 /*
  * Checks nonce_sig against the most recently issued nonce, under the leaf key
@@ -52,11 +55,6 @@ void iap_auth_issue_challenge(char *out_hex);
 bool iap_auth_verify_and_consume(const uint8_t *msg, uint32_t msg_len,
 		const iap_cert_t *cert, const uint8_t nonce_sig[64]);
 
-/* Current value of the persistent challenge counter (incremented once per
- * iap_auth_issue_challenge() call, survives reset). Exposed only so callers
- * can attach "which challenge attempt this event corresponds to" to audit
- * log entries -- it is not secret and is not part of any security check. */
-uint32_t iap_auth_get_counter(void);
 
 /* Reports at boot whether the VBAT-backed domain survived the last power-off.
  * Call once, after MX_RTC_Init(). */

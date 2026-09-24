@@ -200,8 +200,13 @@ void process_command() {
 			send_response(BOOT_LOADER_VERSION);
 		} else if (strncmp((char *)RXBuffer, "authchallenge", 13) == 0) {
 			char nonce_hex[IAP_AUTH_NONCE_SIZE * 2U + 1U];
-			iap_auth_issue_challenge(nonce_hex);
-			send_response(nonce_hex);
+			/* No nonce rather than a predictable one: without a challenge the
+			 * caller simply cannot authorize anything, which is the safe end. */
+			if (iap_auth_issue_challenge(nonce_hex)) {
+				send_response(nonce_hex);
+			} else {
+				send_response("ERR");
+			}
 		} else if (strncmp((char *)RXBuffer, "getuid", 6) == 0) {
 			// Lets a PC tool connected over CDC (no discovery reply available)
 			// learn this device's machine ID, so it can tell one board from

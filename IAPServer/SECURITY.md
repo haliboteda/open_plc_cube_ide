@@ -90,15 +90,9 @@ the key that certificate names." An authorized session uploading an
 unsigned/tampered image is still rejected here.
 
 **7. Commit** - `bootloader_state_save_metadata()` appends the new
-(size, SHA-256, signature, certificate) record; `bootloader_state_log_event(...)`
-appends a tamper-chained log entry (each entry's stored hash covers the
-previous entry's raw bytes) carrying the event type, transport, `peer_ip`
-(TCP only - always `0` for CDC, USB carries no address-equivalent identity
-to log), `HAL_GetTick()` at the time of the event, and the current
-`iap_auth` challenge counter (ties an `AUTH_FAIL`/`SIG_FAIL` entry to a
-specific challenge attempt instead of just "a failure happened at some
-point"). Device reboots into Step 0/1, which re-verifies from scratch
-rather than trusting this session's own success report.
+(size, SHA-256, signature, certificate) record. Device reboots into Step 0/1,
+which re-verifies from scratch rather than trusting this session's own success
+report.
 
 ## One key, and what a certificate adds
 
@@ -178,11 +172,6 @@ board is worth extracting.
       protects a board that still trusts the published key, and the vendor
       cannot fix that by rotating -- see the section above. This is an
       operational step, not a code change.
-- [ ] **RTC backup register DR1 is claimed by this bootloader and defined,
-      unused, by the core's `backup.h`.** Nothing compares those two, so
-      whoever pulls in the STM32RTC library takes the nonce counter with them.
-      The allocation table in `$PROD/docs/repo/ARCHITECTURE.md` is the record;
-      case P2 scans only the two `iap_auth.c` files.
 
 Not on this list any more, and deliberately so:
 
