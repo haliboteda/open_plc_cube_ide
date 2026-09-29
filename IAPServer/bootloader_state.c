@@ -14,6 +14,7 @@
 #include "usbd_cdc_flash.h"
 #include "IAP_config.h"   /* IAP_STAGE_BASE: staging for the calibration carry-over */
 #include "sha256.h"
+#include "calib_area.h"
 #include <string.h>
 #include <stdio.h>
 #include <inttypes.h>
@@ -23,10 +24,11 @@ extern uint16_t Flash_If_Erase(uint32_t Add, uint32_t NbSectors);
 
 /* Calibration data: fixed address at the very start of the sector, written by
  * the production fixture over JLINK. The firmware has no command to write it
- * (DECISIONS.md #45). Nothing here reads it either -- it only has to survive
- * the erase below. */
+ * (DECISIONS.md #61). Nothing here reads it either -- it only has to survive
+ * the erase below. Format: calib_area.h. */
 #define IAP_CALIB_BASE          IAP_STATE_SECTOR_ADDR
-#define IAP_CALIB_SIZE          (8U * 1024U)
+#define IAP_CALIB_SIZE          CALIB_AREA_SIZE
+_Static_assert(IAP_CALIB_BASE == CALIB_AREA_ADDR, "calibration area moved without calib_area.h");
 
 #define IAP_META_BASE        (IAP_STATE_SECTOR_ADDR + IAP_CALIB_SIZE)
 #define IAP_META_REGION_SIZE ((128U * 1024U) - IAP_CALIB_SIZE)
@@ -222,10 +224,8 @@ static void meta_reclaim(void)
 	 * holds anything: losing metadata costs one re-upload, losing calibration
 	 * means a trip back to the production line -- a reflash cannot restore it.
 	 *
-	 * Today the area is always blank, because the calibration feature is not
-	 * implemented (that code is the user's to write, DECISIONS.md #45/#61), so
-	 * the common path is a plain erase. The check is here so that the day it
-	 * does hold something, a reclaim does not silently destroy it. */
+	 * The area is blank until the fixture has calibrated the board
+	 * (DECISIONS.md #70); then the carry-over below keeps it. */
 	if (calib_area_is_blank()) {
 		(void)Flash_If_Erase(IAP_STATE_SECTOR_ADDR, RESERVED_TAIL_SECTORS);
 	} else {

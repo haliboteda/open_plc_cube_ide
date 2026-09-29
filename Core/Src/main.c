@@ -31,7 +31,6 @@
 #include "usb_device.h"
 #include "lwip.h"
 
-#include "relay.h"
 #include "IAP_server.h"
 #include "IAP_boot_handoff.h"
 #include "iap_auth.h"
@@ -180,26 +179,22 @@ PUTCHAR_PROTOTYPE {
 /* What server_decide() settled on. Phase 2 and the superloop key off it. */
 static IAP_Method s_boot_mode = IAP_NONE;
 
-/* Startup window: the relay clicks are the operator's cue to press BOOT0.
- * One relay, picked fresh each boot, clicks twice: 500 ms closed, 500 ms open,
- * twice over = a 2 s window, then one read.
+/* Startup window: the system LED blinking is the operator's cue to press BOOT0.
+ * It blinks for 2 s, then BOOT0 is read once.
  *
- * The sound is all this is for, so which relay makes it does not matter -- and
- * because it does not matter, it rotates. RY1..RY6 are the customer's relay
- * outputs (see the Hardware repo), so a fixed choice puts every boot's contact
- * wear on the same ones.
+ * No relay, DO or AO moves during boot: a load wired to one would be switched
+ * at every power-up (DECISIONS.md #71, IEC 61131-2:2003 6.3.1.4).
  *
  * ⚠️ The judgement is "was the button down at the 2 s mark", NOT "was it held
- * for 2 s". BOOT0 is not looked at while the relay clicks. Holding the button
+ * for 2 s". BOOT0 is not looked at while the LED blinks. Holding the button
  * throughout is just the practical way to be sure of covering that one
  * instant, which is what the banner is really telling the operator to do. */
-#define BOOT0_WINDOW_MS        500U
-#define BOOT0_WINDOW_BEEPS     2U
-#define BOOT0_WINDOW_MS_TOTAL  (BOOT0_WINDOW_BEEPS * 2U * BOOT0_WINDOW_MS)
+#define BOOT0_WINDOW_MS_TOTAL  2000U
+#define BOOT0_WINDOW_BLINK_MS  100U
 
 /* Keep holding past the decision point and it becomes a second gesture:
  * factory reset (requirement R2-02). Ten seconds is far enough from
- * the 1.5 s mark that nobody reaches it by holding "a bit longer to be sure". */
+ * the 2 s mark that nobody reaches it by holding "a bit longer to be sure". */
 #define BOOT0_FACTORY_HOLD_MS  10000U
 
 /* A button that never reads as released is a stuck button or a shorted net.
@@ -209,90 +204,54 @@ static IAP_Method s_boot_mode = IAP_NONE;
 
 #define BOOT0_POLL_MS          10U
 
+/* System LED, high = on. Pin: $PROD/docs/hardware/HARDWARE-FACTS.md, "PE2".
+ * Not in the .ioc, so configured here; HAL_DeInit() at the jump to the app
+ * resets GPIOE, so the app still gets a cold pin (R3-02). */
+#define STATUS_LED_PORT        GPIOE
+#define STATUS_LED_PIN         GPIO_PIN_2
+
 typedef enum {
 	BOOT0_GESTURE_NONE = 0,       /* not down at the decision point            */
-	BOOT0_GESTURE_UPLOAD,         /* down at 1.5 s, released before 10 s       */
+	BOOT0_GESTURE_UPLOAD,         /* down at 2 s, released before 10 s         */
 	BOOT0_GESTURE_FACTORY_RESET   /* held past 10 s, then released             */
 } boot0_gesture_t;
 
-/*
- * Three fast clicks: "the factory-reset gesture is armed, let go now".
- *
- * Audible rather than visual on purpose. This board has no general-purpose
- * LED, and it is usually inside a cabinet where nobody can see one anyway --
- * the relay clicks are already how the startup window announces itself.
- */
-static void boot0_armed_signal(void)
+static void status_led_init(void)
 {
-	for (uint32_t i = 0U; i < 3U; i++) {
-		Relay_On((RELAY_Name) 0);
-		HAL_Delay(60U);
-		Relay_Off((RELAY_Name) 0);
-		HAL_Delay(60U);
-	}
+	GPIO_InitTypeDef init = {0};
+
+	__HAL_RCC_GPIOE_CLK_ENABLE();
+	HAL_GPIO_WritePin(STATUS_LED_PORT, STATUS_LED_PIN, GPIO_PIN_RESET);
+	init.Pin = STATUS_LED_PIN;
+	init.Mode = GPIO_MODE_OUTPUT_PP;
+	init.Pull = GPIO_NOPULL;
+	init.Speed = GPIO_SPEED_FREQ_LOW;
+	HAL_GPIO_Init(STATUS_LED_PORT, &init);
 }
 
-/*
- * Which relay makes this boot's noise, so the contact wear spreads over all
- * six instead of always landing on the same ones.
- *
- * Taken from the RTC, and nothing is written anywhere. A rotation counter
- * would be exactly even where this is only even on average, but it has to
- * live somewhere across power cycles, and the only somewhere is an RTC
- * backup register -- a resource the bootloader, the Arduino core and any
- * library a sketch pulls in all share with no allocator between them. The
- * danger is not that somebody corrupts this counter (any value lands back in
- * range through the modulus); it is that incrementing it every boot would
- * quietly destroy whatever somebody else kept there. Reading costs nobody
- * anything.
- *
- * ⚠️ There is no other usable source here. Measured on 2026-09-22 over six
- * boots: SysTick->VAL read 0 every time (the HAL tick runs off TIM6, so
- * SysTick is never enabled), HAL_GetTick() read 14 every time and TIM6->CNT
- * read 730 every time -- the path from reset to this function is
- * bit-identical on every start. Only the RTC moves, because it keeps its own
- * time across the reset. An earlier version seeded rand() from SysTick->VAL
- * and therefore dealt RY1 on 24 boots out of 24, which is worse than the
- * fixed first-three it replaced: all the wear went to one relay.
- *
- * SSR counts down inside the current second and TR carries the second
- * itself, so the pair moves both for boots milliseconds apart and for boots
- * days apart. Read straight from the registers because this runs before
- * MX_RTC_Init() -- `hrtc` is still all zeroes and the HAL helpers would work
- * off a null Instance. Reading DR afterwards releases the shadow registers,
- * which reading TR freezes.
- *
- * If the backup domain has been lost the RTC restarts from a fixed time and
- * the same relay clicks until the board has been up a while -- no worse than
- * what this replaced, and the boot line says which relay it was either way.
- */
-static RELAY_Name boot_window_pick_relay(void)
+static void status_led_set(bool on)
 {
-	uint32_t ssr = RTC->SSR;
-	uint32_t tr = RTC->TR;
-
-	(void)RTC->DR;   /* releases the shadow registers that reading TR froze */
-
-	return (RELAY_Name)((ssr + tr) % (uint32_t)RELAY_COUNT);
+	HAL_GPIO_WritePin(STATUS_LED_PORT, STATUS_LED_PIN, on ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
-static boot0_gesture_t boot_window_relay(void)
+static boot0_gesture_t boot_window(void)
 {
-	const RELAY_Name beeper = boot_window_pick_relay();
 	uint32_t held_ms;
 	bool armed = false;
 
-	/* Printed BEFORE the clicks, not after: if the board resets partway
-	 * through the window, the line for the interrupted attempt still reaches
-	 * the log and the restart shows up as a second one. It is also what makes
-	 * the rotation checkable -- see tools/run_relay_pick_distribution.py. */
-	printf("Startup window: RY%u\r\n", (unsigned)beeper + 1U);
+	status_led_init();
 
-	for (uint32_t i = 0U; i < BOOT0_WINDOW_BEEPS; i++) {
-		Relay_On(beeper);
-		HAL_Delay(BOOT0_WINDOW_MS);
-		Relay_Off(beeper);
-		HAL_Delay(BOOT0_WINDOW_MS);
+	/* Printed BEFORE the window, not after: if the board resets partway
+	 * through it, the line for the interrupted attempt still reaches the log
+	 * and the restart shows up as a second one. */
+	printf("Startup window: system LED blinking for %u s\r\n",
+			(unsigned)(BOOT0_WINDOW_MS_TOTAL / 1000U));
+
+	for (uint32_t t = 0U; t < BOOT0_WINDOW_MS_TOTAL; t += 2U * BOOT0_WINDOW_BLINK_MS) {
+		status_led_set(true);
+		HAL_Delay(BOOT0_WINDOW_BLINK_MS);
+		status_led_set(false);
+		HAL_Delay(BOOT0_WINDOW_BLINK_MS);
 	}
 
 	if (boot0_is_pressed() == 0U) {
@@ -310,23 +269,24 @@ static boot0_gesture_t boot_window_relay(void)
 	while (boot0_is_pressed() != 0U) {
 		if (!armed && (held_ms >= BOOT0_FACTORY_HOLD_MS)) {
 			armed = true;
-			boot0_armed_signal();
+			/* Steady light: "the factory-reset gesture is armed, let go now". */
+			status_led_set(true);
 			printf("** Factory reset ARMED - release BOOT0 to run it, "
 					"or reset the board to cancel **\r\n");
-			/* The clicks take time of their own; count it. */
-			held_ms += 6U * 60U;
 			continue;
 		}
 		if (held_ms >= BOOT0_HOLD_LIMIT_MS) {
 			printf("** BOOT0 still down after %u s - treating it as stuck, "
 					"continuing in upload mode **\r\n",
 					(unsigned)(BOOT0_HOLD_LIMIT_MS / 1000U));
+			status_led_set(false);
 			return BOOT0_GESTURE_UPLOAD;
 		}
 		HAL_Delay(BOOT0_POLL_MS);
 		held_ms += BOOT0_POLL_MS;
 	}
 
+	status_led_set(false);
 	return armed ? BOOT0_GESTURE_FACTORY_RESET : BOOT0_GESTURE_UPLOAD;
 }
 
@@ -424,12 +384,12 @@ int main(void)
 #endif
 
   printf("** Checking Starting Mod ...\r\n"
-		  "** (IF You want OpenPLC to stay in upload mode, please hold down the BOOT0 button for 3-5 seconds while clicking)\r\n");
+		  "** (IF You want OpenPLC to stay in upload mode, hold down the BOOT0 button until the system LED stops blinking)\r\n");
 
   printf("** Reset cause: %s\r\n", boot_handoff_reset_cause_str());
 
   {
-    boot0_gesture_t gesture = boot_window_relay();
+    boot0_gesture_t gesture = boot_window();
 
     if (gesture == BOOT0_GESTURE_FACTORY_RESET) {
       /* ⚠️ BEFORE server_decide(), because that is where the owner slot is

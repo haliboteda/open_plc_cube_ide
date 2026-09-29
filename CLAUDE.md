@@ -18,7 +18,7 @@ STM32H743IIKx（Cortex-M7，2 MB Flash / 1 MB RAM）的 **bootloader**。带签�
 
 | 目录 / 文件 | 装什么 |
 |---|---|
-| `Core/Inc` `Core/Src` | CubeMX 生成的外设初始化，**加几个手写的**：`fmc.c`（外部 SDRAM 上电时序 + 自检）、`relay.c`（继电器上电自检）、`usbd_cdc_flash.c`（flash 擦写 + 扇区地址表）、`crc.c`、`rtc.c`、`usart.c` |
+| `Core/Inc` `Core/Src` | CubeMX 生成的外设初始化，**加几个手写的**：`fmc.c`（外部 SDRAM 上电时序 + 自检）、`relay.c`（继电器驱动，只有工装和 `TestCase/RELAY` 用；开机不动继电器，决策 71）、`usbd_cdc_flash.c`（flash 擦写 + 扇区地址表）、`crc.c`、`rtc.c`、`usart.c` |
 | `Core/Inc/IAP_config.h` | **唯一的编译期配置点。** 固件版本号（必须和 core 的 `boards.txt` 一致，**没有机制强制**，靠用例 P1 查）、服务端口、`UDP_SERVER_NAME`（bootloader 报 `BOOTLD`、app 报 `CUSAPP`，工具靠这一个字段区分两者）、SDRAM 暂存区基址和大小（**故意不在链接脚本的 MEMORY 块里**）、接收缓冲大小、`IAP_Method` 枚举 |
 | `Core/Startup/` | 复位向量 |
 | `IAPServer/` | **本工程的产品代码，CubeMX 不碰这里。** 命令状态机与启动决策（`IAP_server.c`）、flash 上的 metadata 与校准值区（`bootloader_state.c`）、ECDSA 验签（`fw_verify.c` + `uecc/` 里 vendored 的 micro-ecc）、签名挑战认证（`iap_auth.c`）、证书验签（`iap_cert.c`）、本机 machine ID（`iap_keyderive.c`，**只剩这一件事，不再派生任何密钥**）、SHA-256（`sha256.c`）、owner 记录区（`owner_slot.c`）、SRAM4 交接记录（`IAP_boot_handoff.c`）、lwIP raw TCP/UDP（`tcp_server.c` / `udp_server.c`）、`keys/`（见 `$PROD/docs/modules/M2-ownership.md`）。另有 `SECURITY.md`，配图版是 `$PROD/docs/modules/M2-ownership.md`。<br>⚠️ **找不到合适的 CubeMX USER CODE 块时，代码挪到这里，不要改生成区** |

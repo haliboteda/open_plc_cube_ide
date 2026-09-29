@@ -239,7 +239,7 @@ else. Four operations:
 | **Claim** (`takeown`) | Hold BOOT0 through the startup window. There is no owner yet to sign anything, so physical presence is the only possible gate — and until a board is claimed, whoever gets there first wins |
 | **Change owner** (`setowner`) | The current owner's signature. No button: signing *is* the authorisation, and handing a board over remotely is supported |
 | **Revoke a leaf** (`revoke`) | The current owner's signature. Withdraws one delegated certificate without touching the others. The root itself can never be revoked |
-| **Factory reset** | Hold BOOT0 for ten seconds after reset, until three rapid relay clicks, then release. Back to the published root, and claimable again |
+| **Factory reset** | Hold BOOT0 for ten seconds after reset, until the system LED stays lit, then release. Back to the published root, and claimable again |
 
 **Factory reset deliberately needs no signature.** Requiring the current owner's
 would leave a customer who lost their private key with a board only ST-Link could
