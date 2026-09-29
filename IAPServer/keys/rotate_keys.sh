@@ -142,8 +142,8 @@ if [ "$ASSUME_YES" != 1 ]; then
 	cat <<'EOF'
 
   Every board already in the field will stop responding to IAPTool until you
-  rebuild the bootloader and re-flash it over ST-Link or DFU. IAP cannot
-  update the bootloader itself.
+  rebuild the bootloader and re-flash it: ST-Link, DFU, or "IAPTool flashboot"
+  with the image signed by the root the board trusts now.
 
   A board that has been claimed does NOT follow this key: it verifies against
   the owner in its own flash. Hand it over with "IAPTool setowner" instead.
@@ -208,7 +208,7 @@ cat <<EOF
 Done. Now, in this order:
 
   1. Rebuild the bootloader (the public key is compiled in).
-  2. Flash it over ST-Link or DFU -- IAP cannot update the bootloader.
+  2. Flash it: ST-Link, DFU, or "IAPTool flashboot" signed with the OLD root.
   3. Rebuild and upload your sketch.
   4. Reissue certificates: anything the old root vouched for is void. The old
      files are beside their keys as *.cert.superseded.

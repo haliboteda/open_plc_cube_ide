@@ -49,8 +49,10 @@ openssl, no bash, no Go toolchain.
 ## After rotating: three steps that are not optional
 
 1. Rebuild the bootloader. The public key is compiled in.
-2. **Flash it over ST-Link or DFU.** IAP writes the application region only, so
-   it can never update the bootloader that holds the root key.
+2. **Flash it** over ST-Link or DFU, or over the network with
+   `IAPTool flashboot`. `flashboot` needs the image signed by the root the board
+   trusts *now* (the old one), and BOOT0 held on an unclaimed board - see
+   `$PROD/docs/modules/M1/FLASHBOOT.md`.
 3. Rebuild and upload your sketch.
 
 Until step 2 is done on a given board, that board still trusts the old key and
@@ -83,7 +85,7 @@ fail later with a message that points at the board.
 that way: users write their own PLC programs, uploading one means signing it,
 so the private key has to be on the user's machine — and the project ships no
 per-customer material. Rotating it would produce another key that also has to
-ship publicly. The full argument is in `../../docs/design/OWNERSHIP.md`; the
+ship publicly. The full argument is in `$PROD/docs/modules/M2-ownership.md`; the
 short version is that a secret vendor key means users can only run firmware the
 vendor signed, which is not this product.
 
@@ -93,8 +95,10 @@ board.
 
 **`rotate_keys.sh` is for a customer who compiles the board package
 themselves.** Running it bakes their own root into the bootloader, and their
-boards are safe out of the box: nobody else's signature will start firmware on
-them, and the "trusts the PUBLISHED root key" warning never appears.
+boards are safe from the network out of the box: nobody else's signature will
+start firmware on them, and the "trusts the PUBLISHED root key" warning never
+appears. Their owner area is still empty, though, so someone holding BOOT0 can
+still `takeown` them - physical access is not defended either way.
 
 A customer who uses the packaged binaries instead gets the same protection with
 `IAPTool takeown`, which needs no rebuild and no ST-Link. That is the path most
