@@ -59,18 +59,16 @@ MEMORY
   /* The whole 2048K, because this image is not a bootloader.
      
      The port tool is written by ST-Link over the entire device and never
-     travels through IAP, so none of the three reasons the bootloader's script
-     stops at 120K applies to it: there is no application at 0x08020000 to
-     avoid overwriting, no owner record at 0x0801E000 to protect, and no
-     signed-image size to fit. Bounding it here would only mean the tool has
+     travels through IAP, so none of the reasons the bootloader's script
+     stops at 128K applies to it: there is no application at 0x08020000 to
+     avoid overwriting and no signed-image size to fit. Bounding it here would only mean the tool has
      to stay small for a reason that belongs to a different image - which is
      what happened on 2026-09-08, when the tool overflowed a limit it was
      never subject to.
 
      ⚠️ Anything built with this script MUST NOT be flashed as a bootloader.
-     It can extend past 0x08020000 and would take the application with it, and
-     it can extend into the owner record area and drop the board back to the
-     factory root. build_image.py names the two images apart for this reason,
+     It can extend past 0x08020000 and would take the application with it.
+     build_image.py names the two images apart for this reason,
      and the tool image carries a deliberate #warning.
 
      Which script a build gets is chosen by PLC_LD_SCRIPT - see

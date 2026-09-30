@@ -222,57 +222,52 @@ wrong.
 
 ## Board ownership
 
-A board verifies firmware against a root key. Out of the factory that is the key
-published with this project, and its private half is in the repository, because
-customers have to be able to sign their own sketches. So a factory board will
-run firmware signed by anybody, and it says so on every boot:
+A board verifies firmware against a root key it keeps in flash, outside the
+bootloader code. A factory board has no root at all: it runs nothing and
+accepts nothing until it is claimed. The first upload claims it:
 
 ```
-** This board trusts the PUBLISHED root key: anyone can sign firmware it will run. **
+This board has no root yet: claiming it for this computer's key.
+Claimed. From now on this board runs only firmware signed by <path>
 ```
 
-Claiming the board binds it to a key of your own, after which it runs nothing
-else. Four operations:
+IAPTool takes the key it finds (see below) or generates one in the default
+location, prints where it is, and binds the board to it -- over USB or
+Ethernet, no button, no ST-Link. Keep that file: it is the only key the board
+will take firmware from. Four operations:
 
 | Operation | How it is authorised |
 |---|---|
-| **Claim** (`takeown`) | Hold BOOT0 through the startup window. There is no owner yet to sign anything, so physical presence is the only possible gate — and until a board is claimed, whoever gets there first wins |
-| **Change owner** (`setowner`) | The current owner's signature. No button: signing *is* the authorisation, and handing a board over remotely is supported |
+| **Claim** (`takeown`) | Only a board with no root accepts it. The first upload does it automatically; until then, whoever reaches the board first claims it |
+| **Change owner** (`setowner`) | The current owner's signature. No button, as often as needed; the bootloader is never rewritten |
 | **Revoke a leaf** (`revoke`) | The current owner's signature. Withdraws one delegated certificate without touching the others. The root itself can never be revoked |
-| **Factory reset** | Hold BOOT0 for ten seconds after reset, until the system LED stays lit, then release. Back to the published root, and claimable again |
+| **Factory reset** | Hold BOOT0 for ten seconds after reset, until the system LED stays lit, then release. The board is back to no root, and the next upload claims it again |
 
 **Factory reset deliberately needs no signature.** Requiring the current owner's
 would leave a customer who lost their private key with a board only ST-Link could
-rescue — and that customer is exactly the one without an ST-Link. The cost is
-that anybody who can physically reach a board can reset it and take it over;
-what it buys is that nobody can do it remotely.
+rescue. The cost is that anybody who can physically reach a board can reset it
+and take it over; what it buys is that nobody can do it remotely.
 
-**Claim a board before putting it into service.** Everything above only starts
-protecting anything from the moment it is claimed.
-
-`IAPTool` drives all three:
+`IAPTool` drives all of them:
 
 ```
-IAPTool genkey owner                 writes owner.pem
-IAPTool getowner <ip>                which key the board trusts, at which generation
-IAPTool takeown  <ip> --key=owner.pem
-IAPTool setowner <ip> --current-key=owner.pem --new-key=next.pem
-IAPTool setowner <ip> --current-key=owner.pem --new-key=next.pem --wipe
-IAPTool revoke   <ip> --key=owner.pem --leaf=<128 hex characters>
-IAPTool getapprevoked <ip>           is this board's firmware signed by a revoked leaf?
+IAPTool genkey                       writes the default key and prints its path
+IAPTool getowner <board>             which key the board trusts, at which generation
+IAPTool takeown  <board> --key=owner.pem
+IAPTool setowner <board> --current-key=owner.pem --new-key=next.pem
+IAPTool setowner <board> --current-key=owner.pem --new-key=next.pem --wipe
+IAPTool revoke   <board> --key=owner.pem --leaf=<128 hex characters>
+IAPTool getapprevoked <board>        is this board's firmware signed by a revoked leaf?
 ```
 
-`takeown` needs BOOT0 held through the board's current boot; `setowner` and
-`revoke` need only the current owner's key, so both can be done remotely.
-`takeown` refuses to fall back to the signing key from `local_config.json` —
-a board claimed with the wrong key has to be factory reset (BOOT0, ten seconds)
-and claimed again.
-`--wipe` additionally empties the record area, which costs a sector erase; see
-the bullet above before using it.
+`<board>` is an IP address or the USB port (`COM6`, `/dev/ttyACM0`).
+**New computer:** copy the root private key into the default location there.
+`--wipe` additionally empties the revocation records; it rewrites sector 15,
+not the bootloader.
 
 ### Where IAPTool finds the upload key
 
-The Arduino IDE passes no key, so IAPTool uses the first one it finds:
+The Arduino IDE passes no key, so IAPTool uses the first one it finds, and on a board with no root generates one in row 3's location:
 
 | # | Where |
 |---|---|
@@ -280,7 +275,6 @@ The Arduino IDE passes no key, so IAPTool uses the first one it finds:
 | 2 | `"signing_key"` in `local_config.json` beside IAPTool (write an absolute path) |
 | 3 | **`openplc/keys/fw_signing_key.pem` in your user config directory — put your key here.** Windows `%AppData%\openplc\keys\`, macOS `~/Library/Application Support/openplc/keys/`, Linux `~/.config/openplc/keys/`. It survives tool package upgrades |
 | 4 | `keys/fw_signing_key.pem` beside IAPTool — older setups; lost when the tool package is upgraded |
-| 5 | Uploads only: the published root key shipped beside IAPTool as `keys/published_root.TEST_ONLY.pem`. Only an unclaimed board accepts it, and IAPTool warns every time it uses it |
 
 A certificate goes beside the key it covers, as `<key>.cert`.
 When an Ethernet upload to a running board stops with *the board did not accept
@@ -372,19 +366,6 @@ needs a re-upload list, which `IAPTool getapprevoked` gives you.
   `Checksum and signature OK`.
 - Long-term stability under a real OpenPLC runtime.
 
-### The shipped signing key is public on purpose
-
-Its private half is committed, so anyone with the source can sign an image a
-factory board accepts. **Rotating it is not the answer, and the vendor cannot
-be the one to do it.** Users write their own PLC programs; uploading one means
-signing it; the key therefore has to be on the user's machine. A secret vendor
-key would mean users could only run firmware the vendor signed.
-
-A board becomes defended when it is claimed (`IAPTool takeown`, no ST-Link
-needed), or when a customer compiles the board package with a root of their own
-(`IAPServer/keys/rotate_keys.sh`). Until then the boot log says on every start
-that anyone can sign firmware it will run. See `IAPServer/keys/README.md`.
-
 There is no second secret: the board holds only public keys.
 
 ---
@@ -407,9 +388,5 @@ also runs the host-side tests. Run it before working through the rest by hand.
 - [ ] Everything verified in the live Arduino15 package has been copied back
       into the core package's git repository and committed.
       → `$TOOL/TestCase/tools/check_core_sync.py`
-- [ ] The published-root warning still fires on an unclaimed board
-      (`$TOOL/TestCase/tools/check_public_root.py`, case T2-06). It is the only
-      thing telling a customer their board is undefended, and it goes quiet
-      the moment the fingerprint it compares against drifts.
 - [ ] Bootloader flashed over ST-Link/DFU and the application uploaded over
       IAP, in that order, on a board that previously ran the older release.

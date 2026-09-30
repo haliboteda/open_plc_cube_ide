@@ -1,28 +1,14 @@
 /*
  * bootloader_state.h
  *
- * Bootloader-owned Flash state: firmware metadata (size, signature,
- * certificate) in the reserved tail sector (IAP_STATE_SECTOR_ADDR, see
- * usbd_cdc_flash.h) that app updates can never touch.
+ * Bootloader-owned Flash state in sector 15 (IAP_STATE_SECTOR_ADDR): the
+ * calibration area, the root area (owner_slot.h), append-only firmware
+ * metadata and a completion marker. App updates never touch it.
  *
- * Physical layout: the sector's first 8 KiB is calibration data written by the
- * production fixture; the rest is an append-only area of 32-byte slots (3840
- * of them, 548 metadata records). Records are never overwritten in place --
- * every successful update appends a fresh one, and the "current" firmware is
- * the most recent. NOR Flash forces this: the smallest erase is the whole
- * sector, which would take the calibration area with it on every update.
- *
- * A full area is NOT erased on the spot. Erasing takes hundreds of
- * milliseconds, and losing power inside that window would take the current
- * metadata with it -- turning a healthy board into one that no longer trusts
- * its own application. Instead the erase happens only inside
- * bootloader_state_save_metadata(), at the one moment the old metadata has
- * already been made worthless by the update that just overwrote the
- * application it described. Losing power there leaves the board needing a
- * re-upload, which was already true from the moment the application region was
- * erased, so the reclaim adds no failure mode the update did not already have.
- *
- * Layout and the reasoning behind it: $PROD/docs/modules/M1/SECTOR-15.md.
+ * Nothing is erased except by a reclaim, and a reclaim stages what it must
+ * not lose in backup SRAM first (bkp_stash.h). Layout, the three reclaim
+ * triggers and what a power cut does at each step:
+ * $PROD/docs/modules/M1/SECTOR-15.md.
  */
 
 #ifndef IAPSERVER_BOOTLOADER_STATE_H_
@@ -31,6 +17,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "iap_cert.h"
+#include "owner_slot.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -59,7 +46,7 @@ extern "C" {
  * 2026-09-20: dropped `sha256` (never read anywhere -- the signature already
  * binds the hash, so a stored copy of the hash added no security and nothing
  * ever compared it) and `cert` shrank from 132 to 128 bytes when its `serial`
- * field went away (see iap_cert.h). One update costs 7 slots, so 3840/7 = 548
+ * field went away (see iap_cert.h). One update costs 7 slots, so 3583/7 = 511
  * updates before a reclaim.
  */
 typedef struct {
@@ -69,6 +56,8 @@ typedef struct {
 	uint8_t    reserved[20];
 } iap_fw_metadata_t;
 
+/* Idempotent. Finishes a reclaim a power cut interrupted, marks a factory
+ * sector, then scans the metadata. */
 void bootloader_state_init(void);
 
 /* True if sha256_selftest() passed during bootloader_state_init(). If this
@@ -81,8 +70,8 @@ bool bootloader_state_crypto_selftest_passed(void);
 bool bootloader_state_get_metadata(iap_fw_metadata_t *out);
 
 /* Appends a new metadata record after a successful, signature-verified
- * update. Does not erase/overwrite the previous record. `cert` is stored
- * whole (see the comment on iap_fw_metadata_t above) -- it is the certificate
+ * update. A full area is reclaimed with the new record as its metadata.
+ * `cert` is stored whole (see the comment on iap_fw_metadata_t above) -- it is the certificate
  * whose leaf key produced `signature`.
  *
  * No hash parameter: `iap_fw_metadata_t` used to store one, but nothing ever
@@ -91,6 +80,14 @@ bool bootloader_state_get_metadata(iap_fw_metadata_t *out);
  * 2026-09-20 along with the field. */
 void bootloader_state_save_metadata(uint32_t app_size, const uint8_t signature[64],
                                      const iap_cert_t *cert);
+
+/*
+ * Rewrite sector 15 with `carry` as the root area, keeping calibration and the
+ * latest metadata record (SECTOR-15.md, steps 1-6). For a full 'O' segment
+ * and for `setowner --wipe`. Returns false if a write failed; the backup copy
+ * then stays and the next boot finishes the job.
+ */
+bool bootloader_state_reclaim(const owner_carry_t *carry);
 
 /* Logs a rejected authentication attempt with a count since boot. Log only,
  * never Flash: an unauthenticated caller must not be able to reach Flash at

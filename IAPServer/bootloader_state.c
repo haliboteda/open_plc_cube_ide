@@ -1,43 +1,47 @@
 /*
  * bootloader_state.c
  *
- * See bootloader_state.h for the on-Flash layout rationale. Sector 15 holds
- * two things with opposite needs: calibration data that must be over-writable,
- * and firmware metadata that is only ever appended. Splitting them is what
- * keeps 547 of every 548 upgrades from touching the calibration area at all.
- *
- * Layout and the reasoning behind it: $PROD/docs/modules/M1/SECTOR-15.md and
- * DECISIONS.md #61.
+ * Sector 15, the bootloader's own state: calibration, the root area and
+ * firmware metadata, plus a completion marker. Layout, the reclaim and what a
+ * power cut does at each step: $PROD/docs/modules/M1/SECTOR-15.md.
  */
 
 #include "bootloader_state.h"
+#include "bkp_stash.h"
+#include "owner_slot.h"
 #include "usbd_cdc_flash.h"
-#include "IAP_config.h"   /* IAP_STAGE_BASE: staging for the calibration carry-over */
 #include "sha256.h"
 #include "calib_area.h"
 #include <string.h>
 #include <stdio.h>
 #include <inttypes.h>
 
-extern uint16_t Flash_If_Write(uint8_t *DataAddress, uint8_t *FlashAddress, uint32_t Len);
 extern uint16_t Flash_If_Erase(uint32_t Add, uint32_t NbSectors);
 
-/* Calibration data: fixed address at the very start of the sector, written by
- * the production fixture over JLINK. The firmware has no command to write it
- * (DECISIONS.md #61). Nothing here reads it either -- it only has to survive
- * the erase below. Format: calib_area.h. */
-#define IAP_CALIB_BASE          IAP_STATE_SECTOR_ADDR
-#define IAP_CALIB_SIZE          CALIB_AREA_SIZE
-_Static_assert(IAP_CALIB_BASE == CALIB_AREA_ADDR, "calibration area moved without calib_area.h");
+#define IAP_SECTOR_SIZE      (128U * 1024U)
 
-#define IAP_META_BASE        (IAP_STATE_SECTOR_ADDR + IAP_CALIB_SIZE)
-#define IAP_META_REGION_SIZE ((128U * 1024U) - IAP_CALIB_SIZE)
+/* Calibration data: fixed address at the start of the sector, written by the
+ * production fixture over JLINK (DECISIONS.md #61). Nothing here reads it; it
+ * only has to survive a reclaim. Format: calib_area.h. */
+#define IAP_CALIB_BASE       IAP_STATE_SECTOR_ADDR
+#define IAP_CALIB_SIZE       CALIB_AREA_SIZE
+/* Firmware addresses only; the host harness (T2-34) maps the sector to RAM. */
+#ifndef BOOTLOADER_STATE_HOST_TEST
+_Static_assert(IAP_CALIB_BASE == CALIB_AREA_ADDR, "calibration area moved without calib_area.h");
+#endif
+
+#define IAP_ROOT_AREA_BASE   (IAP_CALIB_BASE + IAP_CALIB_SIZE)
+#ifndef BOOTLOADER_STATE_HOST_TEST
+_Static_assert(IAP_ROOT_AREA_BASE == OWNER_SLOT_BASE, "root area moved without owner_slot.h");
+#endif
+
+#define IAP_MARKER_ADDR      (IAP_STATE_SECTOR_ADDR + IAP_SECTOR_SIZE - IAP_META_SLOT_SIZE)
+#define IAP_META_BASE        (IAP_ROOT_AREA_BASE + OWNER_SLOT_SIZE)
+#define IAP_META_REGION_SIZE (IAP_MARKER_ADDR - IAP_META_BASE)
 #define IAP_META_SLOT_COUNT  (IAP_META_REGION_SIZE / IAP_META_SLOT_SIZE)
 
-/* Erased Flash reads as 0xFF, so that is "no record here". 'M' is now the only
- * record type -- the eight event types and their 'L' records were removed
- * because they supported no requirement and had no reader (see
- * $PROD/docs/modules/M1-firmware-upgrade.md). */
+/* Erased Flash reads as 0xFF, so that is "no record here". 'M' is the only
+ * metadata record type. */
 #define IAP_REC_BLANK    0xFFU
 #define IAP_REC_METADATA 0x4DU /* 'M' */
 
@@ -55,6 +59,26 @@ typedef struct {
 _Static_assert(sizeof(iap_meta_rec_t) == (IAP_METADATA_SLOTS * IAP_META_SLOT_SIZE),
 		"metadata record must fill its slots exactly");
 
+/* Written last by a reclaim: its presence says the sector was rewritten in
+ * full under this layout. */
+#define IAP_MARKER_MAGIC   0x4C353153UL   /* "S15L" */
+#define IAP_MARKER_LAYOUT  1U
+typedef struct {
+	uint32_t magic;
+	uint32_t layout;
+	uint8_t  zero[24];
+} iap_marker_t;
+_Static_assert(sizeof(iap_marker_t) == IAP_META_SLOT_SIZE, "marker is one flash word");
+
+/* What a reclaim carries across the erase, and the backup-SRAM copy of it. */
+typedef struct {
+	owner_carry_t  carry;
+	uint32_t       has_meta;
+	iap_meta_rec_t meta;
+} s15_stash_t;
+_Static_assert(sizeof(s15_stash_t) <= BKP_STASH_MAX_PAYLOAD, "reclaim copy does not fit backup SRAM");
+
+static bool     s_inited;
 static uint32_t s_next_free_slot;
 static uint32_t s_last_metadata_slot;
 static bool     s_format_unknown;
@@ -62,6 +86,11 @@ static bool     s_crypto_selftest_ok;
 static bool     s_app_valid;
 
 static uint32_t s_auth_fail_total;
+
+/* Too large for the stack; only one reclaim runs at a time. RAM rather than
+ * SDRAM: a reclaim can run at boot, before the FMC is up. */
+static s15_stash_t s_stash;
+static uint8_t     s_calib[IAP_CALIB_SIZE];
 
 static const void *slot_ptr(uint32_t index)
 {
@@ -85,18 +114,38 @@ static uint32_t meta_room(void)
 			? 0U : (IAP_META_SLOT_COUNT - s_next_free_slot);
 }
 
-static void meta_write(const void *record, uint32_t slots);
-static void meta_reclaim(void);
-static bool calib_area_is_blank(void);
-static bool metadata_area_full(void);
-void bootloader_state_init(void)
+static bool bytes_are_erased(const uint8_t *p, uint32_t len)
 {
 	uint32_t i;
 
-	s_crypto_selftest_ok = sha256_selftest();
-	if (!s_crypto_selftest_ok) {
-		printf("** CRYPTO SELFTEST FAILED - firmware verification cannot be trusted! **\r\n");
+	for (i = 0U; i < len; i++) {
+		if (p[i] != 0xFFU) {
+			return false;
+		}
 	}
+	return true;
+}
+
+static bool marker_is_valid(void)
+{
+	const iap_marker_t *m = (const iap_marker_t *)IAP_MARKER_ADDR;
+
+	return (m->magic == IAP_MARKER_MAGIC) && (m->layout == IAP_MARKER_LAYOUT);
+}
+
+static bool write_marker(void)
+{
+	iap_marker_t m;
+
+	memset(&m, 0, sizeof(m));
+	m.magic = IAP_MARKER_MAGIC;
+	m.layout = IAP_MARKER_LAYOUT;
+	return Flash_If_Write((uint8_t *)&m, (uint8_t *)IAP_MARKER_ADDR, sizeof(m)) == 0U;
+}
+
+static void meta_scan(void)
+{
+	uint32_t i;
 
 	s_next_free_slot = IAP_META_SLOT_COUNT; /* assume full unless a blank slot is found below */
 	s_last_metadata_slot = 0xFFFFFFFFU;
@@ -110,35 +159,132 @@ void bootloader_state_init(void)
 			s_next_free_slot = i;
 			break;
 		}
-		if ((type == IAP_REC_METADATA) && (slots == IAP_METADATA_SLOTS)) {
+		if ((type == IAP_REC_METADATA) && (slots == IAP_METADATA_SLOTS)
+				&& ((i + IAP_METADATA_SLOTS) <= IAP_META_SLOT_COUNT)) {
 			s_last_metadata_slot = i;
 			i += IAP_METADATA_SLOTS;
 			continue;
 		}
 
-		/* Not blank and not a record this build understands -- most likely a
-		 * layout written by an older build. Stop here rather than guess a
-		 * length and walk off into the middle of somebody else's record. The
-		 * area then stays read-only until the next successful update reclaims
-		 * it, which loses nothing: that update rewrites the metadata anyway. */
+		/* Not a record this build understands. Stop rather than guess a
+		 * length; the next reclaim clears it. */
 		printf("** State sector holds an unrecognised record at slot %" PRIu32
-				" - it stays read-only until the next successful update erases %08" PRIX32 " **\r\n",
-				i, (uint32_t)IAP_META_BASE);
+				" - the next reclaim clears it **\r\n", i);
 		s_format_unknown = true;
 		break;
 	}
+}
+
+/*
+ * Steps 1-6 of a reclaim (SECTOR-15.md): calibration into RAM, `st` into
+ * backup SRAM, erase, write back calibration / root area / metadata, marker,
+ * clear the backup copy. At boot `st` already is the backup copy, so step 2
+ * is skipped.
+ *
+ * A write failure leaves the backup copy in place, so the next boot finishes
+ * the job. Returns false then.
+ */
+static bool s15_rewrite(const s15_stash_t *st, bool stash_it)
+{
+	bool ok = true;
+
+	memcpy(s_calib, (const void *)IAP_CALIB_BASE, IAP_CALIB_SIZE);
+
+	if (stash_it && !bkp_stash_save(st, sizeof(*st))) {
+		/* Proceed: refusing would stop every later upload and handover. A cut
+		 * in the next second then costs the root, like a factory reset.
+		 * See SECTOR-15.md "回收时掉电". */
+		printf("** Backup SRAM unavailable - reclaiming with no safety copy **\r\n");
+	}
+
+	printf("Reclaiming sector 15 (%" PRIu32 " metadata slots, root area compacted). "
+			"DO NOT CUT POWER.\r\n", s_next_free_slot);
+
+	if (Flash_If_Erase(IAP_STATE_SECTOR_ADDR, RESERVED_TAIL_SECTORS) != 0U) {
+		printf("** Sector 15 erase FAILED **\r\n");
+		ok = false;
+	}
+	if (ok && !bytes_are_erased(s_calib, IAP_CALIB_SIZE)) {
+		ok = (Flash_If_Write(s_calib, (uint8_t *)IAP_CALIB_BASE, IAP_CALIB_SIZE) == 0U);
+	}
+	if (ok) {
+		ok = owner_slot_write_carry(&st->carry);
+	}
+	if (ok && (st->has_meta != 0U)) {
+		ok = (Flash_If_Write((uint8_t *)&st->meta, (uint8_t *)IAP_META_BASE,
+				sizeof(st->meta)) == 0U);
+	}
+	if (ok) {
+		ok = write_marker();
+	}
+	if (ok) {
+		bkp_stash_clear();
+	} else {
+		printf("** Sector 15 rewrite FAILED - the next boot retries from the backup copy **\r\n");
+	}
+
+	meta_scan();
+	owner_slot_rescan();
+	return ok;
+}
+
+/*
+ * Boot-time check (SECTOR-15.md "开机判断"). A valid backup copy always wins:
+ * it is cleared only after a rewrite has fully completed.
+ */
+static void s15_recover(void)
+{
+	if (!bkp_stash_enable()) {
+		printf("** Backup SRAM regulator not ready - reclaims run without a safety copy **\r\n");
+	}
+
+	if (bkp_stash_load(&s_stash, sizeof(s_stash))) {
+		printf("Sector 15: finishing a reclaim cut short by a power loss, from the "
+				"backup-SRAM copy\r\n");
+		(void)s15_rewrite(&s_stash, false);
+		return;
+	}
+	bkp_stash_clear();   /* a copy that does not verify is never used */
+	if (marker_is_valid()) {
+		return;
+	}
+	if (bytes_are_erased((const uint8_t *)IAP_ROOT_AREA_BASE,
+			IAP_SECTOR_SIZE - IAP_CALIB_SIZE)) {
+		/* A factory board: nothing but calibration. */
+		if (!write_marker()) {
+			printf("** Sector 15: writing the layout marker FAILED **\r\n");
+		}
+		return;
+	}
+
+	printf("** Sector 15 is not in this layout, or a reclaim was cut short with no "
+			"backup copy - rebuilt with calibration only. The board has no root "
+			"and no firmware metadata. **\r\n");
+	memset(&s_stash, 0, sizeof(s_stash));
+	(void)s15_rewrite(&s_stash, false);
+}
+
+void bootloader_state_init(void)
+{
+	if (s_inited) {
+		return;
+	}
+	s_inited = true;
+
+	s_crypto_selftest_ok = sha256_selftest();
+	if (!s_crypto_selftest_ok) {
+		printf("** CRYPTO SELFTEST FAILED - firmware verification cannot be trusted! **\r\n");
+	}
+
+	meta_scan();
+	s15_recover();
 
 	printf("Bootloader state: %" PRIu32 "/%" PRIu32 " metadata slots used, metadata %s\r\n",
 			s_next_free_slot, (uint32_t)IAP_META_SLOT_COUNT,
 			(s_last_metadata_slot == 0xFFFFFFFFU) ? "absent" : "present");
-	if (metadata_area_full()) {
-		printf("** Metadata area full - the next successful update reclaims it. **\r\n");
+	if (s_format_unknown || (meta_room() < IAP_METADATA_SLOTS)) {
+		printf("** Metadata area full - the next successful update reclaims sector 15. **\r\n");
 	}
-}
-
-static bool metadata_area_full(void)
-{
-	return s_format_unknown || (meta_room() == 0U);
 }
 
 bool bootloader_state_crypto_selftest_passed(void)
@@ -155,27 +301,51 @@ bool bootloader_state_get_metadata(iap_fw_metadata_t *out)
 	return true;
 }
 
+static void build_meta_rec(iap_meta_rec_t *rec, uint32_t app_size,
+		const uint8_t signature[64], const iap_cert_t *cert)
+{
+	memset(rec, 0, sizeof(*rec));
+	rec->type = IAP_REC_METADATA;
+	rec->slots = (uint8_t)IAP_METADATA_SLOTS;
+	rec->meta.app_size = app_size;
+	memcpy(rec->meta.signature, signature, 64U);
+	memcpy(&rec->meta.cert, cert, sizeof(rec->meta.cert));
+}
+
 void bootloader_state_save_metadata(uint32_t app_size, const uint8_t signature[64],
                                      const iap_cert_t *cert)
 {
 	iap_meta_rec_t rec;
+	const uintptr_t addr = IAP_META_BASE + (s_next_free_slot * IAP_META_SLOT_SIZE);
 
-	/* The only place that ever erases. Safe precisely here: the application
-	 * this metadata will describe has just been written, so whatever the old
-	 * record said is already untrue. */
+	build_meta_rec(&rec, app_size, signature, cert);
+
+	/* Full: the new record goes in as part of the reclaim, so the backup copy
+	 * holds the metadata of the image just written, not the stale one. */
 	if ((meta_room() < IAP_METADATA_SLOTS) || s_format_unknown) {
-		meta_reclaim();
+		memset(&s_stash, 0, sizeof(s_stash));
+		owner_slot_build_carry(&s_stash.carry);
+		s_stash.has_meta = 1U;
+		s_stash.meta = rec;
+		(void)s15_rewrite(&s_stash, true);
+		return;
 	}
 
-	memset(&rec, 0, sizeof(rec));
-	rec.type = IAP_REC_METADATA;
-	rec.slots = (uint8_t)IAP_METADATA_SLOTS;
-	rec.meta.app_size = app_size;
-	memcpy(rec.meta.signature, signature, 64U);
-	memcpy(&rec.meta.cert, cert, sizeof(rec.meta.cert));
+	(void)Flash_If_Write((uint8_t *)&rec, (uint8_t *)addr, sizeof(rec));
+	s_last_metadata_slot = s_next_free_slot;
+	s_next_free_slot += IAP_METADATA_SLOTS;
+}
 
-	meta_write(&rec, IAP_METADATA_SLOTS);
-	s_last_metadata_slot = s_next_free_slot - IAP_METADATA_SLOTS;
+bool bootloader_state_reclaim(const owner_carry_t *carry)
+{
+	bootloader_state_init();   /* a factory reset can get here before server_decide() */
+	memset(&s_stash, 0, sizeof(s_stash));
+	s_stash.carry = *carry;
+	if (s_last_metadata_slot != 0xFFFFFFFFU) {
+		s_stash.has_meta = 1U;
+		memcpy(&s_stash.meta, slot_ptr(s_last_metadata_slot), sizeof(s_stash.meta));
+	}
+	return s15_rewrite(&s_stash, true);
 }
 
 void bootloader_state_note_auth_fail(uint32_t peer_ip)
@@ -199,62 +369,4 @@ void bootloader_state_set_app_valid(bool valid)
 bool bootloader_state_app_is_valid(void)
 {
 	return s_app_valid;
-}
-
-static void meta_write(const void *record, uint32_t slots)
-{
-	const uint32_t addr = IAP_META_BASE + (s_next_free_slot * IAP_META_SLOT_SIZE);
-
-	(void)Flash_If_Write((uint8_t *)record, (uint8_t *)addr, slots * IAP_META_SLOT_SIZE);
-	s_next_free_slot += slots;
-}
-
-/* Called from bootloader_state_save_metadata() and nowhere else -- see the
- * header for why that one call site is the only safe moment to erase. The old
- * metadata is deliberately not carried over: the caller is about to write the
- * record that replaces it. */
-static void meta_reclaim(void)
-{
-	const uint32_t discarded = s_next_free_slot;
-
-	printf("Reclaiming metadata area (%" PRIu32 " slots discarded)\r\n", discarded);
-
-	/* The erase granularity is the whole 128 KiB sector, so this takes the
-	 * calibration area at the front of it along too. Carry it across when it
-	 * holds anything: losing metadata costs one re-upload, losing calibration
-	 * means a trip back to the production line -- a reflash cannot restore it.
-	 *
-	 * The area is blank until the fixture has calibrated the board
-	 * (DECISIONS.md #70); then the carry-over below keeps it. */
-	if (calib_area_is_blank()) {
-		(void)Flash_If_Erase(IAP_STATE_SECTOR_ADDR, RESERVED_TAIL_SECTORS);
-	} else {
-		/* Staged in SDRAM: a reclaim can only happen inside
-		 * bootloader_state_save_metadata(), by which point the new image is
-		 * already committed to flash and the staging buffer is free. */
-		uint8_t *carry = (uint8_t *)IAP_STAGE_BASE;
-
-		memcpy(carry, (const void *)IAP_CALIB_BASE, IAP_CALIB_SIZE);
-		(void)Flash_If_Erase(IAP_STATE_SECTOR_ADDR, RESERVED_TAIL_SECTORS);
-		(void)Flash_If_Write(carry, (uint8_t *)IAP_CALIB_BASE, IAP_CALIB_SIZE);
-	}
-
-	s_next_free_slot = 0U;
-	s_last_metadata_slot = 0xFFFFFFFFU;
-	s_format_unknown = false;
-}
-
-/* True when nothing has ever been written to the calibration area. Erased NOR
- * flash reads as 0xFF, so an all-0xFF area has nothing worth preserving. */
-static bool calib_area_is_blank(void)
-{
-	const uint8_t *cal = (const uint8_t *)IAP_CALIB_BASE;
-	uint32_t i;
-
-	for (i = 0U; i < IAP_CALIB_SIZE; i++) {
-		if (cal[i] != 0xFFU) {
-			return false;
-		}
-	}
-	return true;
 }

@@ -144,21 +144,14 @@ key, once a board has been claimed. See `$PROD/docs/modules/M2-ownership.md`.
   `flash` auth. Availability quirk, not a security hole (a nonce can never
   be double-consumed or accepted after being overwritten).
 
-## The shipped key is public, and stays that way
+## A factory board has no root
 
-`fw_signing_key.TEST_ONLY.pem` is committed, so anyone with this repository can
-sign an image a factory board accepts. **That is not a defect awaiting a
-rotation.** Users write their own PLC programs; uploading one means signing it;
-the private key therefore has to be on the user's machine, and the project
-ships no per-customer material. A secret vendor key would mean users could only
-run firmware the vendor signed. The derivation is in
+Decision 72 (`$PROD/docs/tables/DECISIONS.md`): no root key is compiled into
+the bootloader and none is shipped. A factory board trusts no key, so it runs
+nothing and accepts nothing until the first upload claims it for the uploader's
+own key. Before that claim, whoever reaches the board first can claim it; a
+factory reset (BOOT0, ten seconds) puts it back. The derivation is in
 `$PROD/docs/modules/M2-ownership.md`.
-
-So everything above protects a factory board against corrupted images and
-remote injection, and against nothing else. **The board becomes defended when
-it is claimed** (`IAPTool takeown`), or when a customer compiles the board
-package with their own root (`keys/rotate_keys.sh`). Until one of those
-happens, the boot log says so on every start.
 
 There is no second secret. Session authentication used to derive a per-device
 HMAC key from a fixed password compiled into every image; anyone who extracted
@@ -168,18 +161,16 @@ board is worth extracting.
 
 ## TODO
 
-- [ ] **Claim every board before it goes into service.** Nothing above
-      protects a board that still trusts the published key, and the vendor
-      cannot fix that by rotating -- see the section above. This is an
+- [ ] **Claim every board before it goes into service.** Until the first
+      upload claims it, anyone who reaches the board first can. This is an
       operational step, not a code change.
 
 Not on this list any more, and deliberately so:
 
 - **Flash Option Bytes (WRP) on the bootloader sector.** Decided 2026-09-04:
-  the vendor does not set it. It is the only thing that would stop a Flash
-  write primitive from overwriting the bootloader or its embedded root key,
-  but clearing it needs physical SWD access, a reflash and a re-lock -- too
-  sharp an edge to ship enabled. A customer who wants that protection can set
-  it themselves. See `$PROD/docs/modules/M2-ownership.md`.
+  the vendor does not set it. At RDP level 0 or 1 software can clear it
+  again (RM0433 section 4.5.2), so it would not stop code already running on
+  the board. A customer who wants it can set it themselves. See
+  `$PROD/docs/modules/M2-ownership.md`.
 - **Per-device manufacturing secrets.** Retired: there is no shared secret
   left to replace.

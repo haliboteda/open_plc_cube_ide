@@ -3,7 +3,7 @@
  */
 
 #include "owner_slot.h"
-#include "fw_pubkey.h"
+#include "bootloader_state.h"
 #include "fw_verify.h"
 #include "iap_keyderive.h"
 #include "sha256.h"
@@ -11,37 +11,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <inttypes.h>
-
-/*
- * SHA-256 of the 64 raw bytes (X||Y) of the root key published with this
- * project -- the one whose private half lives in IAPServer/keys, because
- * customers must be able to sign their own sketches with it.
- *
- * A fingerprint rather than a second copy of the key, so nobody can mistake it
- * for something that participates in verification. Nothing is verified against
- * it; it answers exactly one question, "is this board still trusting the key
- * everybody has".
- *
- * ⚠️ This is a CONSTANT, not something derived from fw_public_key at build
- * time. Deriving it would make the comparison trivially true for every build
- * and the warning would fire on customer boards that are perfectly safe --
- * which is the failure mode $PROD/docs/modules/M2-ownership.md spends a page warning about,
- * because a warning everybody learns to ignore protects nobody.
- *
- * ⚠️ If the project ever ships a DIFFERENT default key (rotate_keys.sh), that
- * new key is also public and this constant must be regenerated, or factory
- * boards silently stop warning. Case P6 in the test suite compares the two and
- * fails when they drift.
- *
- *   Regenerate:  parse IAPServer/keys/fw_pubkey.inc into 64 bytes, SHA-256 it.
- *                $TOOL/TestCase/tools/check_public_root.py prints the value.
- */
-static const uint8_t k_published_root_sha256[32] = {
-	0xa3, 0xcb, 0xcb, 0xf7, 0x9f, 0xb6, 0x65, 0xdf,
-	0x35, 0xcd, 0x14, 0xe1, 0x44, 0xda, 0x9b, 0xac,
-	0x15, 0x6b, 0x84, 0xda, 0x86, 0x9b, 0x2c, 0x9f,
-	0x10, 0x9e, 0x39, 0xde, 0xf8, 0xc3, 0x8b, 0xde,
-};
 
 /* Both records must be a whole number of 32-byte flash words, and the two
  * segments must tile the area exactly. If a field is ever added or the
@@ -64,16 +33,14 @@ static uint32_t s_unauthorised_count;    /* structurally fine, not entitled to a
 static const owner_record_t *s_latest;   /* highest generation, structurally valid */
 static const owner_record_t *s_effective; /* end of the trusted chain, or NULL */
 
-/* Every link the walk accepted, in walk order. Only owner_slot_compact()
- * needs the whole sequence; everything else wants the end of it. */
-static const owner_record_t *s_chain[OWNER_SLOT_MAX_RECORDS];
-static uint32_t s_chain_count;
-
 /* Every structurally valid 'R' record written for this board. Revocation is
  * cumulative, so all of them matter, not just the last. */
 static const owner_revoke_rec_t *s_revoke_records[OWNER_REVOKE_MAX_RECORDS];
 static uint32_t s_revoke_count;
 static uint32_t s_revoke_used;   /* 'R' words that are not erased, valid or not */
+
+/* Too large for the stack; only one reclaim runs at a time. */
+static owner_carry_t s_carry;
 
 static const owner_record_t *record_at(uint32_t index)
 {
@@ -89,8 +56,7 @@ static const owner_revoke_rec_t *revoke_at(uint32_t index)
 /*
  * Structural validity only -- this says nothing about whether the record is
  * *authorised* (prev_sig, checked in resolve_chain()) or *for this board*
- * (uid, also checked in resolve_chain() -- it needs my_uid, which this
- * function has no reason to compute on every one of 32 slots).
+ * (uid, also checked in resolve_chain()).
  *
  * A different format_ver is not corruption -- it is a record this firmware is
  * too old (or too new) to understand -- and there is no fallback to an
@@ -142,6 +108,11 @@ static bool sig_is_absent(const owner_record_t *r)
 	return true;
 }
 
+static bool effective_is_root(void)
+{
+	return (s_effective != NULL) && ((s_effective->flags & OWNER_FLAG_CLEARED) == 0UL);
+}
+
 /*
  * Decide which record's key is actually in force.
  *
@@ -151,32 +122,27 @@ static bool sig_is_absent(const owner_record_t *r)
  * and take the board over. Authority has to come from the chain, not from
  * being last.
  *
- *   first record        may carry no signature -- that is the initial claim,
- *                       gated by physical presence when it was written (TOFU)
- *   cleared record      may carry no signature -- factory reset is gated the
- *                       same way, and requiring the current owner's signature
- *                       would brick a board whose owner lost the key (R3)
+ *   first record        may carry no signature -- the initial claim, or the
+ *                       one record a reclaim writes back (TOFU)
+ *   cleared record      may carry no signature -- factory reset is gated by
+ *                       the BOOT0 gesture, and requiring the current owner's
+ *                       signature would brick a board whose owner lost the
+ *                       key (R3)
+ *   after a cleared one may carry no signature -- the board has no root
+ *                       again, so this is a first claim
  *   anything else       must be signed by the root currently in force
+ *
+ * A signed record with no root in force before it has nothing to verify
+ * against and stops the walk: no root is compiled in (decision 72).
  *
  * A record that fails stops the walk rather than being skipped. Skipping would
  * let an attacker invalidate one link and have the rest of the chain -- written
  * under a different owner -- silently apply.
  *
- * v2: every non-cleared record must also carry THIS board's uid, checked
- * before the signature/TOFU branch below and applying to both. Without it, the
- * raw bytes of a board that has already been claimed -- a valid, correctly
- * signed chain -- could be copied onto an unclaimed board and would resolve
- * exactly as if that board had been claimed the same way. The check has to sit
- * ahead of the TOFU case too, not just the signed one: TOFU's whole point is
- * that there is no signature to check, so uid is the only thing standing
- * between "this board's first claim" and "somebody else's first claim, copied
- * here". Cleared records carry uid = 0 and are exempt -- clearing does not
- * assert anything about which board the record was for, it only says "fall
- * back to the built-in root", which is safe regardless of whose bytes these
- * were.
- *
- * v4: 'R' records are not walked here at all -- they live in their own
- * segment and are collected by a separate pass at the end of this function.
+ * Every non-cleared record must also carry THIS board's uid, checked before
+ * the signature/TOFU branch and applying to both: uid is the only thing
+ * standing between "this board's first claim" and "somebody else's first
+ * claim, copied here". Cleared records carry uid = 0 and are exempt.
  */
 static void resolve_chain(void)
 {
@@ -188,7 +154,6 @@ static void resolve_chain(void)
 	uint8_t my_uid[IAP_MACHINE_ID_SIZE];
 
 	iap_keyderive_get_machine_id(my_uid);
-	s_chain_count = 0U;
 
 	for (;;) {
 		const owner_record_t *next = NULL;
@@ -215,58 +180,33 @@ static void resolve_chain(void)
 		bool cleared = ((next->flags & OWNER_FLAG_CLEARED) != 0UL);
 
 		if (!cleared && (memcmp(next->uid, my_uid, sizeof(my_uid)) != 0)) {
-			/* Structurally fine and possibly even correctly signed -- just not
-			 * for this board. Same failure bucket as an unauthorised signature:
-			 * it stops the walk, it does not skip the record and keep going. */
+			/* Not for this board. Same failure bucket as an unauthorised
+			 * signature: it stops the walk. */
 			s_unauthorised_count++;
 			break;
 		}
 
 		if (sig_is_absent(next)) {
-			/*
-			 * Unsigned records are allowed in exactly three places, all of
-			 * which are ones where a signature is either impossible or would
-			 * defeat the purpose -- and none of them apply to 'R':
-			 *
-			 *   first          the initial claim -- there is no owner yet to
-			 *                  sign it, so physical presence is the only gate
-			 *                  there can be (TOFU)
-			 *   cleared        factory reset -- requiring the current owner's
-			 *                  signature would leave a board whose owner lost
-			 *                  the key permanently unusable (R3)
-			 *   prev_cleared   a fresh claim after a reset: the board is back
-			 *                  in TOFU, so this is the "first" case again
-			 *
-			 * Anywhere else, an unsigned record is exactly what an attacker
-			 * would write, and is refused. An unsigned 'R' is always exactly
-			 * that: revocation has no first-use case, because nothing can be
-			 * revoked before an owner exists to have signed it.
-			 */
 			if (!first && !cleared && !prev_cleared) {
 				s_unauthorised_count++;
 				break;
 			}
 		} else {
-			/* Must be signed by the root in force at this point in the chain --
-			 * not the board's built-in key. Following the chain is the whole
-			 * mechanism: each owner authorises the next. After a reset there is
-			 * no owner, so the built-in root stands in and the board is once
-			 * again as open as a factory board -- which is what a reset means. */
 			uint8_t digest[SHA256_DIGEST_SIZE];
-			const uint8_t *signer = ((current != NULL) && !prev_cleared)
-					? current->root_pubkey : fw_public_key;
 
+			if ((current == NULL) || prev_cleared) {
+				s_unauthorised_count++;
+				break;
+			}
 			sha256((const uint8_t *)next, OWNER_SIGNED_PREFIX_LEN, digest);
-			if (!fw_verify_signature_with_key(signer, digest, next->prev_sig)) {
+			if (!fw_verify_signature_with_key(current->root_pubkey, digest,
+					next->prev_sig)) {
 				s_unauthorised_count++;
 				break;
 			}
 		}
 
 		current = next;
-		if (s_chain_count < OWNER_SLOT_MAX_RECORDS) {
-			s_chain[s_chain_count++] = next;
-		}
 		last_gen = next->generation;
 		prev_cleared = cleared;
 		first = false;
@@ -280,14 +220,7 @@ static void resolve_chain(void)
 	 *
 	 * No signature check and no generation here, deliberately (decision 59).
 	 * The gate is on the way IN -- owner_slot_revoke() verifies the current
-	 * owner's signature before a single byte is written -- and a record that
-	 * got past that gate is a fact from then on. Re-verifying at boot would
-	 * also mean deciding which past root should still count, and the answer
-	 * that matters is already settled: what was written stays revoked.
-	 *
-	 * Forging one buys only denial of service (a legitimate leaf stops working)
-	 * and no privilege at all, and the only way to write flash without passing
-	 * the gate is SWD -- which can rewrite the whole bootloader anyway.
+	 * owner's signature before a single byte is written.
 	 */
 	s_revoke_count = 0U;
 	for (i = 0U; i < OWNER_REVOKE_MAX_RECORDS; i++) {
@@ -332,11 +265,9 @@ void owner_slot_init(void)
 		s_empty = false;
 
 		if (!record_is_structurally_valid(r)) {
-			/* A record is written body-first, header last (see
-			 * owner_slot_claim). So "header still erased, body is not" is the
-			 * signature of a write interrupted by a power cut, not corruption
-			 * -- worth telling apart, because one is expected and harmless and
-			 * the other means something is wrong with the flash. */
+			/* Written body-first, header last (append_record), so "header
+			 * still erased, body is not" is an interrupted write, not
+			 * corruption. */
 			if (r->type == OWNER_RECORD_ERASED) {
 				s_torn_count++;
 			} else {
@@ -351,10 +282,6 @@ void owner_slot_init(void)
 		}
 	}
 
-	/* The 'R' segment only needs an occupancy count here; which records are
-	 * honoured is resolve_chain()'s second pass. An 'R' record is a single
-	 * flash word, so it has no torn-body state to tell apart -- a word left
-	 * half-programmed by a power cut simply fails the structure check. */
 	for (i = 0U; i < OWNER_REVOKE_MAX_RECORDS; i++) {
 		if (!revoke_is_erased(revoke_at(i))) {
 			s_empty = false;
@@ -365,50 +292,37 @@ void owner_slot_init(void)
 	resolve_chain();
 }
 
+void owner_slot_rescan(void)
+{
+	s_scanned = false;
+	owner_slot_init();
+}
+
 const uint8_t *owner_slot_root(void)
 {
 	owner_slot_init();
-
-	/* A cleared record at the end of the chain is a factory reset: fall back to
-	 * the built-in root and go back to accepting a fresh claim. */
-	if ((s_effective != NULL) &&
-			((s_effective->flags & OWNER_FLAG_CLEARED) == 0UL)) {
-		return s_effective->root_pubkey;
-	}
-	return fw_public_key;
+	return effective_is_root() ? s_effective->root_pubkey : NULL;
 }
 
-/*
- * Write one 'O' record into the first free slot of the 'O' segment.
- *
- * Body first, header last. A power cut in the middle of five flash words must
- * not leave something that reads as a valid record: writing the header word
- * last means the worst case is a record whose type is still 0xFF, which the
- * scanner rejects and counts as torn. Header first would leave a record
- * announcing itself as valid while its key was still half erased.
- */
-static bool append_record(const owner_record_t *rec)
+static int32_t first_free_record(void)
 {
-	uint8_t *base;
-	uint32_t slot = OWNER_SLOT_MAX_RECORDS;
 	uint32_t i;
 
 	/* Torn records are stepped over, never reused: rewriting a slot whose body
-	 * already holds bits would need an erase, and the only erasable unit here
-	 * is the sector the bootloader itself is executing from. */
+	 * already holds bits needs an erase, and that only happens in a reclaim. */
 	for (i = 0U; i < OWNER_SLOT_MAX_RECORDS; i++) {
 		if (record_is_erased(record_at(i))) {
-			slot = i;
-			break;
+			return (int32_t)i;
 		}
 	}
-	if (slot == OWNER_SLOT_MAX_RECORDS) {
-		printf("** owner record area is full **\r\n");
-		return false;
-	}
+	return -1;
+}
 
-	base = (uint8_t *)(OWNER_SEG_O_BASE + (slot * OWNER_RECORD_SIZE));
-
+/* Programs one 'O' record at `base`. Body first, header last: a power cut in
+ * the middle of five flash words then leaves a record whose type is still
+ * 0xFF, which the scanner rejects as torn. */
+static bool program_record(const owner_record_t *rec, uint8_t *base)
+{
 	if (Flash_If_Write((uint8_t *)rec + 32, base + 32, OWNER_RECORD_SIZE - 32U) != 0U) {
 		printf("** FAILED writing the record body **\r\n");
 		return false;
@@ -422,13 +336,38 @@ static bool append_record(const owner_record_t *rec)
 }
 
 /*
+ * Write one 'O' record into the first free slot of the 'O' segment. A full
+ * segment is reclaimed first, which leaves one record in it: the compacted
+ * record in force. `rec` is built by the caller before this runs and does not
+ * depend on the history the reclaim discards.
+ */
+static bool append_record(const owner_record_t *rec)
+{
+	int32_t slot = first_free_record();
+
+	if (slot < 0) {
+		printf("Owner record area is full - reclaiming sector 15\r\n");
+		owner_slot_build_carry(&s_carry);
+		if (!bootloader_state_reclaim(&s_carry)) {
+			return false;
+		}
+		owner_slot_rescan();
+		slot = first_free_record();
+		if (slot < 0) {
+			printf("** owner record area still full after the reclaim **\r\n");
+			return false;
+		}
+	}
+
+	return program_record(rec,
+			(uint8_t *)(OWNER_SEG_O_BASE + ((uint32_t)slot * OWNER_RECORD_SIZE)));
+}
+
+/*
  * Write one 'R' record into the first free slot of the 'R' segment.
  *
  * One flash word, so there is no body/header order to get right: either the
- * word programs or the scanner rejects what is left. A word left
- * half-programmed by a power cut fails the type or format_ver check; the one
- * residual case -- header bytes intact, prefix bytes not -- names a leaf that
- * does not exist, which costs a slot and nothing else.
+ * word programs or the scanner rejects what is left.
  */
 static bool append_revoke_record(const owner_revoke_rec_t *rec)
 {
@@ -442,8 +381,8 @@ static bool append_revoke_record(const owner_revoke_rec_t *rec)
 		}
 	}
 	if (slot == OWNER_REVOKE_MAX_RECORDS) {
-		printf("** revocation area is full (%" PRIu32 " records). Reclaiming "
-				"slots needs a bootloader reflash. **\r\n",
+		printf("** revocation area is full (%" PRIu32 " records). Only "
+				"setowner --wipe empties it. **\r\n",
 				(uint32_t)OWNER_REVOKE_MAX_RECORDS);
 		return false;
 	}
@@ -465,13 +404,11 @@ uint32_t owner_slot_generation(void)
 
 /*
  * The handover record itself: built and verified, but not written anywhere.
- * Shared by the append path and the wipe-and-rewrite path so the two cannot
- * come to different conclusions about what a valid handover looks like.
+ * Shared by the append path and the wipe path so the two cannot come to
+ * different conclusions about what a valid handover looks like.
  *
- * Check before writing, not after. The scanner would reject a bad record on
- * the next boot anyway, but it would still be sitting in flash consuming one
- * of 32 'O' slots that can never be reclaimed without erasing the bootloader.
- * Refusing costs nothing; accepting is permanent.
+ * Checked before writing: a record that would not apply must never occupy a
+ * slot.
  */
 static bool build_handover_record(uint32_t generation, const uint8_t new_root[64],
 		const uint8_t sig[64], owner_record_t *rec)
@@ -480,8 +417,8 @@ static bool build_handover_record(uint32_t generation, const uint8_t new_root[64
 
 	owner_slot_init();
 
-	if (s_effective == NULL) {
-		printf("** setowner refused: board is unclaimed - use takeown **\r\n");
+	if (!effective_is_root()) {
+		printf("** setowner refused: board has no root - the first upload claims it **\r\n");
 		return false;
 	}
 	if (generation != (s_effective->generation + 1U)) {
@@ -511,8 +448,8 @@ static bool build_handover_record(uint32_t generation, const uint8_t new_root[64
 	return true;
 }
 
-bool owner_slot_build_wipe_area(uint32_t generation, const uint8_t new_root[64],
-		const uint8_t sig[64], uint8_t *out)
+bool owner_slot_build_wipe_carry(uint32_t generation, const uint8_t new_root[64],
+		const uint8_t sig[64], owner_carry_t *out)
 {
 	owner_record_t rec;
 
@@ -520,27 +457,15 @@ bool owner_slot_build_wipe_area(uint32_t generation, const uint8_t new_root[64],
 		return false;
 	}
 
-	/*
-	 * The record goes in UNSIGNED, and it has to.
-	 *
-	 * Every link in the chain is authorised by the link before it, and this
-	 * wipe throws those away -- so a stored signature would be one the next
-	 * boot has nothing to check against. resolve_chain() would refuse it and
-	 * the board would come back on the built-in root, unowned, with nothing
-	 * to undo it.
-	 *
-	 * Written unsigned it reads as a first claim (TOFU), which is what the
-	 * area now is. Nothing is weakened: the signature was the authorisation
-	 * to erase, checked above before a byte moved, and it covers the
-	 * generation and this board's uid, so a captured command cannot be
-	 * replayed here or onto another board. Taking over a board that resolves
-	 * this way still needs either the new owner's key or physical presence,
-	 * exactly as before.
-	 */
+	/* Unsigned: the wipe discards the links that authorised it, so a stored
+	 * signature would have nothing to verify against on the next boot. The
+	 * signature was the authorisation to wipe, checked above. */
 	memset(rec.prev_sig, 0, sizeof(rec.prev_sig));
 
-	memset(out, 0xFF, OWNER_SLOT_SIZE);
-	memcpy(out, &rec, sizeof(rec));
+	memset(out, 0, sizeof(*out));
+	out->has_owner = 1U;
+	out->owner = rec;
+	out->revoke_count = 0U;
 
 	printf("** owner area will be rewritten with one unsigned record at "
 			"generation %" PRIu32 ": %" PRIu32 " owner record(s) and %" PRIu32
@@ -562,8 +487,7 @@ bool owner_slot_set_owner(uint32_t generation, const uint8_t new_root[64],
 		return false;
 	}
 
-	s_scanned = false;
-	owner_slot_init();
+	owner_slot_rescan();
 	if ((s_effective == NULL) || (s_effective->generation != generation)) {
 		printf("** setowner wrote a record but it did not take effect - "
 				"see the boot log **\r\n");
@@ -575,24 +499,16 @@ bool owner_slot_set_owner(uint32_t generation, const uint8_t new_root[64],
 	return true;
 }
 
-bool owner_slot_claim(const uint8_t root_pubkey[64], bool boot0_held)
+bool owner_slot_claim(const uint8_t root_pubkey[64])
 {
 	owner_record_t rec;
 
 	owner_slot_init();
 
-	/* Physical presence is the only thing standing between a factory board and
-	 * whoever reaches it first. Refusing without it is the entire gate. */
-	if (!boot0_held) {
-		printf("** takeown refused: BOOT0 was not held during startup **\r\n");
-		return false;
-	}
-	/* Claimable when nothing is in force, or when the last thing in force is a
-	 * factory reset -- that is what a reset is for: the board goes back to
-	 * accepting a fresh claim from whoever is standing in front of it. */
-	if ((s_effective != NULL) &&
-			((s_effective->flags & OWNER_FLAG_CLEARED) == 0UL)) {
-		printf("** takeown refused: this board is already claimed. "
+	/* The only condition: no root in force. That covers a factory board and
+	 * one whose last record is a factory reset (decision 72). */
+	if (effective_is_root()) {
+		printf("** takeown refused: this board already has a root. "
 				"Changing owner needs the current owner's signature. **\r\n");
 		return false;
 	}
@@ -614,18 +530,15 @@ bool owner_slot_claim(const uint8_t root_pubkey[64], bool boot0_held)
 		return false;
 	}
 
-	/* Re-read rather than assume: the scanner is what the next boot will use,
-	 * so making it agree now is the only confirmation worth printing. */
-	s_scanned = false;
-	owner_slot_init();
-	if (s_effective == NULL) {
+	/* Re-read rather than assume: the scanner is what the next boot will use. */
+	owner_slot_rescan();
+	if (!effective_is_root()) {
 		printf("** takeown wrote a record but it did not take effect - "
 				"see the boot log **\r\n");
 		return false;
 	}
 
-	printf("** Board claimed. It now trusts only firmware signed by that key. **\r\n"
-			"** Reset to confirm: the published-root warning should be gone. **\r\n");
+	printf("** Board claimed. It now trusts only firmware signed by that key. **\r\n");
 	return true;
 }
 
@@ -642,15 +555,10 @@ bool owner_slot_factory_reset(bool physically_confirmed)
 		return false;
 	}
 
-	/* Nothing in force, or already reset: writing another cleared record would
-	 * change nothing and burn one of 32 'O' slots that cannot be reclaimed
-	 * without erasing the bootloader. */
-	if (s_effective == NULL) {
-		printf("** Factory reset: board was already unclaimed, nothing to do **\r\n");
-		return true;
-	}
-	if ((s_effective->flags & OWNER_FLAG_CLEARED) != 0UL) {
-		printf("** Factory reset: board was already reset, nothing to do **\r\n");
+	/* No root in force: another cleared record would change nothing and burn
+	 * a slot. */
+	if (!effective_is_root()) {
+		printf("** Factory reset: board has no root, nothing to do **\r\n");
 		return true;
 	}
 
@@ -660,14 +568,10 @@ bool owner_slot_factory_reset(bool physically_confirmed)
 	rec.format_ver = (uint16_t)OWNER_FORMAT_VER;
 	rec.generation = s_effective->generation + 1U;
 	rec.flags = OWNER_FLAG_CLEARED;
-	/* No key, and no signature.
-	 *
-	 * Unsigned is not an oversight. Requiring the current owner's signature
-	 * would mean a customer who lost their private key could never use the
-	 * board again, and the only remaining route would be ST-Link -- which the
-	 * customer typically does not have. $PROD/docs/modules/M2-ownership.md takes that trade
-	 * deliberately: whoever can physically reach the board can reset it and
-	 * take it over. What that buys is that nobody can do it remotely. */
+	/* No key and no signature: requiring the current owner's signature would
+	 * leave a customer who lost their key with a board only ST-Link could
+	 * rescue. Whoever can reach the button can reset the board; nobody can do
+	 * it remotely (R3). */
 	memset(rec.root_pubkey, 0, sizeof(rec.root_pubkey));
 	memset(rec.uid, 0, sizeof(rec.uid));   /* cleared record asserts nothing about which board */
 	memset(rec.prev_sig, 0, sizeof(rec.prev_sig));
@@ -677,17 +581,15 @@ bool owner_slot_factory_reset(bool physically_confirmed)
 		return false;
 	}
 
-	s_scanned = false;
-	owner_slot_init();
-	if ((s_effective == NULL) ||
-			((s_effective->flags & OWNER_FLAG_CLEARED) == 0UL)) {
+	owner_slot_rescan();
+	if (effective_is_root()) {
 		printf("** factory reset wrote a record but it did not take effect - "
 				"see the boot log **\r\n");
 		return false;
 	}
 
-	printf("** FACTORY RESET DONE at generation %" PRIu32 ". Back to the built-in "
-			"root; the board can be claimed again. **\r\n", rec.generation);
+	printf("** FACTORY RESET DONE at generation %" PRIu32 ". The board has no root; "
+			"the next upload claims it. **\r\n", rec.generation);
 	return true;
 }
 
@@ -704,17 +606,13 @@ bool owner_slot_revoke(const uint8_t leaf_prefix[OWNER_REVOKE_PREFIX_LEN],
 		*already = false;
 	}
 
-	if (s_effective == NULL) {
-		printf("** revoke refused: board is unclaimed - use takeown first **\r\n");
+	if (!effective_is_root()) {
+		printf("** revoke refused: board has no root **\r\n");
 		return false;
 	}
 
-	/*
-	 * Revoking is idempotent: naming a leaf that is already revoked changes
-	 * nothing and must not spend a slot. That is also what stops a replayed
-	 * request from filling the area -- replaying it a hundred times still
-	 * costs one record, so no anti-replay field is needed (decision I-D1).
-	 */
+	/* Idempotent: naming a leaf that is already revoked writes nothing, which
+	 * is also what makes a replayed request harmless (decision I-D1). */
 	memset(probe, 0, sizeof(probe));
 	memcpy(probe, leaf_prefix, OWNER_REVOKE_PREFIX_LEN);
 	if (owner_slot_is_revoked(probe)) {
@@ -732,13 +630,7 @@ bool owner_slot_revoke(const uint8_t leaf_prefix[OWNER_REVOKE_PREFIX_LEN],
 	iap_keyderive_get_machine_id(rec.uid);
 	memcpy(rec.leaf_prefix, leaf_prefix, OWNER_REVOKE_PREFIX_LEN);
 
-	/* Checked before writing, same reasoning as set_owner: a record that would
-	 * not apply should never occupy one of 96 'R' slots that cannot be
-	 * reclaimed without erasing the bootloader.
-	 *
-	 * The signature covers the whole record. Unlike an 'O' record there is no
-	 * signature field to exclude, so "the signature covers exactly the bytes
-	 * the board writes" can be literally true here. */
+	/* The signature covers the whole record as it will be written. */
 	sha256((const uint8_t *)&rec, OWNER_REVOKE_SIGNED_LEN, digest);
 	if (!fw_verify_signature_with_key(s_effective->root_pubkey, digest, sig)) {
 		printf("** revoke refused: signature does not verify against the "
@@ -750,13 +642,7 @@ bool owner_slot_revoke(const uint8_t leaf_prefix[OWNER_REVOKE_PREFIX_LEN],
 		return false;
 	}
 
-	/* Re-read rather than assume, same reasoning as every other write here.
-	 * Unlike claim/set_owner/factory_reset there is no s_effective field to
-	 * compare against -- a revoke record never becomes the effective owner
-	 * record -- so confirmation means asking owner_slot_is_revoked() about the
-	 * name just written and expecting it to now say yes. */
-	s_scanned = false;
-	owner_slot_init();
+	owner_slot_rescan();
 	if (!owner_slot_is_revoked(probe)) {
 		printf("** revoke wrote a record but it did not take effect - "
 				"see the boot log **\r\n");
@@ -774,13 +660,14 @@ bool owner_slot_is_revoked(const uint8_t leaf_pubkey[64])
 
 	owner_slot_init();
 	root = owner_slot_root();
+	if (root == NULL) {
+		return false;   /* nothing verifies without a root anyway */
+	}
 
 	for (i = 0U; i < s_revoke_count; i++) {
 		const uint8_t *entry = s_revoke_records[i]->leaf_prefix;
 
-		/* R4: the root in force can never revoke itself. Only reachable from a
-		 * record written under a previous owner -- owner_slot_revoke() never
-		 * lets the current owner name itself. */
+		/* R4: the root in force can never revoke itself. */
 		if (memcmp(entry, root, OWNER_REVOKE_PREFIX_LEN) == 0) {
 			continue;
 		}
@@ -791,72 +678,68 @@ bool owner_slot_is_revoked(const uint8_t leaf_pubkey[64])
 	return false;
 }
 
-bool owner_slot_compact(uint8_t *out)
+void owner_slot_build_carry(owner_carry_t *out)
 {
-	uint32_t kept_r = 0U;
-	uint32_t i, j;
 	const uint8_t *root;
+	uint32_t i, j;
 
 	owner_slot_init();
 	root = owner_slot_root();
 
-	/* A claimed board whose compacted chain is empty would come back
-	 * unowned, and nothing undoes that. Refuse instead and let the caller
-	 * carry the area over as it stands. */
-	if (!s_empty && (s_chain_count == 0U)) {
-		printf("** owner area not compacted: the chain resolved to nothing. "
-				"Carrying it over as it stands. **\r\n");
-		return false;
+	memset(out, 0, sizeof(*out));
+	if (root == NULL) {
+		printf("** owner area compacted to nothing: the board has no root **\r\n");
+		return;
 	}
 
-	memset(out, 0xFF, OWNER_SLOT_SIZE);
-
-	for (i = 0U; i < s_chain_count; i++) {
-		memcpy(out + (i * OWNER_RECORD_SIZE), s_chain[i], OWNER_RECORD_SIZE);
-	}
+	out->has_owner = 1U;
+	out->owner = *s_effective;
+	memset(out->owner.prev_sig, 0, sizeof(out->owner.prev_sig));
 
 	for (i = 0U; i < s_revoke_count; i++) {
 		const owner_revoke_rec_t *r = s_revoke_records[i];
 		bool duplicate = false;
 
-		/* R4 already ignores these on every boot, so carrying them forward
-		 * would spend a slot on a record that can never do anything. */
+		/* R4 ignores these on every boot; carrying one forward spends a slot. */
 		if (memcmp(r->leaf_prefix, root, OWNER_REVOKE_PREFIX_LEN) == 0) {
 			continue;
 		}
-		for (j = 0U; j < kept_r; j++) {
-			const owner_revoke_rec_t *kept = (const owner_revoke_rec_t *)
-					(out + OWNER_SEG_O_SIZE + (j * OWNER_REVOKE_REC_SIZE));
-
-			if (memcmp(kept->leaf_prefix, r->leaf_prefix,
+		for (j = 0U; j < out->revoke_count; j++) {
+			if (memcmp(out->revoke[j].leaf_prefix, r->leaf_prefix,
 					OWNER_REVOKE_PREFIX_LEN) == 0) {
 				duplicate = true;
 				break;
 			}
 		}
-		if (duplicate || (kept_r >= OWNER_REVOKE_MAX_RECORDS)) {
-			continue;
+		if (!duplicate) {
+			out->revoke[out->revoke_count++] = *r;
 		}
-		memcpy(out + OWNER_SEG_O_SIZE + (kept_r * OWNER_REVOKE_REC_SIZE),
-				r, OWNER_REVOKE_REC_SIZE);
-		kept_r++;
 	}
 
-	printf("** owner area compacted: %" PRIu32 " of %" PRIu32 " owner record(s) "
-			"and %" PRIu32 " of %" PRIu32 " revocation(s) kept **\r\n",
-			s_chain_count, s_valid_count, kept_r, s_revoke_used);
-	return true;
+	printf("** owner area compacted: 1 of %" PRIu32 " owner record(s) and %" PRIu32
+			" of %" PRIu32 " revocation(s) kept **\r\n",
+			s_valid_count, out->revoke_count, s_revoke_used);
 }
 
-bool owner_slot_root_is_public(void)
+bool owner_slot_write_carry(const owner_carry_t *carry)
 {
-	uint8_t digest[SHA256_DIGEST_SIZE];
+	uint32_t i;
 
-	/* Hash whatever root is actually in force, not fw_public_key directly:
-	 * a board that has been claimed must stop warning. */
-	sha256(owner_slot_root(), 64U, digest);
-
-	return memcmp(digest, k_published_root_sha256, sizeof(digest)) == 0;
+	if (carry->revoke_count > OWNER_REVOKE_MAX_RECORDS) {
+		return false;
+	}
+	for (i = 0U; i < carry->revoke_count; i++) {
+		if (Flash_If_Write((uint8_t *)&carry->revoke[i],
+				(uint8_t *)(OWNER_SEG_R_BASE + (i * OWNER_REVOKE_REC_SIZE)),
+				OWNER_REVOKE_REC_SIZE) != 0U) {
+			printf("** FAILED writing a revocation back **\r\n");
+			return false;
+		}
+	}
+	if (carry->has_owner != 0U) {
+		return program_record(&carry->owner, (uint8_t *)OWNER_SEG_O_BASE);
+	}
+	return true;
 }
 
 bool owner_slot_is_empty(void)
@@ -871,37 +754,12 @@ uint32_t owner_slot_record_count(void)
 	return s_valid_count;
 }
 
-/*
- * The warning that makes the owner slot worth having.
- *
- * Printed when the root in force is the published one -- meaning its private
- * half is in everybody's hands, so anybody can sign firmware this board will
- * accept. That is the honest description of a factory board, and
- * $PROD/docs/modules/M2-ownership.md is explicit that it is a consequence of the product being
- * open, not a defect to be hidden.
- *
- * Deliberately NOT keyed on the slot being empty: a customer who built the
- * firmware with their own key has an empty slot and a safe board. Warning them
- * on every boot would train every reader to skip the line, and the one board
- * that genuinely needed the warning would be skipped with it.
- */
-static void report_root_trust(void)
-{
-	if (!owner_slot_root_is_public()) {
-		return;
-	}
-	printf("** This board trusts the PUBLISHED root key: anyone can sign firmware "
-			"it will run. **\r\n"
-			"** Claim it (see $PROD/docs/modules/M2-ownership.md) to bind it to a key of your own. **\r\n");
-}
-
 void owner_slot_report(void)
 {
 	owner_slot_init();
 
 	if (s_empty) {
-		printf("Owner slot: empty, using the built-in root key\r\n");
-		report_root_trust();
+		printf("Owner slot: empty - no root, the next upload claims this board\r\n");
 		return;
 	}
 
@@ -915,39 +773,30 @@ void owner_slot_report(void)
 				s_ignored_count);
 	}
 	if (s_torn_count > 0U) {
-		/* Expected after a power cut during a claim, and harmless: the header
-		 * is written last precisely so this is what a torn write looks like. */
 		printf("Owner slot: %" PRIu32 " partial record(s) from an interrupted write, "
 				"ignored\r\n", s_torn_count);
 	}
 
-	if (s_effective != NULL) {
-		if ((s_effective->flags & OWNER_FLAG_CLEARED) != 0UL) {
-			printf("Owner slot: last record is a factory reset - back to the "
-					"built-in root\r\n");
-		} else {
-			printf("Owner slot: claimed at generation %" PRIu32 " - "
-					"firmware must be signed by that owner\r\n",
-					s_effective->generation);
-		}
+	if (effective_is_root()) {
+		printf("Owner slot: claimed at generation %" PRIu32 " - "
+				"firmware must be signed by that owner\r\n",
+				s_effective->generation);
+	} else if (s_effective != NULL) {
+		printf("Owner slot: last record is a factory reset - no root, the next "
+				"upload claims this board\r\n");
+	} else {
+		printf("Owner slot: no valid record - no root, the next upload claims "
+				"this board\r\n");
 	}
 
-	/* Loud on purpose. Records that exist but are not being honoured are a
-	 * confusing state, and silence would let it look normal. */
+	/* Loud on purpose: records that exist but are not honoured would otherwise
+	 * look normal. */
 	if (s_unauthorised_count > 0U) {
-		/* Not an error the board can fix, and not necessarily an attack either:
-		 * a record signed by an owner further down a chain that was broken
-		 * earlier lands here too. Either way the board keeps the last root it
-		 * could actually authorise, and says how many it would not. */
 		printf("** %" PRIu32 " owner record(s) NOT in effect: not signed by the "
 				"owner in force at that point in the chain. The board is using "
 				"the last root it could verify. **\r\n", s_unauthorised_count);
 	}
 
-	/* Free slots in both segments and the size of the revocation set: this
-	 * area only ever appends, so all three numbers matter to whoever is
-	 * deciding whether it is time to reflash and reclaim.
-	 * See $PROD/docs/modules/M2-ownership.md. */
 	{
 		uint32_t o_used = s_valid_count + s_ignored_count + s_torn_count;
 		uint32_t o_free = (o_used < OWNER_SLOT_MAX_RECORDS)
@@ -960,8 +809,8 @@ void owner_slot_report(void)
 		const uint8_t *root = owner_slot_root();
 
 		for (ri = 0U; ri < s_revoke_count; ri++) {
-			if (memcmp(s_revoke_records[ri]->leaf_prefix, root,
-					OWNER_REVOKE_PREFIX_LEN) == 0) {
+			if ((root != NULL) && (memcmp(s_revoke_records[ri]->leaf_prefix, root,
+					OWNER_REVOKE_PREFIX_LEN) == 0)) {
 				self_named = true;
 				continue;
 			}
@@ -975,27 +824,17 @@ void owner_slot_report(void)
 				r_free, (uint32_t)OWNER_REVOKE_MAX_RECORDS,
 				revoked_names);
 
-		/* Early enough to act on, and explicit about what acting means: an
-		 * operator who reads "change the root" as "that frees slots" would
-		 * come back to a full area. Nothing but a reflash frees them. */
+		/* Owner slots reclaim themselves; revocation slots only come back
+		 * through setowner --wipe, so warn early enough to act. */
 		if (r_free <= OWNER_REVOKE_LOW_WATER) {
 			printf("** Only %" PRIu32 " revocation slot(s) left. Changing the "
-					"root (setowner) retires every leaf that root issued, so "
-					"they no longer need revoking one by one - but it does NOT "
-					"free these slots. Only reflashing the bootloader does. **\r\n",
-					r_free);
+					"root with setowner --wipe retires every leaf that root "
+					"issued and empties these slots. **\r\n", r_free);
 		}
 
-		/* R4 in practice, not just in the check: this can only happen from a
-		 * captured 'R' record replayed after the board changed hands, since
-		 * owner_slot_revoke() never lets the current owner name itself. Either
-		 * way the board is fine -- the record is ignored, not honoured -- but a
-		 * revocation nobody expected is worth a loud line, not a silent skip. */
 		if (self_named) {
 			printf("** A revocation names the root currently in force - ignored "
 					"(a root can never revoke itself, R4). **\r\n");
 		}
 	}
-
-	report_root_trust();
 }

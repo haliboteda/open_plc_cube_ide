@@ -3,21 +3,15 @@
  *
  * Requirement C10. Design: $PROD/docs/modules/M2-ownership.md.
  *
- * An append-only record area in the top 8K of the bootloader's own flash
- * sector, reserved by STM32H743IIKX_FLASH.ld (FLASH LENGTH is 120K, not the
- * 128K of the sector, so the linker cannot place anything here). Empty means
- * the board falls back to the root compiled into fw_pubkey.c.
+ * An append-only record area in sector 15, right after the calibration area.
+ * No root is compiled into the bootloader: an empty area (or one ending in a
+ * factory reset) means the board trusts no root and accepts only a takeown.
+ * Decision 72; design in $PROD/docs/modules/M2-ownership.md.
  *
- * Why this area and not the state sector: a reclaim there erases the whole
- * sector. Copying owner records out and back would open a window the width of
- * an erase, and losing them there would silently return the board to the
- * factory root -- the one failure this must not have.
- *
- * Fully implemented: init/claim/set_owner/factory_reset all write real
- * records, and owner_slot_root() walks the verified chain (resolve_chain() in
- * the .c file) rather than trusting the compiled-in root unconditionally.
- * $PROD/docs/modules/M2-ownership.md is the design source; this header only states the
- * on-flash layout.
+ * The area lives in sector 15 so root changes are unlimited and never touch
+ * the bootloader: when a segment fills, bootloader_state_reclaim() rewrites
+ * the sector with the compacted area, staging it in backup SRAM across the
+ * erase ($PROD/docs/modules/M1/SECTOR-15.md).
  *
  * v4 (2026-09-22) splits the area into two fixed-length segments: 32 'O'
  * (ownership) records of 160 bytes, then 96 'R' (revocation) records of 32
@@ -33,15 +27,15 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/* Top 8K of the bootloader sector. Must agree with FLASH LENGTH in
- * STM32H743IIKX_FLASH.ld: that script grants the linker 0x08000000..0x0801DFFF
- * and this area starts where it stops.
+/* Sector 15 + 8 KiB (after the calibration area). Must agree with
+ * IAP_ROOT_AREA_BASE in bootloader_state.c and with owner_root_ro.c in the
+ * Arduino core (P2).
  *
  * Guarded so a host harness can point the area at a RAM buffer and run this
  * file's real logic on a PC -- same arrangement the core mirror already uses.
  * Nothing in the firmware build defines it. */
 #ifndef OWNER_SLOT_BASE
-#define OWNER_SLOT_BASE        0x0801E000UL
+#define OWNER_SLOT_BASE        0x081E2000UL
 #endif
 #define OWNER_SLOT_SIZE        (8U * 1024U)
 
@@ -72,7 +66,7 @@
 #define OWNER_FORMAT_VER          4U
 
 /* flags -- 'O' records only; an 'R' record has no flags field */
-#define OWNER_FLAG_CLEARED     0x00000001UL   /* factory reset: fall back to R0 */
+#define OWNER_FLAG_CLEARED     0x00000001UL   /* factory reset: back to no root */
 
 /* A leaf is named by the first 16 bytes of its 64-byte public key -- not the
  * whole key. Full P-256 points are effectively random, so 128 bits of prefix
@@ -116,9 +110,9 @@ typedef struct {
 	                            *      record (there is no "this board" claim
 	                            *      left once cleared).                     */
 	uint8_t  prev_sig[64];     /*  88  previous root's signature over bytes 0..87
-	                            *      all zero for the first claim and for a
-	                            *      cleared 'O' record -- those are gated by a
-	                            *      physical action, not by a signature       */
+	                            *      all zero for the first claim, a cleared
+	                            *      record and a compacted record -- none has
+	                            *      a root in force to sign it              */
 	uint8_t  reserved[8];      /* 152                                          */
 } owner_record_t;
 
@@ -149,20 +143,14 @@ void owner_slot_init(void);
 /*
  * Append a record claiming this board for `root_pubkey`.
  *
- * Gated on BOOT0 having been held through this boot's startup window -- the
- * caller passes that in rather than reading the pin again, because by the time
- * a command arrives the operator has long since let go.
+ * No gate (decision 72): a board with no root accepts the first claim over
+ * USB or Ethernet, unsigned, from whoever sends it first. Whoever beats the
+ * owner to it is undone by a factory reset. $PROD/docs/modules/M2-ownership.md.
  *
- * ⚠️ The first claim carries no signature and cannot: there is no owner yet to
- * sign it. It is trust-on-first-use, gated by physical presence, and whoever
- * gets there first wins. $PROD/docs/modules/M2-ownership.md states this plainly -- a factory
- * board's security ceiling is "anyone who can press the button", and that only
- * closes once the board is claimed.
- *
- * Returns false and changes nothing if the board is already claimed, if BOOT0
- * was not held, or if the write fails.
+ * Returns false and changes nothing if the board already has a root or if the
+ * write fails.
  */
-bool owner_slot_claim(const uint8_t root_pubkey[64], bool boot0_held);
+bool owner_slot_claim(const uint8_t root_pubkey[64]);
 
 /* The bytes a change-of-owner signature covers: everything in the record
  * before prev_sig itself -- type, slots, format_ver, generation, flags, the
@@ -180,9 +168,9 @@ bool owner_slot_claim(const uint8_t root_pubkey[64], bool boot0_held);
  * bit for bit on what was signed.
  *
  * No physical gate: the signature IS the authorisation, and changing owner
- * remotely is a case the design means to support. That is also why this is a
- * different entry point from owner_slot_claim(), which has no signature to
- * check and so can only be gated by presence.
+ * remotely is a case the design means to support. owner_slot_claim() is a
+ * different entry point because it has no signature to check and is only
+ * accepted while the board has no root.
  *
  * Verified before anything is written -- a record that would not apply should
  * never reach the flash.
@@ -195,7 +183,7 @@ bool owner_slot_set_owner(uint32_t generation, const uint8_t new_root[64],
 uint32_t owner_slot_generation(void);
 
 /*
- * Append a cleared record: the board goes back to the built-in root and can be
+ * Append a cleared record: the board goes back to having no root and can be
  * claimed again.
  *
  * Carries no signature, and that is the trade $PROD/docs/modules/M2-ownership.md makes on
@@ -228,8 +216,8 @@ bool owner_slot_factory_reset(bool physically_confirmed);
  * request harmless.
  *
  * Returns false when the board is unclaimed, when the signature does not
- * verify, or when the 'R' segment is full -- and in every one of those cases
- * not a byte is written.
+ * verify, or when the 'R' segment is full (only `setowner --wipe` empties it)
+ * -- and in every one of those cases not a byte is written.
  */
 bool owner_slot_revoke(const uint8_t leaf_prefix[OWNER_REVOKE_PREFIX_LEN],
 		const uint8_t sig[64], bool *already);
@@ -252,8 +240,9 @@ bool owner_slot_is_revoked(const uint8_t leaf_pubkey[64]);
 
 /*
  * The root to verify firmware against: the last verified link in the on-flash
- * chain (resolve_chain(), .c file), or the compiled-in fw_public_key when the
- * area is empty or the chain resolves to nothing valid.
+ * chain (resolve_chain(), .c file). NULL when the board has no root -- empty
+ * area, a factory reset, or a chain that resolves to nothing valid. Every
+ * caller must treat NULL as "nothing verifies".
  */
 const uint8_t *owner_slot_root(void);
 
@@ -267,53 +256,40 @@ uint32_t owner_slot_record_count(void);
 void owner_slot_report(void);
 
 /*
- * Build the owner area as it should look after the sector has been erased and
- * rewritten -- the only moment these slots can be reclaimed. `out` is
- * OWNER_SLOT_SIZE bytes and comes back ready to program verbatim.
- *
- * Kept: the 'O' records the chain actually walked, in walk order, and every
- * 'R' record still in effect. Dropped: 'O' records the chain never reached
- * (a record past a broken link must NOT be promoted by compaction -- that
- * would hand an attacker the link the verifier refused), torn and
- * wrong-format records, and 'R' records naming the root in force, which
- * R4 ignores anyway.
- *
- * Returns false and leaves `out` untouched if the result would lose the
- * board's ownership -- the caller is expected to carry the area over verbatim
- * instead, which is always safe and merely reclaims nothing.
+ * What a sector-15 reclaim carries across the erase: the owner record in
+ * force, written back unsigned, and the revocations still in effect. Also the
+ * payload staged in backup SRAM while the sector is erased.
  */
-bool owner_slot_compact(uint8_t *out);
+typedef struct {
+	uint32_t           has_owner;   /* 0 = the board comes back with no root */
+	owner_record_t     owner;
+	uint32_t           revoke_count;
+	owner_revoke_rec_t revoke[OWNER_REVOKE_MAX_RECORDS];
+} owner_carry_t;
 
 /*
- * Build the owner area a `setowner --wipe` should leave behind: erased
- * everywhere except one 'O' record handing the board to `new_root`. `out` is
- * OWNER_SLOT_SIZE bytes.
- *
- * Checks exactly what owner_slot_set_owner() checks -- claimed, generation one
- * past the record in force, signature verifying against the current owner --
- * because the record written here is the same record, only into an area that
- * is about to be erased rather than appended to.
- *
- * `generation` continues from the record in force, not from the highest
- * number found on flash: an unwalked record's generation is whatever whoever
- * wrote it chose, and it is one of the things this wipe is discarding.
- *
- * Returns false and leaves `out` untouched if anything fails. Nothing here
- * writes flash -- the caller does that, and only after this succeeds.
+ * The compacted area: only the record in force, unsigned (the links that
+ * authorised it are being discarded, so a stored signature would have nothing
+ * to verify against on the next boot; unsigned it reads as a first claim),
+ * and every 'R' record still in effect, deduplicated. A board with no root
+ * carries nothing: no revocation can apply without a root.
  */
-bool owner_slot_build_wipe_area(uint32_t generation, const uint8_t new_root[64],
-		const uint8_t sig[64], uint8_t *out);
+void owner_slot_build_carry(owner_carry_t *out);
 
 /*
- * True when the root this board verifies firmware against is the one published
- * with the project -- the key whose PRIVATE half is in the repository, because
- * customers have to be able to sign their own sketches.
- *
- * ⚠️ The question is NOT "is the owner slot empty". A customer who compiled the
- * firmware with their own key has an empty slot and a perfectly safe board;
- * warning them every boot would teach everyone to ignore the line, and then it
- * protects nobody. See $PROD/docs/modules/M2-ownership.md.
+ * The area a `setowner --wipe` leaves behind: one unsigned record handing the
+ * board to `new_root`, no revocations. Checks exactly what
+ * owner_slot_set_owner() checks, before anything is erased. Returns false and
+ * leaves `out` untouched if the handover would be refused.
  */
-bool owner_slot_root_is_public(void);
+bool owner_slot_build_wipe_carry(uint32_t generation, const uint8_t new_root[64],
+		const uint8_t sig[64], owner_carry_t *out);
+
+/* Program `carry` into the (erased) area. Only bootloader_state_reclaim()
+ * calls this. Returns false if a write fails. */
+bool owner_slot_write_carry(const owner_carry_t *carry);
+
+/* Forget the cached scan; the next call reads the area again. */
+void owner_slot_rescan(void);
 
 #endif /* IAPSERVER_OWNER_SLOT_H_ */

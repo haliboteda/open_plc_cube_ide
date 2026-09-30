@@ -122,6 +122,10 @@ bool iap_auth_verify_and_consume(const uint8_t *msg, uint32_t msg_len,
 	 * Revocation is checked here too, not only at upload time -- a revoked
 	 * colleague should not be able to open a session at all, whether or not
 	 * they follow it with an upload. */
+	if (owner_slot_root() == NULL) {
+		printf("Auth rejected: this board has no root - claim it first\r\n");
+		return false;
+	}
 	if (!iap_cert_verify(cert, owner_slot_root(),
 			owner_slot_is_revoked(cert->leaf_pubkey))) {
 		printf("Auth rejected: certificate does not verify against the trusted "

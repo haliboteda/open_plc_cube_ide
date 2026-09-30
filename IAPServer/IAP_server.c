@@ -11,7 +11,6 @@
 #include "crc.h"
 #include "sha256.h"
 #include "fw_verify.h"
-#include "fw_pubkey.h"
 #include "iap_cert.h"
 #include "owner_slot.h"
 #include "bootloader_state.h"
@@ -36,7 +35,6 @@ uint32_t expected_checksum;
 static uint8_t expected_signature[FW_SIGNATURE_SIZE];
 static bool have_expected_signature;
 static iap_cert_t expected_cert;   /* the leaf cert that (claims to) authorise expected_signature */
-static bool s_boot0_held;         /* BOOT0 was down at this boot's decision point */
 static bool s_staging_is_bootloader; /* this transfer is a flashboot, not a flash */
 
 // volatile: written from IAP_data_recv() (USB/lwIP receive callback context)
@@ -219,23 +217,25 @@ void process_command() {
 			// bootloader verifies against, before it spends time sending an
 			// image that would be rejected at the end.
 			//
-			// owner_slot_root(), not fw_public_key: on a claimed board those
-			// differ, and answering with the built-in key would make the tool
-			// compare against a key this board no longer trusts -- refusing
-			// good images and accepting bad ones, both silently.
+			// "none" when the board has no root: IAPTool then claims it before
+			// uploading (decision 72).
 			const uint8_t *root = owner_slot_root();
 			char pubhex[64 * 2U + 1U];
 			uint32_t i;
-			for (i = 0; i < 64U; i++) {
-				(void)sprintf(&pubhex[i * 2U], "%02x", root[i]);
+			if (root == NULL) {
+				send_response("none");
+			} else {
+				for (i = 0; i < 64U; i++) {
+					(void)sprintf(&pubhex[i * 2U], "%02x", root[i]);
+				}
+				send_response(pubhex);
 			}
-			send_response(pubhex);
 		} else if (strncmp((char *)RXBuffer, "takeown ", 8) == 0) {
 			// "takeown <128 hex chars>" -- bind this board to a signing key.
 			//
-			// Only ever the FIRST claim. Changing an existing owner needs the
-			// current owner's signature and is a different command (setowner),
-			// because this one is gated by physical presence alone.
+			// Only while the board has no root, over any channel, no button
+			// (decision 72). Changing an existing owner needs the current
+			// owner's signature and is a different command (setowner).
 			uint8_t key[64];
 			const char *hex = (const char *)RXBuffer + 8;
 			uint32_t i;
@@ -251,7 +251,7 @@ void process_command() {
 			}
 			if (!ok) {
 				send_response("Bad key");
-			} else if (owner_slot_claim(key, s_boot0_held)) {
+			} else if (owner_slot_claim(key)) {
 				send_response("OK");
 			} else {
 				send_response("Refused");
@@ -293,16 +293,11 @@ void process_command() {
 			// "setownerwipe <generation> <newkey_hex> <sig_hex>"
 			//
 			// Same handover, same signature over the same bytes. The wipe form
-			// erases sector 0 and rewrites it with this bootloader and an owner
-			// area holding nothing but the new record -- the only way to get
-			// revocation slots back, and the reason it is a separate command:
-			// the operator has to ask for the risk, the board must never decide
-			// to take it on their behalf (OWN-07).
+			// reclaims sector 15 with a root area holding nothing but the new
+			// record -- the only way to get revocation slots back, so the
+			// operator has to ask for it (OWN-07).
 			//
-			// No BOOT0 here, deliberately: the current owner's signature IS the
-			// authorisation, and handing a board over remotely is a case the
-			// design supports. Physical presence gates only the operations that
-			// have no signature to check -- the first claim and factory reset.
+			// No button: the current owner's signature IS the authorisation.
 			const bool wipe = (RXBuffer[8] == (uint8_t)'w');
 			const char *const verb = wipe ? "setownerwipe" : "setowner";
 			uint32_t gen = 0U;
@@ -332,10 +327,16 @@ void process_command() {
 				if (!ok) {
 					send_response("Bad hex");
 				} else if (wipe) {
-					// A successful wipe resets the board, so there is no OK to
-					// send -- same as flashboot. Reaching the next line means
-					// it refused and nothing was erased.
-					(void)boot_selfupgrade_wipe_owner(gen, key, sig);
+					// Success resets without a reply, as the tool expects
+					// (IAP-PROTOCOL.md); "Refused" means nothing was erased.
+					static owner_carry_t wipe_carry;
+					if (owner_slot_build_wipe_carry(gen, key, sig, &wipe_carry)
+							&& bootloader_state_reclaim(&wipe_carry)) {
+						printf("setownerwipe done. Rebooting...\r\n");
+						fflush(stdout);
+						HAL_Delay(200);
+						HAL_NVIC_SystemReset();
+					}
 					send_response("Refused");
 				} else if (owner_slot_set_owner(gen, key, sig)) {
 					send_response("OK");
@@ -412,9 +413,8 @@ void process_command() {
 			//   nonce most recently returned by "authchallenge" (128 hex chars)
 			//
 			// "flashboot" is the same frame with a different destination: it
-			// replaces the bootloader in sector 0, its image signature is checked
-			// against the owner root rather than the cert's leaf, and an unclaimed
-			// board demands BOOT0 instead. Everything else -- staging, CRC,
+			// replaces the bootloader in sector 0 and its image signature is
+			// checked against the owner root rather than the cert's leaf. Everything else -- staging, CRC,
 			// session auth, replay -- is this one path.
 			// $PROD/docs/modules/M1/FLASHBOOT.md.
 			const bool is_bootloader = (RXBuffer[5] == (uint8_t)'b');
@@ -461,11 +461,9 @@ void process_command() {
 					printf("Invalid %s size %" PRIu32 ", the target region only has %" PRIu32 " bytes\r\n",
 							verb, expected_size, size_limit);
 					send_response("ERR");
-				} else if (is_bootloader && owner_slot_root_is_public() && !s_boot0_held) {
-					/* No owner means no key that can authorise this, so the
-					 * authorisation is physical presence -- the same rule takeown
-					 * and factory reset follow. */
-					printf("flashboot on an unclaimed board needs BOOT0 held through startup - refusing\r\n");
+				} else if (owner_slot_root() == NULL) {
+					/* No root, nothing can authorise an image: claim first. */
+					printf("%s refused: this board has no root - claim it first\r\n", verb);
 					send_response("Refused");
 				} else if (!have_expected_signature) {
 					// no valid signature was provided -- refuse before erasing
@@ -562,11 +560,12 @@ void process_command() {
 				 * certificate authorises applications; replacing the bootloader
 				 * is the same weight of act as handing over ownership.
 				 * $PROD/docs/modules/M1/FLASHBOOT.md. */
-				if (s_staging_is_bootloader
-						? !fw_verify_signature_with_key(owner_slot_root(), hash, expected_signature)
+				const uint8_t *root = owner_slot_root();
+				if ((root == NULL)
+						|| (s_staging_is_bootloader
+						? !fw_verify_signature_with_key(root, hash, expected_signature)
 						: !iap_cert_verify_image(hash, expected_signature, &expected_cert,
-							owner_slot_root(),
-							owner_slot_is_revoked(expected_cert.leaf_pubkey))) {
+							root, owner_slot_is_revoked(expected_cert.leaf_pubkey)))) {
 					printf("Signature verification FAILED - firmware not trusted "
 							"(bad signature, or the leaf has been revoked). "
 							"%s untouched.\r\n",
@@ -658,11 +657,6 @@ IAP_Method server_decide(uint8_t boot0Pressed) {
 	boot_req_t req;
 	bool app_signature_valid = false;
 
-	/* Remembered for the whole session: takeown needs to know the operator was
-	 * physically present, and by the time a command arrives over the network
-	 * they have long since let the button go. */
-	s_boot0_held = (boot0Pressed != 0U);
-
 	bootloader_state_init();
 
 	/* Every boot, not only the ones that stay in the bootloader: which key this
@@ -694,7 +688,7 @@ IAP_Method server_decide(uint8_t boot0Pressed) {
 	// value merely look like a plausible RAM address" heuristic, which could
 	// not tell a legitimate app from corrupted or maliciously-written flash
 	// as long as the first word happened to look like a stack pointer.
-	if (bootloader_state_crypto_selftest_passed()) {
+	if (bootloader_state_crypto_selftest_passed() && (owner_slot_root() != NULL)) {
 		iap_fw_metadata_t meta;
 		if (bootloader_state_get_metadata(&meta) && meta.app_size > 0U && meta.app_size <= IAP_APP_MAX_SIZE) {
 			uint8_t hash[32];

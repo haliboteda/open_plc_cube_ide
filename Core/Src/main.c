@@ -36,6 +36,7 @@
 #include "iap_auth.h"
 #include "net_rand.h"
 #include "owner_slot.h"
+#include "bootloader_state.h"
 
 /* Board bring-up tests, v0.1.3-testcase branch. Set one of these to 1 to boot
  * straight into it instead of the bootloader; each *_Test_Run never returns, so
@@ -390,6 +391,10 @@ int main(void)
 
   {
     boot0_gesture_t gesture = boot_window();
+
+    /* Before anything reads the root area: finishes a sector-15 reclaim a
+     * power cut interrupted. */
+    bootloader_state_init();
 
     if (gesture == BOOT0_GESTURE_FACTORY_RESET) {
       /* ⚠️ BEFORE server_decide(), because that is where the owner slot is

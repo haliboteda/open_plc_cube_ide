@@ -13,27 +13,16 @@
  */
 
 #include "boot_selfupgrade.h"
-#include "owner_slot.h"
 #include "IAP_config.h"
 #include "stm32h7xx_hal.h"
 #include <stdio.h>
 #include <inttypes.h>
 
-/* Sector 0 of bank 1: the bootloader and, in its top 8 KiB, the owner record
- * area. One erase takes both, which is why the owner records are carried. */
+/* Sector 0 of bank 1 holds the bootloader and nothing else: the root area is
+ * in sector 15 (decision 72), so a flashboot carries nothing across. */
 #define BOOT_SECTOR_BASE   ((uint32_t)FLASH_BASE)
 #define BOOT_SECTOR_NUMBER 0U
-#define BOOT_IMAGE_MAX     (OWNER_SLOT_BASE - BOOT_SECTOR_BASE)   /* 120 KiB */
-
-/* Where the owner records wait out the erase. Past the 128 KiB a bootloader
- * image can reach, so the two never overlap. A full application image is far
- * larger than that, but one is never staged during a flashboot. */
-#define OWNER_CARRY_BASE   (IAP_STAGE_BASE + (128U * 1024U))
-
-_Static_assert(OWNER_CARRY_BASE + OWNER_SLOT_SIZE <= IAP_STAGE_BASE + IAP_STAGE_SIZE,
-		"the owner carry buffer does not fit in the SDRAM staging region");
-_Static_assert(BOOT_IMAGE_MAX == (120U * 1024U),
-		"the bootloader region is not 120 KiB -- check OWNER_SLOT_BASE");
+#define BOOT_IMAGE_MAX     (128U * 1024U)
 
 /* A bounded spin, not a timeout in milliseconds: SysTick cannot advance with
  * interrupts off, so HAL_GetTick() would stand still. The count only has to
@@ -107,16 +96,12 @@ static bool ram_program(uint32_t dst, const uint32_t *src, uint32_t len)
 }
 
 /*
- * The point of no return. Erases sector 0, writes the owner records back
- * first, then the new bootloader, and resets.
- *
- * Owner first is deliberate: a power cut between the two writes then leaves a
- * board that will not boot but is still owned, which an ST-Link reflash
- * recovers. The other order leaves it unowned, and whoever presses BOOT0
- * next takes it.
+ * The point of no return. Erases sector 0, writes the new bootloader and
+ * resets. A power cut in between leaves a board that will not boot but still
+ * owns its root (sector 15); an ST-Link reflash recovers it.
  */
 __attribute__((section(".RamFunc"), noinline, noreturn))
-static void ram_burn(uint32_t image_words, const uint32_t *image, const uint32_t *owner)
+static void ram_burn(uint32_t image_words, const uint32_t *image)
 {
 	(void)ram_wait_bank1();
 
@@ -126,9 +111,7 @@ static void ram_burn(uint32_t image_words, const uint32_t *image, const uint32_t
 
 	if (ram_wait_bank1()) {
 		CLEAR_BIT(FLASH->CR1, FLASH_CR_SER);
-		if (ram_program(OWNER_SLOT_BASE, owner, OWNER_SLOT_SIZE)) {
-			(void)ram_program(BOOT_SECTOR_BASE, image, image_words * 4U);
-		}
+		(void)ram_program(BOOT_SECTOR_BASE, image, image_words * 4U);
 	}
 
 	FLASH->CR1 |= FLASH_CR_LOCK;
@@ -140,22 +123,9 @@ static void ram_burn(uint32_t image_words, const uint32_t *image, const uint32_t
 	}
 }
 
-static bool bytes_are_erased(const uint8_t *p, uint32_t len)
-{
-	uint32_t i;
-
-	for (i = 0U; i < len; i++) {
-		if (p[i] != 0xFFU) {
-			return false;
-		}
-	}
-	return true;
-}
-
 /*
- * Everything from "the buffers are ready" to the point of no return. Shared
- * so the two entry points cannot arm the hardware differently; `what` only
- * names the operation in the log.
+ * Everything from "the image is staged" to the point of no return; `what`
+ * only names the operation in the log.
  *
  * Returns false only if the flash will not unlock. Otherwise it does not
  * return: ram_burn() resets the board.
@@ -180,8 +150,7 @@ static bool arm_and_burn(uint32_t image_size, const char *what)
 	SCB_DisableICache();
 	__disable_irq();
 
-	ram_burn(image_size / 4U, (const uint32_t *)IAP_STAGE_BASE,
-			(const uint32_t *)OWNER_CARRY_BASE);
+	ram_burn(image_size / 4U, (const uint32_t *)IAP_STAGE_BASE);
 }
 
 bool boot_selfupgrade_commit(uint32_t image_size)
@@ -189,8 +158,6 @@ bool boot_selfupgrade_commit(uint32_t image_size)
 	/* HAL_FLASH_Program always commits a whole 32-byte flash word, so the
 	 * image is padded up with the erased value. */
 	const uint32_t padded = (image_size + 31U) & ~31U;
-	uint8_t *carry = (uint8_t *)OWNER_CARRY_BASE;
-	const uint8_t *owner = (const uint8_t *)OWNER_SLOT_BASE;
 	uint32_t i;
 
 	if ((image_size == 0U) || (padded > BOOT_IMAGE_MAX)) {
@@ -203,59 +170,5 @@ bool boot_selfupgrade_commit(uint32_t image_size)
 		((uint8_t *)IAP_STAGE_BASE)[i] = 0xFFU;
 	}
 
-	/* Read the owner records out while flash is still readable.
-	 *
-	 * Compacted here, before interrupts go down, so the decisions are made by
-	 * ordinary code that can still print and still read flash -- ram_burn()
-	 * only ever programs the buffer it is handed. An erase is the one moment
-	 * these slots can be reclaimed, and nothing else reclaims them.
-	 *
-	 * If compaction refuses, the area goes over exactly as it stands: that
-	 * reclaims nothing but cannot lose ownership. */
-	if (!owner_slot_compact(carry)) {
-		for (i = 0U; i < OWNER_SLOT_SIZE; i++) {
-			carry[i] = owner[i];
-		}
-	}
-
 	return arm_and_burn(padded, "flashboot");
-}
-
-/*
- * The owner area shares sector 0 with the bootloader, so emptying it means
- * erasing the bootloader too -- and writing it straight back. Same erase, same
- * risk, same recovery as replacing it with a different image.
- */
-bool boot_selfupgrade_wipe_owner(uint32_t generation, const uint8_t new_root[64],
-		const uint8_t sig[64])
-{
-	uint8_t *staged = (uint8_t *)IAP_STAGE_BASE;
-	const uint8_t *self = (const uint8_t *)BOOT_SECTOR_BASE;
-	uint32_t size = BOOT_IMAGE_MAX;
-	uint32_t i;
-
-	/* Refuse a handover this board would refuse anyway, before anything is
-	 * erased -- the whole point of checking first. */
-	if (!owner_slot_build_wipe_area(generation, new_root, sig,
-			(uint8_t *)OWNER_CARRY_BASE)) {
-		return false;
-	}
-
-	/* Copy this bootloader out to write it back unchanged. Trailing erased
-	 * words are dropped: they are already 0xFF after the erase, and every one
-	 * of them would otherwise be a program operation lengthening the window
-	 * in which a power cut leaves the board unbootable. */
-	while ((size >= 32U) && bytes_are_erased(&self[size - 32U], 32U)) {
-		size -= 32U;
-	}
-	if (size == 0U) {
-		printf("setownerwipe: this sector reads as erased, refusing to rewrite "
-				"it from nothing\r\n");
-		return false;
-	}
-	for (i = 0U; i < size; i++) {
-		staged[i] = self[i];
-	}
-
-	return arm_and_burn(size, "setownerwipe");
 }
