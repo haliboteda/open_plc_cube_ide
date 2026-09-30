@@ -610,8 +610,8 @@ void process_command() {
 
 /*
  * Raw, silent read of the BOOT0 / KNX-programming button (SW2 on PG9). Silent
- * because the caller polls it throughout the startup relay window. Reads the
- * pin as MX_GPIO_Init() left it; HIGH means pressed.
+ * because the caller polls it while the button stays down after the boot
+ * window. Reads the pin as MX_GPIO_Init() left it; HIGH means pressed.
  */
 uint8_t boot0_is_pressed(void) {
 	return (HAL_GPIO_ReadPin(BOOT0_GPIO_Port, BOOT0_Pin) == GPIO_PIN_SET) ? 1U : 0U;
@@ -651,8 +651,7 @@ __attribute__((naked)) static void jump_to_app(uint32_t msp, uint32_t reset_vect
  * inherits almost none of our state. "Never initialised" cannot be got wrong,
  * whereas a de-init list has to be maintained by hand and silently rots.
  *
- * Deliberately does not jump: the caller owns that step (server_jump_to_app) so
- * it can do its own work first, such as the startup beep.
+ * Deliberately does not jump: the caller owns that step (server_jump_to_app).
  */
 IAP_Method server_decide(uint8_t boot0Pressed) {
 	IAP_Method mode = IAP_NONE;
@@ -680,9 +679,9 @@ IAP_Method server_decide(uint8_t boot0Pressed) {
 	 * cause. It consumes the record, so a stale request can never pin us here. */
 	req = boot_handoff_take();
 
-	/* boot0Pressed is latched by the caller across the whole startup relay
-	 * window, not sampled here: reading the pin once at this point would need
-	 * the operator to already be holding the button a few milliseconds after
+	/* boot0Pressed is read by the caller at the end of the boot window, not
+	 * sampled here: reading the pin once at this point would need the operator
+	 * to already be holding the button a few milliseconds after
 	 * reset, which is not a reaction time a human has. A press decides the
 	 * outcome on its own -- see the branch below. */
 	const char *reason = "";
@@ -722,14 +721,14 @@ IAP_Method server_decide(uint8_t boot0Pressed) {
 
 	if (boot0Pressed > 0U) {
 		/* The physical escape hatch wins outright. Whoever held the button
-		 * through the relay window wants the bootloader, so nothing else gets
-		 * a vote -- not the handoff request, not the signature. We cannot know
+		 * at the end of the boot window wants the bootloader, so nothing else
+		 * gets a vote -- not the handoff request, not the signature. We cannot know
 		 * which channel they will use, so serve all of them.
 		 *
 		 * The two reads above still had to happen: boot_handoff_take() is what
 		 * consumes the request record (leaving it would pin the *next* boot
-		 * here), and the signature result feeds the startup beep and the UDP
-		 * server name, neither of which is part of this decision. */
+		 * here), and the signature result feeds the UDP server name and
+		 * getapprevoked, neither of which is part of this decision. */
 		mode = IAP_ALL;
 		reason = "BOOT0 held";
 	} else {

@@ -29,7 +29,7 @@ void process_command();
  * is initialised. See server_decide() in IAP_server.c for why.
  *
  *   Phase 1 (from USER CODE BEGIN SysInit, only minimal GPIO + UART4 up):
- *       pressed = <relay window, polling boot0_is_pressed() throughout>;
+ *       pressed = <boot window: LED blinks 2 s, then boot0_is_pressed() once>;
  *       mode    = server_decide(pressed);
  *       if (mode == IAP_NONE) { server_jump_to_app(); }
  *
@@ -37,8 +37,8 @@ void process_command();
  *       IAP_servers_start(mode);
  */
 
-/* Silent single read of SW2 (PG9), meant to be taken once the startup relay
- * window has given the operator time to press it. */
+/* Silent single read of SW2 (PG9), meant to be taken once the boot window
+ * has given the operator time to press it. */
 uint8_t boot0_is_pressed(void);
 
 IAP_Method server_decide(uint8_t boot0Pressed);

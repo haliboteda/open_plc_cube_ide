@@ -26,8 +26,7 @@
 
 /* A fixed witness value. It can only read back correctly if the backup domain
  * survived, which is what tells us the VBAT cell is doing its job. The nonce no
- * longer depends on that (decision 66), but the RTC's own timekeeping does, and
- * the startup relay is picked from the running RTC.
+ * longer depends on that (decision 66), but the RTC's own timekeeping does.
  *
  * Backup register allocation is shared state across three repositories with no
  * shared build -- see the table in $PROD/docs/repo/ARCHITECTURE.md before claiming one. */

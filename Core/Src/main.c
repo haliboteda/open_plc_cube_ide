@@ -424,7 +424,7 @@ int main(void)
 
   MX_RNG_Init();   /* iap_auth draws the challenge nonce from it */
   net_rand_seed(); /* before MX_LWIP_Init(): lwIP's LWIP_RAND() is rand() */
-  MX_RTC_Init();   /* backup-domain witness, and the clock the relay pick reads */
+  MX_RTC_Init();   /* backup-domain witness */
   iap_auth_report_backup_domain();
   MX_CRC_Init();   /* upload checksum */
   MX_FMC_Init();   /* external SDRAM: staging area for the incoming image */

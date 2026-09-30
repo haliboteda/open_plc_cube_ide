@@ -1,5 +1,16 @@
 # IAP keys
 
+> ⚠️ **Planned change (decision 72 in `$PROD/docs/tables/DECISIONS.md`, not yet
+> implemented).** This whole directory is deleted when it lands. Boards leave the
+> factory with no root at all; the first upload over USB or Ethernet makes
+> IAPTool generate a key pair (or reuse the one it finds), claim the board with
+> it, then upload. The private key lives in
+> `<user config dir>/openplc/keys/fw_signing_key.pem` and IAPTool prints that
+> path whenever it creates or reads it. On a new PC, copy the root private key
+> there yourself; to let colleagues upload, issue them leaf certificates. A
+> factory reset (BOOT0 held for 10 s) returns the board to "no root". Until
+> then, everything below describes the current code.
+
 Everything the IAP path treats as a secret lives in this directory. The code
 that verifies a signature is public and that is fine; the private key that
 produces valid signatures is not.
