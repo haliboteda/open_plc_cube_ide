@@ -1,7 +1,7 @@
 /*
  * owner_slot.h -- which public key this board trusts as its signing root.
  *
- * Requirement C10. Design: $PROD/docs/modules/M2-ownership.md.
+ * Requirement R2-02. Design: $PROD/docs/modules/M2-ownership.md.
  *
  * An append-only record area in sector 15, right after the calibration area.
  * No root is compiled into the bootloader: an empty area (or one ending in a
