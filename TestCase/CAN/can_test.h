@@ -222,7 +222,7 @@
 // line every 5 s carries the receive and reply counts plus TEC/REC, which is
 // what tells you the board is alive while the bus is quiet.
 //
-// The host side is $TOOL/TestCase/tools/can_send.py.
+// The host side is $TEST/tools/can_send.py.
 
 #ifndef INC_CAN_TEST_H_
 #define INC_CAN_TEST_H_

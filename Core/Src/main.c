@@ -70,7 +70,7 @@
 #endif
 
 /* Reply to every frame with its payload incremented by one, same identifier.
- * Transmits nothing on its own. Host side: $TOOL/TestCase/tools/can_send.py */
+ * Transmits nothing on its own. Host side: $TEST/tools/can_send.py */
 #ifndef CAN_ECHO_TEST_ENABLE
 #define CAN_ECHO_TEST_ENABLE 0
 #endif
@@ -80,7 +80,7 @@
 #endif
 
 /* RS485 on USART2 through the SP3485EN: pin-level check, a periodic banner,
- * and an echo of whatever arrives. Host side: $TOOL/TestCase/tools/rs485_echo.py */
+ * and an echo of whatever arrives. Host side: $TEST/tools/rs485_echo.py */
 #ifndef RS485_TEST_ENABLE
 #define RS485_TEST_ENABLE 0
 #endif

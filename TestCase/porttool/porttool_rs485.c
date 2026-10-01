@@ -25,7 +25,7 @@
 // *** board is deaf while it transmits and CANNOT hear itself. With nothing
 // *** on the other end the counter will never close - that is the wiring
 // *** being wrong, not the session. A second device is required; see
-// *** $TOOL/TestCase/tools/rs485_echo.py or the panel's own link responder.
+// *** $TEST/tools/rs485_echo.py or the panel's own link responder.
 
 #include "porttool.h"
 #include "porttool_cmd.h"

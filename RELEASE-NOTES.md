@@ -374,19 +374,19 @@ There is no second secret: the board holds only public keys.
 
 Everything here has burned someone at least once.
 
-The first three are now checked by `$TOOL/TestCase/tools/selfcheck.py`, which
+The first three are now checked by `$TEST/tools/selfcheck.py`, which
 also runs the host-side tests. Run it before working through the rest by hand.
 
 - [ ] `OPENPLC_FW_VERSION` in `Core/Inc/IAP_config.h` matches
       `OPEN-PLC.build.fw_version` in the core package's `boards.txt`. Nothing
       enforces this — the two live in different repositories with no shared
-      build. → `$TOOL/TestCase/tools/check_version_sync.py`
+      build. → `$TEST/tools/check_version_sync.py`
 - [ ] Every mirrored file is in sync across the three repositories (see
       `$PROD/docs/repo/ARCHITECTURE.md`, "跨仓镜像的代码"). A divergence does not fail the
       build; it shows up at runtime as something unrelated.
-      → `$TOOL/TestCase/tools/check_mirror_sync.py`
+      → `$TEST/tools/check_mirror_sync.py`
 - [ ] Everything verified in the live Arduino15 package has been copied back
       into the core package's git repository and committed.
-      → `$TOOL/TestCase/tools/check_core_sync.py`
+      → `$CORE_REPO/tests/check_core_sync.py`
 - [ ] Bootloader flashed over ST-Link/DFU and the application uploaded over
       IAP, in that order, on a board that previously ran the older release.

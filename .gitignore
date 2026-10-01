@@ -29,3 +29,7 @@ __pycache__/
 # md2html.py 生成的，要发出去的时候随手跑一遍。
 # 进了 git 就是同一份东西两个出处，改了 .md 忘了重生成，漂的是发出去的那份。
 docs/test/PROD-DOC-REVIEW.html
+
+# Host tests (tests/): the build tree and this machine's toolchain preset.
+tests/build/
+tests/CMakeUserPresets.json

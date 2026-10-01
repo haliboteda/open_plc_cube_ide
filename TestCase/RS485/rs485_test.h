@@ -14,7 +14,7 @@
 // *** RS485 works needs a second device on A/B.
 // *** PI2 = RS485_EN does not exist on this board - PD4 is the only control.
 //
-// Host side: $TOOL/TestCase/tools/rs485_echo.py
+// Host side: $TEST/tools/rs485_echo.py
 //
 // The transceiver has no enable pin - pin 8 is tied straight to +3V3 - so PD4
 // is the only control there is.

@@ -29,7 +29,8 @@ STM32H743IIKx（Cortex-M7，2 MB Flash / 1 MB RAM）的 **bootloader**。带签�
 | `STM32H743IIKX_FLASH.ld` | bootloader 的链接脚本。FLASH LENGTH 是整个扇区 0 的 128K（根区在扇区 15）。规矩在 `$PROD/docs/build/CUBEMX-RULES.md` |
 | `STM32H743IIKX_FLASH_PORTTOOL.ld` | **工装镜像专用**，FLASH 拿整片 2048K（ST-Link 整片烧，不走 IAP，没有 app 和 owner 记录要避让）。⚠️ **用它编出来的东西不能当 bootloader 烧。** 哪次构建用哪份由 `PLC_LD_SCRIPT` 决定 —— 见 `$PROD/docs/build/CUBEMX-RULES.md` |
 | `*.ioc` `.mxproject` | CubeMX 工程定义。**它才是外设配置的单一事实源** |
-| `cmake/` `CMakeLists.txt` | CubeMX 生成的 CMake 工程，⚠️ **当前构建不用它**，而且它的 GLOB 不覆盖 `TestCase/` 和 `IAPServer/` |
+| `cmake/` `CMakeLists.txt` | 顶层 `CMakeLists.txt` 由 `CMakeLists_template.txt` 填出来（文件头这么写；是哪个工具填的没核实）；`cmake/stm32cubemx/` 是 CubeMX 生成的（文件头这么写）。`.ioc` 的工具链是 STM32CubeIDE，CubeMX 现在不再生成它们。⚠️ **当前构建不用它们**，GLOB 也不覆盖 `TestCase/` 和 `IAPServer/`；顶层那份写死 `arm-none-eabi-gcc`，不能把 `tests/` 挂进去 |
+| `tests/` | **主机测试**：`IAPServer/` 的真源码 + 桩，用本机 gcc 编，CTest 跑；外加 P16 / P17 两项源码检查。独立的 CMake 工程，**不在 `.cproject` 的编译范围里**（⚠️ 所以不能放进 `TestCase/`，那里会被编进固件）。怎么跑见第六节 |
 | `Debug/` | gitignored 构建产物：`.elf` `.bin` `.hex` `.map` `.list` |
 
 ## 三、不开 CubeIDE 也能挡住低级错误
@@ -48,7 +49,7 @@ arm-none-eabi-gcc -fsyntax-only -mcpu=cortex-m7 -mthumb \
 1. **CubeMX 生成区不能手工改**，重新生成后有两项必查 —— `$PROD/docs/build/CUBEMX-RULES.md`
 2. **`docs/` 下的笔记是本仓库事实的唯一出处。** 发现和现状不符就地改掉，不要另起一份 —— 约定见 `$PROD/docs/repo/CONVENTIONS.md`
 3. ⚠️ **`TestCase/` 里的代码是已经测试通过的，写任何测试用例都必须先参考它。**（用户 2026-09-11：「testcase 是测试通过的代码，你写测试用例都要必须参考」）做一个端口的新用例、或者怀疑工装某个端口有问题时，**先读 `TestCase/<PORT>/<port>_test.c`** —— 那份在真板子上跑通过。两边行为不一致时，**差异本身就是线索**：2026-09-11 的 RS485 overrun 就是这么找到的（独立测试的紧循环不丢字节，工装的超循环丢，根因是 USART FIFO 没开）。
-4. **测试脚本不放这个仓库。** 它们在 `$TOOL/TestCase/tools/` 或 `host/<主题>/`，判据在 `$PROD/docs/engineering/HOW-TO-RUN-TESTS.md`。这个仓库**没有 `tools/` 目录**，也不该有
+4. **这个仓库只放测 bootloader 自己的测试**（`tests/`，决策 78）。要用到别的仓、或者要上真板子的测试在 `$TEST`（`OpenPLC_Test`）。判据在 `$PROD/docs/engineering/HOW-TO-RUN-TESTS.md`
 
 ## 五、这个仓库的四份入口文件
 
@@ -57,3 +58,15 @@ arm-none-eabi-gcc -fsyntax-only -mcpu=cortex-m7 -mthumb \
 | [README.md](README.md) | 英文，对外：烧 bootloader、Arduino 侧怎么装 |
 | [RELEASE-NOTES.md](RELEASE-NOTES.md) | 英文，对外：升级规则、known issues、未验证项、发版检查单。**升级风险只靠它兜着** |
 | `$PROD/docs/build/BOOTLOADER-PROJECT-LAYOUT.md` | 工程结构：flash 分区、尺寸预算、模块清单、lwIP 配置、构建配置 |
+
+## 六、主机测试怎么跑
+
+```
+cd tests
+cmake --preset local          # 第一次；local 预设在 gitignored 的 CMakeUserPresets.json 里，写法见 tests/README.md
+cmake --build --preset local
+ctest --preset local          # 34 项：T1-16、owner 区 7 组、T2-34 的 24 个断电场景、P16、P17
+```
+
+只要 gcc、cmake、ninja，不读任何本机配置文件（决策 78）。本机这三样在 `D:\Soft\mingw64\bin`，不在 PATH 上，由 `CMakeUserPresets.json` 指过去。
+
