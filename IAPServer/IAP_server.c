@@ -628,6 +628,7 @@ uint8_t boot0_is_pressed(void) {
 // AXI SRAM) and bus-faulting on the register pop. A naked function has no
 // compiler-generated prologue/epilogue at all, so nothing can run between
 // setting MSP and jumping.
+#ifndef IAP_SERVER_HOST_TEST
 __attribute__((naked)) static void jump_to_app(uint32_t msp, uint32_t reset_vector)
 {
 	__asm volatile (
@@ -638,6 +639,12 @@ __attribute__((naked)) static void jump_to_app(uint32_t msp, uint32_t reset_vect
 		"bx r1\n"
 	);
 }
+#else
+/* The PC stand-in has no Cortex-M to jump into; it ends this boot and starts
+ * the application half instead. $PROD/docs/engineering/BOOTLOADER-STAND-IN.md */
+void iap_server_host_jump_to_app(uint32_t msp, uint32_t reset_vector);
+#define jump_to_app iap_server_host_jump_to_app
+#endif
 
 /*
  * Phase 1 of the boot sequence: decide whether this reset runs the application
