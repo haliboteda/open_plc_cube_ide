@@ -14,8 +14,8 @@
 //   !knx t=48213 seq=1 rx=0 miss=0 mode=loopback bus=ok vcc=1 ok=1 idle=0
 //        pulses=26 dropped=0 chars=2 bad=0 w_avg=35 d_avg=7 quiet_ms=12
 //   !knx.rx t=48310 n=9 crc=raw src=15.15.250 dst=1/0/1 apci=gvwrite val=1
-//        raw=BC.FF.FA.08.01.E1.00.81.7F inv=43.00.05.F7.FE.1E.FF.7E.80
-//   !knx.tx t=48250 n=9 dst=1/0/1 val=1 idle=1 raw=BC.FF.FA.08.01.E1.00.81.7F
+//        raw=BC.FF.FA.08.01.E1.00.81.2F inv=43.00.05.F7.FE.1E.FF.7E.D0
+//   !knx.tx t=48250 n=9 dst=1/0/1 val=1 idle=1 raw=BC.FF.FA.08.01.E1.00.81.2F
 //
 // *** A received frame is an event, not a periodic reading, so it gets its own
 // line. *** The periodic !knx line is already 150 characters; two readings of

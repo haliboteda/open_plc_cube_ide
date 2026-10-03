@@ -6,7 +6,9 @@
 
 /* Pin source: $HW/STM32H743IIK6_GPIO_ASSIGNMENT_Schaeffer_Bridge_20260822.xlsx,
  * rows 99-106 (HSFET_1..8, the VNQ5160K-E inputs) and 92-93 (AOUT1/AOUT2,
- * which feed the XTR111 VIN through 10k: 0 V in is 0 mA out). */
+ * which feed the XTR111 VIN through 10k: 0 V in is 0 mA out). KNX_TX must not
+ * float or the STKNX draws from the bus: $PROD/docs/hardware/HARDWARE-FACTS.md,
+ * KNX interface section. */
 typedef struct {
 	GPIO_TypeDef *port;
 	uint8_t pin;
@@ -23,6 +25,7 @@ static const safe_pin_t k_pins[] = {
 	{ GPIOE,  5U },   /* DO8 */
 	{ GPIOA,  4U },   /* AO1 VIN */
 	{ GPIOA,  5U },   /* AO2 VIN */
+	{ GPIOB, 14U },   /* KNX_TX, low = bus idle */
 };
 
 void safe_outputs_init(void)

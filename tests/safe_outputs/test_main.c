@@ -1,7 +1,8 @@
 /*
  * T1-36: safe_outputs_init() leaves DO1-DO8 and the two AO pins as push-pull
  * outputs at 0, with their GPIO clocks on, and touches no other pin.
- * Pins from $HW GPIO assignment rows 92-93, 99-106. Decision 81.
+ * Pins from $HW GPIO assignment rows 92-93, 99-106, and KNX_TX (PB14) from
+ * $PROD/docs/hardware/HARDWARE-FACTS.md. Decision 81.
  */
 #include <stdio.h>
 #include "main.h"
@@ -23,7 +24,7 @@ static void check(int ok, const char *what)
 static const struct { int port; unsigned pin; const char *name; } k_expected[] = {
 	{1, 13, "DO1 PB13"}, {1, 0, "DO2 PB0"}, {7, 15, "DO3 PH15"}, {4, 4, "DO4 PE4"},
 	{0, 8, "DO5 PA8"},   {0, 9, "DO6 PA9"}, {8, 7, "DO7 PI7"},   {4, 5, "DO8 PE5"},
-	{0, 4, "AO1 PA4"},   {0, 5, "AO2 PA5"},
+	{0, 4, "AO1 PA4"},   {0, 5, "AO2 PA5"},   {1, 14, "KNX_TX PB14"},
 };
 
 int main(void)
