@@ -14,6 +14,7 @@
 #include "iap_cert.h"
 #include "owner_slot.h"
 #include "bootloader_state.h"
+#include "safe_outputs.h"
 #include "iap_auth.h"
 #include "iap_keyderive.h"
 #include "IAP_boot_handoff.h"
@@ -820,6 +821,11 @@ void server_jump_to_app(void) {
 	/* */
 	HAL_RCC_DeInit();
 	HAL_DeInit();
+
+	/* HAL_DeInit() just reset every GPIO port, so the outputs float again: drive
+	 * them back to 0 and leave them for the sketch's first write. The one
+	 * exception to the cold-board handover (decision 4), decision 81. */
+	safe_outputs_init();
 
 	/* Hand back a cold cache. No-op while the I-cache is off, and correct the
 	 * moment it is switched on in the .ioc -- the application must not inherit

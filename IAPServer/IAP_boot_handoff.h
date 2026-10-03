@@ -37,7 +37,9 @@
 /* First 32 bytes of SRAM4 (D3 domain). 32 bytes at 32-byte alignment is one
  * Cortex-M7 cache line, which is the granularity the maintenance calls in
  * IAP_boot_handoff.c work on. */
+#ifndef BOOT_HANDOFF_ADDR   /* host tests point this at a RAM buffer */
 #define BOOT_HANDOFF_ADDR       0x38000000UL
+#endif
 #define BOOT_HANDOFF_SIZE       32U
 
 #define BOOT_HANDOFF_MAGIC      0x504C4321UL   /* "PLC!" */
@@ -80,6 +82,21 @@ typedef enum {
     BOOT_HANDOFF_UNKNOWN_VERSION,  /* written by a newer image -- anomaly, report it */
     BOOT_HANDOFF_BAD_MODE,         /* valid record, unusable mode -- anomaly, report it */
 } boot_handoff_status_t;
+
+/* Bytes 16..23 of the reserved area: the reset cause the bootloader latched on
+ * this boot, published for the application. The bootloader clears RCC->RSR and
+ * then jumps, so the application has nothing left to read there. Decision 80.
+ * The record above never grows into these bytes. */
+#define BOOT_HANDOFF_RSR_OFFSET 16U
+#define BOOT_HANDOFF_RSR_MAGIC  0x52535221UL   /* "RSR!" */
+
+/* Bootloader: write this boot's latched RCC->RSR into bytes 16..23.
+ * boot_handoff_take() calls it on every boot. */
+void boot_handoff_publish_reset_cause(void);
+
+/* Application: the RCC->RSR value the bootloader published for this boot.
+ * False when nothing valid is there (check word does not match). */
+bool boot_handoff_published_reset_rsr(uint32_t *rsr);
 
 /* Store the request, verify it actually landed, then reset. Does not return on
  * success.

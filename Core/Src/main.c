@@ -33,6 +33,8 @@
 
 #include "IAP_server.h"
 #include "IAP_boot_handoff.h"
+#include "safe_outputs.h"
+#include "bor_check.h"
 #include "iap_auth.h"
 #include "net_rand.h"
 #include "owner_slot.h"
@@ -306,6 +308,11 @@ int main(void)
    * test that keeps us from reading never-written ECC SRAM depends on it. */
   boot_handoff_latch_reset_cause();
 
+  /* Every DO off and both AO at 0 mA before anything else runs: MPU, caches,
+   * HAL_Init() and the PLL lock below all take time with the pins floating.
+   * Decision 81; $PROD/docs/modules/M1/BOOT-SEQUENCE.md. */
+  safe_outputs_init();
+
   /* Enable the three configurable fault exceptions. Left at their reset default
    * they stay disabled and every MemManage / BusFault / UsageFault escalates to
    * HardFault, so IT_Fault_Report() can only ever report "HardFault" and the
@@ -354,6 +361,7 @@ int main(void)
   MX_GPIO_Init();      /* BOOT0 net, relay outputs, RS232_Enable */
   Enable_RX_RS232();   /* the MAX3221 stays in shutdown until this pin is high */
   MX_UART4_Init();
+  bor_level_report();   /* first thing the log can show: IEC-06 */
 
 #if PORTTOOL_ENABLE
   /* Takes the board for the whole session and never returns, so the BOOT0

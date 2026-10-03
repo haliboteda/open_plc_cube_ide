@@ -52,6 +52,7 @@ compiler's runtime libraries.
 | `T2-32` | a factory reset returns the board to no root | phase `reset` |
 | `T2-33` | 40 handovers in a row | phase `rotate` |
 | `T2-34.*` | a sector-15 reclaim cut by a power loss, 24 scenarios | `sector15_reclaim/` |
+| `T1-36` | every DO and both AO pins are push-pull outputs at 0 after `safe_outputs_init()` (decision 81) | `safe_outputs/` |
 | `P16` | the I-cache and the flash lock are restored on every exit | `checks/check_icache_is_restored.py` |
 | `P17` | the `.cproject` linker script is still `${PLC_LD_SCRIPT}` | `checks/check_cproject_ld.py` |
 

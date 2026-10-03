@@ -114,3 +114,8 @@ if(Python3_Interpreter_FOUND)
 else()
   message(WARNING "No Python 3 found: P16 and P17 are not registered")
 endif()
+
+# --- T1-36: every output at 0 from the first bootloader statement (decision 81)
+add_executable(safe_outputs_test ${IAP}/safe_outputs.c safe_outputs/test_main.c)
+target_include_directories(safe_outputs_test PRIVATE safe_outputs/stubs ${IAP})
+add_test(NAME T1-36 COMMAND safe_outputs_test)

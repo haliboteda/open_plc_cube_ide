@@ -107,6 +107,43 @@ const char *boot_handoff_reset_cause_str(void)
 	return "UNKNOWN";
 }
 
+typedef struct {
+	uint32_t rsr;
+	uint32_t check;   /* rsr ^ BOOT_HANDOFF_RSR_MAGIC */
+} published_rsr_t;
+
+static volatile published_rsr_t *published(void)
+{
+	return (volatile published_rsr_t *)(BOOT_HANDOFF_ADDR + BOOT_HANDOFF_RSR_OFFSET);
+}
+
+void boot_handoff_publish_reset_cause(void)
+{
+	volatile published_rsr_t *p = published();
+
+	boot_handoff_latch_reset_cause();
+	p->rsr   = s_reset_rsr;
+	p->check = s_reset_rsr ^ BOOT_HANDOFF_RSR_MAGIC;
+	sync_to_memory();
+}
+
+bool boot_handoff_published_reset_rsr(uint32_t *rsr)
+{
+	volatile published_rsr_t *p = published();
+	uint32_t value;
+	uint32_t check;
+
+	SCB_InvalidateDCache_by_Addr((uint32_t *)BOOT_HANDOFF_ADDR, (int32_t)BOOT_HANDOFF_SIZE);
+	__DSB();
+	value = p->rsr;
+	check = p->check;
+	if (check != (value ^ BOOT_HANDOFF_RSR_MAGIC)) {
+		return false;
+	}
+	*rsr = value;
+	return true;
+}
+
 bool boot_handoff_request(boot_req_t mode)
 {
 	volatile boot_handoff_t *h = record();
@@ -166,6 +203,7 @@ boot_req_t boot_handoff_take(void)
 
 	if (cold) {
 		init_reserved_area();
+		boot_handoff_publish_reset_cause();
 		s_status     = BOOT_HANDOFF_COLD_BOOT;
 		s_taken_mode = BOOT_REQ_NONE;
 		return s_taken_mode;
@@ -234,6 +272,7 @@ boot_req_t boot_handoff_take(void)
 	/* Consume it either way: read once and it is gone, so no stale record can
 	 * ever hold the board in the bootloader across reboots. */
 	clear_record();
+	boot_handoff_publish_reset_cause();
 	return s_taken_mode;
 }
 
