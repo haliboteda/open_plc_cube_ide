@@ -12,6 +12,7 @@
 #if PORTTOOL_ENABLE
 
 #include "ETH/eth_test.h"
+#include "KNX/knx_test.h"
 #include "SD/sd_test.h"
 #include "SDRAM/sdram_test.h"
 #include "IAP_boot_handoff.h"   /* the reset cause main() latched at boot */
@@ -20,17 +21,9 @@
 #include "main.h"
 #include "rtc.h"
 
-/* A target measures, then writes the k=v body of its OK line into `out`.
- *
- * `args` is whatever followed the target name on the pt.run line, so a target
- * can take a parameter the way a session does - "pt.run sd.integrity
- * bytes=1048576". Most ignore it. It comes first for the same reason it does
- * in a session's apply(): inputs before outputs.
- *
- * It must not print the OK line itself: the checks it runs print their own
- * prose as they go, and a half-written OK line with a log line inside it is
- * one the PC cannot parse. Measuring first and formatting after keeps the two
- * kinds of output from interleaving. */
+/* A target measures, then writes the k=v body of its OK line into `out`; it
+ * must not print the OK line itself, or the checks' own log lines would land
+ * inside it. `args` is what followed the target name. */
 typedef struct {
     const char *name;
     const char *port;  /* the hardware this belongs to, for the caps row */
@@ -53,9 +46,8 @@ static void run_sdram_probe(const char *args, char *out, uint32_t len)
              (unsigned)p.ready, (unsigned)p.databus_ok, (unsigned)p.addrbus_ok);
 }
 
-/* The stress pass the production test guide asks for: the whole 64 MiB, four
- * patterns. Tens of seconds, so a plan step running this needs a timeout that
- * allows for it - the reply carries the milliseconds it actually took. */
+/* The whole 64 MiB, four patterns: tens of seconds, so a plan step needs a
+ * timeout to match. */
 static void run_sdram_sweep(const char *args, char *out, uint32_t len)
 {
     (void)args;
@@ -72,12 +64,8 @@ static void run_sdram_sweep(const char *args, char *out, uint32_t len)
              (unsigned long)s.write_ms, (unsigned long)s.verify_ms);
 }
 
-/* The port tool runs from main.c's Phase 1, where MX_RTC_Init() has not run
- * yet, so this brings the RTC up on demand like the SDRAM probe does.
- *
- * Only reads. Setting the calendar is deliberately not offered here: the
- * backup domain also holds iap_auth's nonce counter, and a test that writes
- * there would be a test that can roll a security counter back. */
+/* Brings the RTC up on demand (main.c Phase 1 has not run MX_RTC_Init()) and
+ * only reads; the calendar is never set here. */
 static void run_rtc_read(const char *args, char *out, uint32_t len)
 {
     (void)args;
@@ -89,24 +77,13 @@ static void run_rtc_read(const char *args, char *out, uint32_t len)
         MX_RTC_Init();
     }
 
-    /* The time has to be read before the date: reading the time locks the
-     * shadow registers, and reading the date is what releases them. Swapped,
-     * the two can come from either side of a tick. */
+    /* Time before date: reading the time locks the shadow registers until the
+     * date is read (RM0433 RTC). */
     (void)HAL_RTC_GetTime(&hrtc, &t, RTC_FORMAT_BIN);
     (void)HAL_RTC_GetDate(&hrtc, &d, RTC_FORMAT_BIN);
 
-    /* Which oscillator the calendar is actually counting, read out of
-     * RCC_BDCR rather than written here as text.
-     *
-     * *** It used to be the literal "clk=lsi", and on 2026-09-10 the project
-     * *** moved to LSE - so the reply went on saying lsi against a board that
-     * *** had a crystal. A field that cannot disagree with the hardware is not
-     * *** a reading; it is a comment that happens to be inside a frame.
-     *
-     * *** Worth a field at all because everything about RTC accuracy hangs on
-     * *** it: LSI is an internal RC, a few percent and drifting with
-     * *** temperature; LSE is a crystal, tens of ppm. A timestamp means
-     * *** different things under the two. */
+    /* The oscillator the calendar actually counts, read from RCC_BDCR so it
+     * cannot disagree with the hardware (LSI: a few percent; LSE: tens of ppm). */
     static const char *const rtcsel[] = { "none", "lse", "lsi", "hse" };
     const char *clk = rtcsel[(RCC->BDCR & RCC_BDCR_RTCSEL) >> RCC_BDCR_RTCSEL_Pos];
 
@@ -125,15 +102,12 @@ static void run_led_blink(const char *args, char *out, uint32_t len)
     (void)args;
     PortLed_Blink(LED_PULSES, LED_HALF_MS);
 
-    /* Reports what it drove, not whether anybody saw it - there is no readback
-     * on this pin, so the verdict is a person's. */
+    /* No readback on this pin: the verdict is a person's. */
     snprintf(out, len, "pin=PE2 pulses=%lu half_ms=%lu observed=unknown",
              (unsigned long)LED_PULSES, (unsigned long)LED_HALF_MS);
 }
 
-/* ⚠️ exfat is a PASS-able state for the card and a FAIL for the station: the
- * card is fine, the format is not. Saying which is the difference between
- * "reformat it" and "bin it". */
+/* exfat is named apart: the card is fine, the format is not (reformat, not bin). */
 static const char *run_sd_fs_name(uint8_t t)
 {
     switch (t) {
@@ -163,15 +137,8 @@ static void run_sd_probe(const char *args, char *out, uint32_t len)
              (unsigned long)p.hal_error);
 }
 
-/* Write a file, read it back, compare - passes= times.
- *
- * *** One target, not two. *** A stress run is this repeated (sd_test.h), so
- * how many rounds counts as proof is a parameter, the same way how many bytes
- * already was. passes= defaults to 1.
- *
- * identical is the verdict in one flag: every round came back byte for byte.
- * The parts are reported too - a card that mounts and writes but reads back
- * wrong is a different repair from one that never mounted. */
+/* Write a file, read it back, compare - passes= times (default 1). identical=1
+ * means every round came back byte for byte; the parts are reported too. */
 static void run_sd_integrity(const char *args, char *out, uint32_t len)
 {
     uint32_t bytes = 0;
@@ -183,13 +150,8 @@ static void run_sd_integrity(const char *args, char *out, uint32_t len)
         passes = 1U;
     }
 
-    /* *** One round keeps the CRCs, many rounds keep the round numbers. ***
-     * Both carry mounted / identical / passes / passed / bytes, so a plan can
-     * judge either the same way; what differs is the diagnosis each shape can
-     * offer. A single round can say WHICH bytes came back wrong - the two CRCs
-     * differing is the evidence - and a stress run cannot, because it would
-     * have to keep 64 pairs of them. A stress run can say which round first
-     * failed, and a single round has no such thing to report. */
+    /* Both shapes carry mounted/identical/passes/passed/bytes; one round adds
+     * the two CRCs, many rounds add the first failing round. */
     if (passes == 1U) {
         sd_integrity_t r;
 
@@ -231,9 +193,7 @@ static void run_eth_link(const char *args, char *out, uint32_t len)
 
     (void) ETH_Test_Probe(&p);
 
-    /* found=0 and link=0 are different answers: no PHY on MDIO is a board
-     * fault, a PHY with no link is usually an unplugged cable. A station that
-     * saw one bit would not know which to go and look at. */
+    /* found=0 (no PHY: board fault) and link=0 (usually no cable) kept apart. */
     snprintf(out, len,
              "found=%u addr=%u id=0x%08lX link=%u autoneg=%u speed=%u fd=%u"
              " bsr=0x%04X scsr=0x%04X mdio_errors=%lu",
@@ -244,9 +204,7 @@ static void run_eth_link(const char *args, char *out, uint32_t len)
              (unsigned long)p.mdio_errors);
 }
 
-/* ⚠️ B/s, not KB/s: a limit written against a rounded kilobyte figure cannot
- * express "at least 400 kB/s" without the plan doing arithmetic. The PC
- * formats it for a person; the wire carries the number it measured. */
+/* B/s, not KB/s: the wire carries the measured number, the PC formats it. */
 static void run_sd_speed(const char *args, char *out, uint32_t len)
 {
     sd_speed_t r;
@@ -264,27 +222,10 @@ static void run_sd_speed(const char *args, char *out, uint32_t len)
              r.fresult);
 }
 
-/* Why the board last came up.
- *
- * *** The value is already latched; this only puts it on the wire. *** main()
- * captures RCC->RSR as its first statement and clears it, because the register
- * is sticky and anything running later would wipe it - the tool image goes
- * through the same main() as the bootloader, so the value is sitting there
- * already (Core/Src/main.c, boot_handoff_latch_reset_cause).
- *
- * *** Why production needs it, and why the PC cannot work it out. *** The PC
- * can already tell THAT a board restarted: every frame carries the board's own
- * millisecond counter, and a restart sends it back to near zero
- * (ptproto.TickUnwrapper). What it cannot tell is why, and the difference
- * decides who owns the failure: PIN is somebody knocking the reset line during
- * an ageing run, IWDG is the board hanging and being rescued by its own
- * watchdog. One is an operator, the other is a defect, and "0 abnormal resets"
- * cannot be judged without separating them.
- *
- * Both the decoded name and the raw register go out: the name is what a person
- * reads, and the raw word keeps the flags that the name's first-match order
- * hides - two causes can be set at once.
- */
+/* Why the board last came up, as main() latched it from RCC->RSR
+ * (boot_handoff_latch_reset_cause). The PC sees THAT a board restarted from the
+ * tick; this says why (PIN vs IWDG). The raw word keeps flags the name's
+ * first-match order hides. */
 static void run_reset_cause(const char *args, char *out, uint32_t len)
 {
     (void)args;
@@ -294,17 +235,9 @@ static void run_reset_cause(const char *args, char *out, uint32_t len)
              (unsigned long)boot_handoff_reset_rsr());
 }
 
-/* CRC32 of a window of SDRAM, reading only.
- *
- * The pair to STM32CubeProgrammer's "Read & Write Memory": a tool writes a
- * file into the array and this says what actually landed, so a matching CRC32
- * proves the bytes survived the round trip through the physical part. That
- * used to be reachable only by handing the board over, which meant nothing on
- * the PC could read a result out of it (DECISIONS.md 40).
- *
- * offset= and bytes= come from the plan. bytes=0, or none given, means the
- * whole array - and the reply says which window it actually summed, because a
- * CRC without the range it covers cannot be compared to anything. */
+/* CRC32 of a window of SDRAM, reading only: checks what a tool wrote there
+ * (DECISIONS.md 40). bytes=0 or absent means the whole array; the reply names
+ * the window it summed. */
 static void run_sdram_crc(const char *args, char *out, uint32_t len)
 {
     sdram_crc_t c;
@@ -321,23 +254,9 @@ static void run_sdram_crc(const char *args, char *out, uint32_t len)
              (unsigned long)c.length, (unsigned long)c.crc);
 }
 
-/* PD4 (/RE and DE together) and PD5 (TX) driven as plain GPIO and read back.
- *
- * This is phase R1 of the standalone RS485 test (../RS485/rs485_test.c) - the
- * one thing that test could do which the session cannot, so it comes across as
- * a target of its own.
- *
- * *** What it separates: "no cable" from "this pin is dead". *** Nothing needs
- * to be attached. A pin that will not read back what was just written to it is
- * a board fault, and without this check it looks exactly like a pair with
- * nobody on the other end - which is the far more common and far less serious
- * case.
- *
- * *** Refused while the session is running. *** The session has PD4/PD5 muxed
- * to USART2's alternate function; re-muxing them to GPIO underneath it would
- * leave the session running, reporting misses, and blaming the wire. pt.run
- * deliberately does not stop sessions, so this target has to decline instead.
- */
+/* PD4 (/RE and DE) and PD5 (TX) driven as plain GPIO and read back, nothing
+ * attached: tells a dead pin from a missing cable. Answers busy=1 while the
+ * rs485 session owns the pins. */
 static void run_rs485_pins(const char *args, char *out, uint32_t len)
 {
     GPIO_InitTypeDef gpio = {0};
@@ -369,18 +288,14 @@ static void run_rs485_pins(const char *args, char *out, uint32_t len)
     dir_high = HAL_GPIO_ReadPin(PORT_RS485_DIR_PORT, PORT_RS485_DIR_PIN);
     tx_high  = HAL_GPIO_ReadPin(PORT_RS485_DIR_PORT, PORT_RS485_TX_PIN);
 
-    /* Left in receive with the driver off. Walking away from this target with
-     * PD4 high would hold the transceiver driving the pair, and every other
-     * node on it would be deaf until somebody noticed. */
+    /* Left in receive with the driver off, so the pair is not held driven. */
     HAL_GPIO_WritePin(PORT_RS485_DIR_PORT,
                       PORT_RS485_DIR_PIN | PORT_RS485_TX_PIN, GPIO_PIN_RESET);
 
     low_ok  = (dir_low == GPIO_PIN_RESET) && (tx_low == GPIO_PIN_RESET);
     high_ok = (dir_high == GPIO_PIN_SET) && (tx_high == GPIO_PIN_SET);
 
-    /* Each pin at each level is its own field. One rolled-up flag would say a
-     * pin is stuck without saying which pin or which way, and those point at
-     * different things on the board. */
+    /* Each pin at each level is its own field, so a stuck pin says which way. */
     snprintf(out, len,
              "checked=1 busy=0 dir_low=%u tx_low=%u dir_high=%u tx_high=%u"
              " follows=%u",
@@ -391,6 +306,92 @@ static void run_rs485_pins(const char *args, char *out, uint32_t len)
              (unsigned)(low_ok && high_ok));
 }
 
+/* KNX diagnostics (DECISIONS.md 87, PORTTOOL-FLOW.md A.3). They share the knx
+ * session's timers and statistics, so a running session makes them answer
+ * busy=1 and touch nothing. */
+#define KNX_DIAG_REPEAT_DEF 3U
+#define KNX_DIAG_REPEAT_MAX 10U
+
+static uint32_t run_knx_count(const char *args, const char *key)
+{
+    uint32_t n = KNX_DIAG_REPEAT_DEF;
+
+    (void) PortCmd_GetU32(args, key, &n);
+    if (n == 0U) {
+        n = 1U;
+    }
+    return (n > KNX_DIAG_REPEAT_MAX) ? KNX_DIAG_REPEAT_MAX : n;
+}
+
+static void run_knx_edges(const char *args, char *out, uint32_t len)
+{
+    knx_diag_edges_t r;
+
+    if (PortTool_PortRunning("knx")) {
+        snprintf(out, len, "busy=1");
+        return;
+    }
+    (void) KNX_Test_DiagEdges(run_knx_count(args, "shots"), &r);
+    snprintf(out, len,
+             "busy=0 bus=%s shots=%lu moved=%lu edges=%lu dropped=%lu"
+             " first_us=%ld width_us=%ld",
+             r.bus_ok ? "ok" : "dead", (unsigned long)r.shots,
+             (unsigned long)r.moved, (unsigned long)r.edges,
+             (unsigned long)r.dropped, (long)r.first_us, (long)r.width_us);
+}
+
+static uint32_t run_knx_list(char *out, uint32_t len, const uint32_t *v)
+{
+    uint32_t n = 0U;
+
+    for (uint32_t i = 0U; (i < KNX_DIAG_BINS) && (n < len); i++) {
+        n += (uint32_t)snprintf(out + n, len - n, "%s%lu", (i != 0U) ? "," : "",
+                                (unsigned long)v[i]);
+    }
+    return n;
+}
+
+static void run_knx_hist(const char *args, char *out, uint32_t len)
+{
+    knx_diag_hist_t r;
+    char w[64], d[64];
+
+    if (PortTool_PortRunning("knx")) {
+        snprintf(out, len, "busy=1");
+        return;
+    }
+    (void) KNX_Test_DiagHist(run_knx_count(args, "bursts"), &r);
+    (void) run_knx_list(w, sizeof(w), r.w_hist);
+    (void) run_knx_list(d, sizeof(d), r.d_hist);
+    snprintf(out, len,
+             "busy=0 bus=%s tx=%lu rx=%lu miss=%lu w_min=%lu w_avg=%lu w_max=%lu"
+             " d_min=%lu d_avg=%lu d_max=%lu w_hist=%s d_hist=%s",
+             r.bus_ok ? "ok" : "dead", (unsigned long)r.tx, (unsigned long)r.rx,
+             (unsigned long)r.miss, (unsigned long)r.w_min, (unsigned long)r.w_avg,
+             (unsigned long)r.w_max, (unsigned long)r.d_min, (unsigned long)r.d_avg,
+             (unsigned long)r.d_max, w, d);
+}
+
+static void run_knx_pullup(const char *args, char *out, uint32_t len)
+{
+    knx_diag_pullup_t r;
+
+    (void)args;
+    if (PortTool_PortRunning("knx")) {
+        snprintf(out, len, "busy=1");
+        return;
+    }
+    (void) KNX_Test_DiagPullup(&r);
+    snprintf(out, len,
+             "busy=0 bus=%s pu_tx=%lu pu_rx=%lu pu_miss=%lu pu_w_avg=%lu"
+             " np_tx=%lu np_rx=%lu np_miss=%lu np_w_avg=%lu",
+             r.bus_ok ? "ok" : "dead",
+             (unsigned long)r.tx[0], (unsigned long)r.rx[0],
+             (unsigned long)r.miss[0], (unsigned long)r.w_avg[0],
+             (unsigned long)r.tx[1], (unsigned long)r.rx[1],
+             (unsigned long)r.miss[1], (unsigned long)r.w_avg[1]);
+}
+
 static const run_target_t targets[] = {
     { "sd.probe",        "sd", PORTTOOL_BOARD_BRIDGE, "-", "J6", run_sd_probe,
       "detect pin, card identification, capacity and class" },
@@ -398,6 +399,16 @@ static const run_target_t targets[] = {
       "write/read/verify through FatFs, passes= rounds of bytes= each" },
     { "sd.speed",        "sd", PORTTOOL_BOARD_BRIDGE, "-", "J6", run_sd_speed,
       "how fast the card moves data each way; does not verify content" },
+    { "sd.put",          "sd", PORTTOOL_BOARD_BRIDGE, "-", "J6", PortSdFile_RunPut,
+      "arm a write of name= size= into PORTTOOL/; data on eth or usb mode=file" },
+    { "sd.get",          "sd", PORTTOOL_BOARD_BRIDGE, "-", "J6", PortSdFile_RunGet,
+      "send PORTTOOL/name= back on eth or usb mode=file; reply size and crc" },
+    { "sd.ls",           "sd", PORTTOOL_BOARD_BRIDGE, "-", "J6", PortSdFile_RunList,
+      "list PORTTOOL/, one !sd.file line per file" },
+    { "sd.rm",           "sd", PORTTOOL_BOARD_BRIDGE, "-", "J6", PortSdFile_RunRemove,
+      "delete PORTTOOL/name=" },
+    { "sd.eject",        "sd", PORTTOOL_BOARD_BRIDGE, "-", "J6", PortSdFile_RunEject,
+      "stop any transfer and unmount so the card can be pulled" },
     { "sdram.probe",     "sdram", PORTTOOL_BOARD_BRIDGE, "-", "U6", run_sdram_probe,
       "FMC bring-up, data bus and address bus; reports the window and three flags" },
     { "sdram.sweep",     "sdram", PORTTOOL_BOARD_BRIDGE, "-", "U6", run_sdram_sweep,
@@ -417,6 +428,12 @@ static const run_target_t targets[] = {
       "why the board last came up - POR, PIN, IWDG, WWDG, SOFT or BOR" },
     { "led.blink",       "led", PORTTOOL_BOARD_BRIDGE, "-", "-",  run_led_blink,
       "blinks the system indicator on PE2; a person decides whether it lit" },
+    { "knx.edges",       "knx", PORTTOOL_BOARD_UPPER, "C", "C03,C04", run_knx_edges,
+      "single pulses, every KNX_RX edge after each; shots= how many" },
+    { "knx.hist",        "knx", PORTTOOL_BOARD_UPPER, "C", "C03,C04", run_knx_hist,
+      "pulse bursts; KNX_RX width and TX->RX delay, min/avg/max and histograms" },
+    { "knx.pullup",      "knx", PORTTOOL_BOARD_UPPER, "C", "C03,C04", run_knx_pullup,
+      "one burst with PA10's pull-up on, one with it off; leaves it on" },
 };
 #define TARGET_COUNT (sizeof(targets) / sizeof(targets[0]))
 
@@ -457,9 +474,7 @@ static int first_of_port(uint32_t i)
     return 1;
 }
 
-/* One row per piece of hardware, not one per target - four rows for eight
- * targets. Two caps rows with the same port= would give the panel two cards
- * for one piece of hardware (DECISIONS.md 17). */
+/* One caps row per piece of hardware, not per target (DECISIONS.md 17). */
 uint32_t PortTool_RunCaps(int emit)
 {
     char runs[96];
@@ -469,9 +484,7 @@ uint32_t PortTool_RunCaps(int emit)
         if (!first_of_port(i)) {
             continue;
         }
-        /* Hardware that also has a session already printed its row there, with
-         * these targets on it as runs=. A second row under the same port= would
-         * give the panel two cards for one RJ45 (DECISIONS.md 17, 28). */
+        /* A session port already printed these as runs= (DECISIONS.md 17, 28). */
         if (PortTool_IsSessionPort(targets[i].port)) {
             continue;
         }

@@ -2,9 +2,8 @@
 //
 // Shared DAC access - see port_dac.h.
 
-// Enables the DAC HAL module for this translation unit only (see
-// stm32h7xx_hal_dac.c in TestCase/common for why) - must come before main.h
-// pulls in stm32h7xx_hal.h.
+// Enables the local DAC HAL copy for this file only; must precede main.h
+// (testcase_hal_guard.h).
 #include "testcase_hal_guard.h"   /* fires if this peripheral becomes real -- read it */
 #define HAL_DAC_MODULE_ENABLED
 
@@ -12,8 +11,7 @@
 #include "port_adc.h"
 #include "main.h"
 
-/* Assuming 3300 here was wrong and put every output about 24 percent high in
- * code terms, so the fallback matches what VREFBUF actually drives. */
+/* The fallback is what VREFBUF drives, not VDDA. */
 #define DAC_VREF_FALLBACK_MV 2500U
 #define DAC_FULL_SCALE       4095U   /* 12-bit, right aligned */
 
@@ -23,7 +21,10 @@ static int      dac_ready;
 
 static uint32_t PortDac_MvToCode(uint32_t mv)
 {
-    return (mv * DAC_FULL_SCALE) / dac_vref_mv;
+    uint32_t code = (mv * DAC_FULL_SCALE) / dac_vref_mv;
+
+    /* DHR12R holds 12 bits; anything above full scale would wrap to near 0. */
+    return (code > DAC_FULL_SCALE) ? DAC_FULL_SCALE : code;
 }
 
 uint32_t PortDac_VrefMv(void)
@@ -61,10 +62,7 @@ int PortDac_Init(void)
     gpio.Pin  = GPIO_PIN_4 | GPIO_PIN_5;
     HAL_GPIO_Init(GPIOA, &gpio);
 
-    /* The two fault flags, as plain inputs. No pull: the flag's idle state is
-     * the transceiver's business and a pull here would decide it instead, so a
-     * floating pin has to read as floating rather than as whatever this file
-     * preferred. */
+    /* The fault pins as plain inputs, no pull, so the board decides the idle. */
     __HAL_RCC_GPIOI_CLK_ENABLE();
     __HAL_RCC_GPIOE_CLK_ENABLE();
     gpio.Mode = GPIO_MODE_INPUT;
@@ -101,8 +99,8 @@ int PortDac_SetMv(int ch, uint32_t mv)
     DAC_ChannelConfTypeDef cfg = {0};
     cfg.DAC_SampleAndHold           = DAC_SAMPLEANDHOLD_DISABLE;
     cfg.DAC_Trigger                 = DAC_TRIGGER_NONE;
-    /* Buffer on: R17/R18 are 1k straight across the DAC output, which pulls
-     * about 2 mA at full scale - far more than an unbuffered output can hold. */
+    /* Buffer on: an unbuffered output cannot drive R17/R18 (HARDWARE-FACTS.md
+     * AOUT). */
     cfg.DAC_OutputBuffer            = DAC_OUTPUTBUFFER_ENABLE;
     cfg.DAC_ConnectOnChipPeripheral = DAC_CHIPCONNECT_EXTERNAL;
     cfg.DAC_UserTrimming            = DAC_TRIMMING_FACTORY;

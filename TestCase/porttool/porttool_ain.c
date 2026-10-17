@@ -10,17 +10,11 @@
 // Frame:
 //   !ain t=48213 seq=1 rx=0 miss=0 vdda=3287 ok=1 ch1=21850/2071 ch2=530/50
 //
-// *** ch<n> is raw/millivolts AT THE MCU PIN. The value at the terminal is NOT
-// *** computed here, because it depends on which range the board was bridged
-// *** for - a soldered, one-way choice this firmware cannot read back. The PC
-// *** applies the scaling and says which range it assumed.
+// ch<n> is raw/millivolts at the MCU pin; the PC scales it to the terminal,
+// since the range is a jumper this firmware cannot read.
 //
-// *** ok= is whether VDDA was measured and landed in a plausible band. When it
-// *** is 0 every reading in the frame is meaningless: the board has no
-// *** reference chip, so with VREFBUF disabled the ADC returns values like
-// *** 0x8000 that look exactly like real data. Reporting the readings anyway,
-// *** with ok=0 beside them, is deliberate - hiding them would leave nothing
-// *** to diagnose with.
+// ok=0 means VDDA was not plausible and every reading is meaningless; they are
+// still reported, for diagnosis (PORTTOOL-FLOW.md A.5).
 
 #include "porttool.h"
 #include "porttool_cmd.h"
@@ -81,11 +75,8 @@ static int ain_start(const char *args, char *err, uint32_t err_len)
     }
 
     if (!ain_inited) {
-        /* Order matters and it is not obvious: there is no reference chip on
-         * this board, so VREF+ comes from VREFBUF inside the MCU. Left
-         * disabled, the ADC still converts and still returns numbers - they
-         * are just meaningless. Bringing it up first is what makes the
-         * readings mean anything at all. */
+        /* VREFBUF first: the board has no reference chip
+         * (HARDWARE-FACTS.md 模拟量). */
         if (!PortVref_Enable()) {
             snprintf(err, err_len,
                      "VREFBUF would not come up, so there is no reference to "
@@ -111,8 +102,7 @@ static int ain_set(const char *args, char *err, uint32_t err_len)
 
 static void ain_stop(void)
 {
-    /* High-impedance inputs and an internal reference; nothing is driven, so
-     * there is nothing to put back. */
+    /* Nothing is driven, so nothing to put back. */
 }
 
 static void ain_tick(uint32_t now_ms)
@@ -139,8 +129,7 @@ static void ain_tick(uint32_t now_ms)
             w = snprintf(body + n, sizeof(body) - n, " ch%d=%lu/%lu",
                          i, (unsigned long)raw, (unsigned long)mv);
         } else {
-            /* Said out loud rather than left out: a channel missing from the
-             * frame would read on the panel as "not selected". */
+            /* Not left out: a missing channel would read as "not selected". */
             w = snprintf(body + n, sizeof(body) - n, " ch%d=fail", i);
         }
         if (w < 0) { break; }
@@ -169,8 +158,7 @@ porttool_port_t porttool_ain = {
     .board    = PORTTOOL_BOARD_UPPER,
     .blk      = "D",
     .term     = "D12,D13",
-    /* Not a range: the two terminals are wired for different ranges, and the
-     * panel has to label them that way rather than call them AIN 1 and 2. */
+    /* Per channel: the two terminals are different ranges. */
     .terms    = "D12,D13",
     .params   = "ch,period",
     .loop     = PORTTOOL_LOOP_CTRL,

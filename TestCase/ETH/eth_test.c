@@ -200,22 +200,3 @@ int ETH_Test_Probe(eth_probe_t *out)
     printf("\r\n");
     return 1;
 }
-
-void ETH_Test_Run(void)
-{
-    printf("ETH_TEST: PHY watch - plug and unplug the cable, link= follows\r\n");
-
-    for (;;) {
-        eth_probe_t p;
-
-        if (ETH_Test_Probe(&p)) {
-            printf("ETH_TEST: addr=%u id=0x%08lX link=%u autoneg=%u speed=%u fd=%u"
-                   " bcr=0x%04X bsr=0x%04X scsr=0x%04X mdio_errors=%lu\r\n",
-                   (unsigned)p.addr, (unsigned long)p.phy_id, (unsigned)p.link,
-                   (unsigned)p.autoneg_done, (unsigned)p.speed_mbit,
-                   (unsigned)p.full_duplex, (unsigned)p.bcr, (unsigned)p.bsr,
-                   (unsigned)p.scsr, (unsigned long)p.mdio_errors);
-        }
-        HAL_Delay(1000);
-    }
-}

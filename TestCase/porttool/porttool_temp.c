@@ -10,15 +10,8 @@
 // Frame:
 //   !temp t=48213 seq=1 rx=0 miss=0 vdda=3287 ok=1 ch1=738/238 ch2=751/251
 //
-// *** ch<n> is millivolts/deci-degrees. Deci- rather than whole degrees so a
-// *** slow drift is visible without a floating-point number crossing the
-// *** serial line.
-//
-// *** These two are the only temperatures on the board and they are not
-// *** terminals - nothing external is connected. What they are worth watching
-// *** for is the Digital Out drivers heating up under load, which is why they
-// *** are their own session rather than a field on dout: they matter most while
-// *** something else is being driven hard.
+// ch<n> is millivolts/deci-degrees (integer, drift still visible). A session of
+// its own so it can watch the DO drivers heat while dout drives them.
 
 #include "porttool.h"
 #include "porttool_cmd.h"
@@ -159,8 +152,7 @@ porttool_port_t porttool_temp = {
     .board    = PORTTOOL_BOARD_LOWER,
     .blk      = "-",
     .term     = "-",          /* on-board sensors, no terminal */
-    /* Which sensor is which, since neither has a terminal to name it by.
-     * English like every other string the firmware puts on the wire. */
+    /* Names the sensors, which have no terminal. */
     .terms    = "SC-protect,HS-switch",
     .params   = "ch,period",
     .loop     = PORTTOOL_LOOP_CTRL,

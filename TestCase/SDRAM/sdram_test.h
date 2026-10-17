@@ -43,60 +43,29 @@
 // default memory map's "External device" region, which is Device-type and so
 // never cached - and the bootloader runs with both caches off anyway. Every
 // load/store here really does reach the physical SDRAM controller, which
-// matters for SDRAM_Test_CubeProgrammerVerify() below: an external tool's
-// writes must be visible to the next firmware read, and vice versa.
+// matters for SDRAM_Test_Crc32Once() below: an external tool's writes must be
+// visible to the next firmware read, and vice versa.
 //
-// Three independent entry points - uncomment exactly one in main.c at a
-// time (see pwm_test.h/rs232_test.h for the same convention). All three
-// run forever (do not return).
+// Every call below performs one pass, fills in what it measured and returns.
+// They exist for pt.run, where the PC applies the limit - so they report
+// numbers and no verdict.
 //
-//   SDRAM_Test_Capacity()            - answers "how big is it really?":
-//       data-bus walking-1/0 test (catches shorted/floating D0-D15),
-//       address-bus walking test across all 26 byte-address bits including
-//       the very top of the 64MiB window (catches shorted/open/aliased
-//       address lines), optionally (SDRAM_TEST_RUN_FULL_SWEEP) a full
-//       0x00/0xFF/0x55/0xAA sweep of the whole 64MiB. Prints a final
-//       "CAPACITY CONFIRMED = 64 MiB" or a precise mismatch description.
-//
-//   SDRAM_Test_Retention()           - answers "write random addresses,
-//       wait 5s, read back correctly?": writes SDRAM_TEST_NUM_RANDOM_ADDR
-//       pseudo-random word-aligned addresses with an address-derived
-//       signature, HAL_Delay(5000), reads them all back and compares.
-//       A pass proves the auto-refresh configured in the bring-up sequence
-//       is actually running (SDRAM cells lose their charge in tens of ms
-//       without it) - repeats forever as a continuous soak test, reseeding
-//       the address set each cycle.
-//
-//   SDRAM_Test_CubeProgrammerVerify() - answers "can I write via
-//       STM32CubeProgrammer and read it back with an integrity check?":
-//       never touches memory contents, then
-//       every second prints a zlib-compatible CRC32 + a 16-byte hex
-//       preview of a configurable [offset, length) window. Connect
-//       ST-Link, open STM32CubeProgrammer's "Read & Write Memory" panel
-//       (no target reset - use its "no reset" connection mode), write your
-//       file (image, .bin, anything - it's written as raw bytes regardless
-//       of format) starting at 0xC0000000 + SDRAM_TEST_VERIFY_OFFSET, and
-//       watch the printed CRC32 change on the RS232/UART4 terminal. Verify
-//       independently on the PC with the same byte range of your original
-//       file, e.g. in Python:
-//         import zlib; print(hex(zlib.crc32(open("file","rb").read()
-//                                            [:SDRAM_TEST_VERIFY_LENGTH])))
-//       A matching CRC32 proves the written bytes survived the round trip
-//       through the physical SDRAM byte-for-byte.
-
-// Three entry points below are the exception to "all three run forever": they
-// perform one pass, fill in what they measured and return. They exist for
-// pt.run, where the PC applies the limit - so they report numbers and no
-// verdict.
-//
-//   SDRAM_Test_Probe()          - bring-up, data bus, address bus.
+//   SDRAM_Test_Probe()          - bring-up, data-bus walking-1/0 (shorted or
+//       floating D0-D15) and an address-bus walk across all 26 byte-address
+//       bits up to the top of the 64MiB window (shorted, open or aliased
+//       address lines).
 //   SDRAM_Test_SweepOnce()      - the whole 64MiB, four patterns, with the
 //       mismatch count, where the first one was and how long each half took.
 //       This is the "SDRAM stress test, zero errors" the production test
 //       guide asks for at stations 6 and 10.
-//   SDRAM_Test_RetentionOnce()  - one write/wait/read-back cycle, so the PC
-//       decides how many cycles a station runs instead of the firmware
-//       looping forever.
+//   SDRAM_Test_RetentionWrite() / SDRAM_Test_RetentionVerify() - the two
+//       halves of one write/wait/read-back cycle of pseudo-random addresses. A pass proves auto-refresh is running (SDRAM
+//       cells lose their charge in tens of ms without it); the PC decides how
+//       many cycles a station runs.
+//   SDRAM_Test_Crc32Once()      - zlib-compatible CRC32 of a window, without
+//       touching memory contents: write a file there with
+//       STM32CubeProgrammer ("no reset" connection) and compare the CRC with
+//       the PC's.
 
 #ifndef INC_SDRAM_TEST_H_
 #define INC_SDRAM_TEST_H_
@@ -140,7 +109,6 @@ typedef struct {
 
 void SDRAM_Test_Probe(sdram_probe_t *out);
 int  SDRAM_Test_SweepOnce(sdram_sweep_t *out);
-int  SDRAM_Test_RetentionOnce(sdram_retention_t *out);
 
 /* CRC32 of one window, once. Reads and never writes, so it is safe to run over
  * bytes somebody else put there - which is the whole point: an external tool
@@ -164,9 +132,5 @@ int  SDRAM_Test_Crc32Once(uint32_t offset, uint32_t length, sdram_crc_t *out);
  * Both are silent: whoever drives them decides what to print. */
 void SDRAM_Test_RetentionWrite(uint32_t *rng_state, sdram_retention_t *out);
 void SDRAM_Test_RetentionVerify(sdram_retention_t *out);
-
-void SDRAM_Test_Capacity(void);
-void SDRAM_Test_Retention(void);
-void SDRAM_Test_CubeProgrammerVerify(void);
 
 #endif /* INC_SDRAM_TEST_H_ */

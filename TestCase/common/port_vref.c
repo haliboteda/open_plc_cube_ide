@@ -14,8 +14,7 @@ int PortVref_Enable(void)
         return 1;
     }
 
-    /* VREFBUF sits on APB4 and has its own clock gate. Without it the CSR
-     * writes below are silently dropped and the block stays at 0x00000000. */
+    /* VREFBUF has its own APB4 clock gate; without it CSR writes are dropped. */
     __HAL_RCC_VREF_CLK_ENABLE();
     __HAL_RCC_SYSCFG_CLK_ENABLE();
 
@@ -23,8 +22,7 @@ int PortVref_Enable(void)
     HAL_SYSCFG_VREFBUF_HighImpedanceConfig(SYSCFG_VREFBUF_HIGH_IMPEDANCE_DISABLE);
     SET_BIT(VREFBUF->CSR, VREFBUF_CSR_ENVR);
 
-    /* Start-up is dominated by whatever decoupling sits on VREF+, which is not
-     * documented for this board, so allow far more than the datasheet typical. */
+    /* Generous timeout: start-up depends on the VREF+ decoupling. */
     uint32_t start = HAL_GetTick();
     while ((VREFBUF->CSR & VREFBUF_CSR_VRR) == 0U) {
         if ((HAL_GetTick() - start) > 100U) {
@@ -34,10 +32,8 @@ int PortVref_Enable(void)
         }
     }
 
-    /* VRR can assert well before the output has actually settled - measuring
-     * right after it gave 2493 mV on one boot and 2763 mV on the next, and that
-     * error would multiply into every ADC reading, every temperature and every
-     * DAC code. Give it a fixed settling window before anyone reads it. */
+    /* VRR asserts before the output settles (2493 vs 2763 mV measured right
+     * after it), so wait a fixed 20 ms. */
     uint32_t ready_ms = HAL_GetTick() - start;
     HAL_Delay(20);
 

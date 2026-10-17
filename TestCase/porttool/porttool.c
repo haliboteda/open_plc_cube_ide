@@ -4,11 +4,14 @@
 
 #include "porttool.h"
 #include "porttool_cmd.h"
+#include "porttool_calw.h"  /* pt.calw; also where PORTTOOL_CALIB_BASE comes from */
+#include "porttool_aodiag.h" /* TEMPORARY: pt.aodiag, see that header */
 #include "porttool_run.h"
 #include "port_led.h"
 
 #include "main.h"
 #include "usart.h"          /* huart4: the RS232 log port is also the command port */
+#include "calib_area.h"     /* pt.cal: where the calibration area is, how long */
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -16,7 +19,7 @@
 
 #if PORTTOOL_ENABLE
 
-#define PORTTOOL_VERSION "0.10.0"
+#define PORTTOOL_VERSION "0.18.1"
 
 /* Each porttool_<name>.c defines one of these. */
 extern porttool_port_t porttool_ain;
@@ -47,39 +50,18 @@ static porttool_port_t *const ports[] = {
     &porttool_knx,
     &porttool_eth,
     &porttool_usb,
-    /* A session for the detect switch only; the deep checks on this same port
-     * stay as pt.run targets and appear on its row as runs=. */
-    &porttool_sd,
-    /* Retention, which only means anything over a long run - so it is a
-     * session that never blocks rather than the one-way entry it replaces.
-     * probe, sweep, retention and crc stay as pt.run targets on this row. */
-    &porttool_sdram,
+    &porttool_sd,      /* detect switch only; deep checks are pt.run targets */
+    &porttool_sdram,   /* retention; probe/sweep/crc are pt.run targets */
 };
 #define PORT_COUNT (sizeof(ports) / sizeof(ports[0]))
 
 static char line_buf[PORTTOOL_LINE_MAX];
 static uint32_t line_len;
 
-/* The command port is received on interrupt into a ring, not polled.
- *
- * printf here goes one byte at a time through a blocking HAL_UART_Transmit
- * (Core/Src/main.c __io_putchar), so a single sample frame is a hundred
- * blocking calls. A polled receive is not looking at the wire during any of
- * them, and a command byte arriving then is simply lost.
- *
- * Measured on the board 2026-09-08 with sessions running: 8 commands sent from
- * the PC produced one reply lost outright and one command corrupted into
- * "ppt.id", with the board's own rx_errors counter at 9. With sessions stopped
- * the same 8 commands were clean. So this was not a host bug - the board was
- * dropping bytes it never looked for.
- *
- * The ring is filled from the ISR and drained by poll_command, which is the
- * only reader. head is written only by the ISR and tail only by the reader, so
- * one byte of slack in the full test is all the synchronisation needed - no
- * critical section, and the ISR never blocks.
- *
- * 512 is well over one line: PORTTOOL_LINE_MAX is 192, and the longest burst
- * anything sends is a command plus its terminator. */
+/* The command port is received on interrupt into a ring: printf blocks in
+ * HAL_UART_Transmit, and a polled receive loses the bytes that arrive meanwhile.
+ * Single writer (ISR: head) and single reader (poll_command: tail), so no
+ * critical section is needed. 512 holds more than one PORTTOOL_LINE_MAX line. */
 #define RX_RING_SIZE 512U
 static volatile uint8_t  rx_ring[RX_RING_SIZE];
 static volatile uint16_t rx_head;   /* ISR writes */
@@ -87,34 +69,89 @@ static volatile uint16_t rx_tail;   /* poll_command reads */
 static volatile uint32_t rx_dropped;/* ring was full - the reader fell behind */
 static volatile uint8_t  rx_err_seen; /* an error arrived; the reader resets its line */
 
-/* Complete lines the command port has taken in. The RS232 session reports it
- * as evidence that the receive direction is carrying traffic. */
-static uint32_t lines_in;
+static uint32_t lines_in;    /* PortTool_LinesReceived */
+static uint32_t rx_errors;   /* PortTool_RxErrors */
 
-/* Receive errors cleared on the command port - see poll_command(). Reported by
- * pt.id because a station that saw one lost a command: the count is the only
- * evidence, and without it a plan step that timed out looks like a fault in
- * whatever it was testing. */
-static uint32_t rx_errors;
-
-/* The deadman. The PC owns the clock for a timed run, so a PC that dies leaves
- * the board driving 24 V until somebody presses reset. pt.hold is what the PC
- * renews to say it is still there; when it lapses the board releases every
- * output and lights the indicator itself.
- *
- * *** This is not the board judging a test. DECISIONS.md 22 stands: the board
- * *** judges whether anyone is still listening, never whether the board is
- * *** good. Renewal is explicit - no other command refreshes it - so a PC that
- * *** is merely echoing frames on a dead panel does not keep the outputs live.
- *
- * *** The indicator is lit here rather than left to the PC because the PC is
- * *** by definition gone at this point, and a burn-in rack nobody is watching
- * *** from a screen is exactly where the lamp is the only thing readable. */
+/* The deadman (DECISIONS.md 37). Only pt.hold renews it, so a PC merely echoing
+ * frames does not keep outputs live. On lapse the board releases every output
+ * and lights the indicator itself, since the PC is gone. */
 #define PORTTOOL_HOLD_MAX_MS 600000U
 
 static uint32_t hold_span_ms;   /* what the PC last asked for, echoed back */
 static uint32_t hold_until_ms;
 static int      hold_armed;
+
+/* The control line's rate - see PortTool_LineRequest in porttool.h. */
+static uint32_t line_baud = PORTTOOL_LINE_DEFAULT_BAUD;
+static uint32_t line_next;          /* 0 = nothing to apply after this reply */
+static uint32_t line_heard_ms;      /* last byte in */
+static int      line_settled = 1;   /* a byte has arrived at the current rate */
+
+void PortTool_LineRequest(uint32_t baud)
+{
+    line_next = (baud == line_baud) ? 0U : baud;
+}
+
+uint32_t PortTool_LineBaud(void)
+{
+    return line_baud;
+}
+
+/* " line=<baud>" when this command's reply announces a switch, else "". */
+static const char *line_suffix(void)
+{
+    static char buf[24];
+
+    if (line_next == 0U) {
+        return "";
+    }
+    snprintf(buf, sizeof(buf), " line=%lu", (unsigned long)line_next);
+    return buf;
+}
+
+/* No reply is in flight here: printf's HAL_UART_Transmit returns only after
+ * TC, so the announcing reply's last byte is already on the wire. */
+static void line_set(uint32_t baud)
+{
+    huart4.Init.BaudRate = baud;
+    (void)HAL_UART_Init(&huart4);
+    __HAL_UART_ENABLE_IT(&huart4, UART_IT_RXNE);
+    line_baud = baud;
+}
+
+static void line_heard(uint32_t now_ms)
+{
+    line_heard_ms = now_ms;
+    line_settled  = 1;
+}
+
+/* Applies a requested rate once the reply announcing it has gone out. Frames
+ * wait for the PC's first byte at the new rate: sent earlier they are noise. */
+static void line_apply(uint32_t now_ms)
+{
+    if (line_next == 0U) {
+        return;
+    }
+    line_set(line_next);
+    line_next     = 0U;
+    line_settled  = (line_baud == PORTTOOL_LINE_DEFAULT_BAUD);
+    line_heard_ms = now_ms;
+}
+
+/* A PC that died mid-test would leave the board on a rate nobody knows. */
+static void line_check(uint32_t now_ms)
+{
+    if (line_baud == PORTTOOL_LINE_DEFAULT_BAUD || line_next != 0U) {
+        return;
+    }
+    if ((uint32_t)(now_ms - line_heard_ms) < PORTTOOL_LINE_SILENCE_MS) {
+        return;
+    }
+    line_set(PORTTOOL_LINE_DEFAULT_BAUD);
+    line_settled = 1;
+    printf("!line t=%lu baud=%lu reverted=1\r\n", (unsigned long)now_ms,
+           (unsigned long)line_baud);
+}
 
 uint32_t PortTool_LinesReceived(void)
 {
@@ -141,6 +178,9 @@ void PortTool_Frame(const char *port, const char *fmt, ...)
     (void)vsnprintf(body, sizeof(body), fmt, ap);
     va_end(ap);
 
+    if (!line_settled) {
+        return;
+    }
     printf("!%s t=%lu %s\r\n", port, (unsigned long)HAL_GetTick(), body);
 }
 
@@ -223,6 +263,33 @@ uint32_t PortTool_EchoFields(const porttool_echo_t *e, char *out, uint32_t out_l
     return (w < 0) ? 0U : (uint32_t)w;
 }
 
+void PortTool_EchoScan(porttool_echo_t *e, porttool_numscan_t *s,
+                       const uint8_t *data, uint32_t len)
+{
+    for (uint32_t i = 0; i < len; i++) {
+        uint8_t c = data[i];
+        if ((c >= '0') && (c <= '9')) {
+            s->acc = (s->acc * 10U) + (uint32_t)(c - '0');
+            s->in_number = 1;
+        } else if (s->in_number) {
+            PortTool_EchoGot(e, s->acc);
+            s->acc = 0;
+            s->in_number = 0;
+        }
+    }
+}
+
+uint32_t PortTool_Crc32Update(uint32_t crc, const uint8_t *p, uint32_t n)
+{
+    for (uint32_t i = 0; i < n; i++) {
+        crc ^= p[i];
+        for (int k = 0; k < 8; k++) {
+            crc = (crc & 1U) ? (crc >> 1) ^ 0xEDB88320UL : (crc >> 1);
+        }
+    }
+    return crc;
+}
+
 const char *PortTool_LoopName(porttool_loop_t loop)
 {
     switch (loop) {
@@ -233,17 +300,9 @@ const char *PortTool_LoopName(porttool_loop_t loop)
     }
 }
 
-/* Per session: an "OK port=" line describing its shape, an "OK vals=" line
- * with its current parameter values, and an "OK terms=" line for the ports
- * whose channels do not map onto their terminal range one for one.
- *
- * Shape and values are separate lines because a port with a value per channel
- * cannot fit both inside PORTTOOL_LINE_MAX: dout alone spends 31 characters on
- * "duty=1:0,2:0,...,8:0", and the analog ports will do the same. One line
- * would have to be trimmed to fit, and a trimmed caps line is a parameter the
- * panel silently never renders.
- *
- * With `emit` 0 it only counts, so the header can say how many lines follow. */
+/* Per session: "OK port=" (shape), "OK vals=" (current values), and optional
+ * terms= / limits= / info= lines. Shape and values are separate lines so
+ * neither overflows PORTTOOL_REPLY_MAX. With `emit` 0 it only counts. */
 static uint32_t session_caps(int emit)
 {
     char buf[PORTTOOL_REPLY_MAX];
@@ -259,16 +318,15 @@ static uint32_t session_caps(int emit)
         if (p->limits != NULL) {
             lines++;
         }
+        if (p->info != NULL) {
+            lines++;
+        }
         if (!emit) {
             continue;
         }
 
-        /* A port with both a session and a one-shot target - eth - is one
-         * piece of hardware, so it gets one row with the target listed beside
-         * the session rather than a second row under the same name: its
-         * session is the TCP server and eth.link is the PHY probe, and they
-         * share an RJ45. */
-        char runs[64];
+        /* A port's pt.run targets go on its session row (DECISIONS.md 17). */
+        char runs[96];
         uint32_t shots = PortTool_RunTargetsFor(p->name, runs, sizeof(runs));
 
         printf("OK port=%s board=%s kind=session blk=%s term=%s channels=%u "
@@ -295,28 +353,24 @@ static uint32_t session_caps(int emit)
             p->limits(buf, sizeof(buf));
             printf("OK limits=%s %s\r\n", p->name, buf);
         }
+
+        if (p->info != NULL) {
+            buf[0] = '\0';
+            p->info(buf, sizeof(buf));
+            printf("OK info=%s %s\r\n", p->name, buf);
+        }
     }
 
     return lines;
 }
 
-/* The whole port list - sessions and one-shot hardware - so the PC builds its
- * panel from the firmware instead of a hard-coded copy of it, and can check a
- * plan file's targets without a board present.
- *
- * `lines=` counts the OK lines that follow. It is not the same as `ports=`:
- * a port may add a terms= line, and later ones may add more. Reading a fixed
- * count is what keeps the PC from having to guess where the reply ends. */
+/* The whole port list. `lines=` counts the OK lines that follow (not the same
+ * as `ports=`), so the PC knows where the reply ends. hold= and led= say this
+ * firmware understands pt.hold and pt.led. */
 static void reply_caps(void)
 {
-    /* A run group prints exactly one line and never a terms= line, so for
-     * those the line count and the port count are the same number. */
-    uint32_t run_ports = PortTool_RunCaps(0);
+    uint32_t run_ports = PortTool_RunCaps(0);   /* one line per run group */
 
-    /* hold= and led= are capability bits, not counts: the PC has no port list
-     * of its own, so this is how it learns whether this firmware understands
-     * pt.hold and pt.led rather than sending them and reading back an
-     * "unknown command". */
     printf("OK porttool=%s ports=%lu lines=%lu hold=1 led=1\r\n",
            PORTTOOL_VERSION,
            (unsigned long)(PORT_COUNT + run_ports),
@@ -328,14 +382,35 @@ static void reply_caps(void)
 
 static void reply_id(void)
 {
-    /* Straight from the MCU's unique ID registers - no IAP code is linked in,
-     * so the tool stays independent of the bootloader's server. */
+    /* From the UID registers directly: no IAP code is linked in. */
     const volatile uint32_t *uid = (const volatile uint32_t *)UID_BASE;
 
     printf("OK uid=%08lX%08lX%08lX porttool=%s rx_errors=%lu rx_dropped=%lu\r\n",
            (unsigned long)uid[0], (unsigned long)uid[1], (unsigned long)uid[2],
            PORTTOOL_VERSION, (unsigned long)rx_errors,
            (unsigned long)rx_dropped);
+}
+
+_Static_assert(sizeof("OK cal=\r\n") - 1U + 2U * sizeof(calib_area_t)
+               <= PORTTOOL_REPLY_MAX, "pt.cal must fit one line");
+
+/* The calibration area's bytes as they sit in flash, read-only. The PC decodes
+ * them, so calib_area.h stays the only parser of the format. See
+ * $PROD/docs/modules/M4/PORTTOOL-FLOW.md A.4 "pt.cal". */
+static void reply_cal(void)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    const volatile uint8_t *area = (const volatile uint8_t *)PORTTOOL_CALIB_BASE;
+    char hex[2U * sizeof(calib_area_t) + 1U];
+
+    for (uint32_t i = 0; i < sizeof(calib_area_t); i++) {
+        uint8_t b = area[i];
+        hex[2U * i]      = digits[b >> 4];
+        hex[2U * i + 1U] = digits[b & 0x0FU];
+    }
+    hex[sizeof(hex) - 1U] = '\0';
+
+    printf("OK cal=%s\r\n", hex);
 }
 
 static void reply_list(void)
@@ -373,7 +448,7 @@ static void cmd_start(const char *rest)
         return;
     }
     p->running = 1;
-    printf("OK started %s\r\n", p->name);
+    printf("OK started %s%s\r\n", p->name, line_suffix());
 }
 
 static void cmd_set(const char *rest)
@@ -399,78 +474,7 @@ static void cmd_set(const char *rest)
                err[0] ? err : "no reason given");
         return;
     }
-    printf("OK set %s\r\n", p->name);
-}
-
-/* pt.echo <port> <value> - the PC sending back the number it just saw.
- *
- * Refused for a loop=link port on purpose. Those take their reply off the link
- * being tested; answering here instead would advance the counter while that
- * link is dead, which is exactly the false pass this tool is not allowed to
- * produce. */
-static void cmd_echo(const char *rest)
-{
-    char name[24];
-    char value[24];
-    const char *args = NULL;
-    uint32_t v = 0;
-    int digits = 0;
-
-    PortCmd_Word(rest, name, sizeof(name), &args);
-    porttool_port_t *p = find_port(name);
-    if (p == NULL) {
-        printf("ERR no such port \"%s\"\r\n", name);
-        return;
-    }
-    if (p->echo == NULL) {
-        printf("ERR %s takes its echo on its own link, not on this one\r\n", p->name);
-        return;
-    }
-    if (!p->running) {
-        printf("ERR %s is not running\r\n", p->name);
-        return;
-    }
-
-    PortCmd_Word(args, value, sizeof(value), NULL);
-    for (const char *c = value; *c != '\0'; c++) {
-        if (*c < '0' || *c > '9') {
-            printf("ERR %s echo value \"%s\" is not a number\r\n", p->name, value);
-            return;
-        }
-        v = v * 10U + (uint32_t)(*c - '0');
-        digits++;
-    }
-    if (digits == 0) {
-        printf("ERR %s echo needs a number\r\n", p->name);
-        return;
-    }
-
-    p->echo(v);
-    printf("OK echo %s %lu\r\n", p->name, (unsigned long)v);
-}
-
-static void cmd_stop(const char *rest)
-{
-    char name[24];
-
-    PortCmd_Word(rest, name, sizeof(name), NULL);
-
-    if (strcmp(name, "all") == 0) {
-        stop_all();
-        printf("OK stopped all\r\n");
-        return;
-    }
-
-    porttool_port_t *p = find_port(name);
-    if (p == NULL) {
-        printf("ERR no such port \"%s\"\r\n", name);
-        return;
-    }
-    if (p->stop != NULL) {
-        p->stop();
-    }
-    p->running = 0;
-    printf("OK stopped %s\r\n", p->name);
+    printf("OK set %s%s\r\n", p->name, line_suffix());
 }
 
 /* Reads a bare decimal argument. Returns 0 for anything else, including an
@@ -492,6 +496,68 @@ static int parse_u32(const char *word, uint32_t *out)
     }
     *out = v;
     return 1;
+}
+
+/* pt.echo <port> <value>. Refused for a loop=link port: its reply must come
+ * off the link under test (porttool_port_t.echo). */
+static void cmd_echo(const char *rest)
+{
+    char name[24];
+    char value[24];
+    const char *args = NULL;
+    uint32_t v = 0;
+
+    PortCmd_Word(rest, name, sizeof(name), &args);
+    porttool_port_t *p = find_port(name);
+    if (p == NULL) {
+        printf("ERR no such port \"%s\"\r\n", name);
+        return;
+    }
+    if (p->echo == NULL) {
+        printf("ERR %s takes its echo on its own link, not on this one\r\n", p->name);
+        return;
+    }
+    if (!p->running) {
+        printf("ERR %s is not running\r\n", p->name);
+        return;
+    }
+
+    PortCmd_Word(args, value, sizeof(value), NULL);
+    if (value[0] == '\0') {
+        printf("ERR %s echo needs a number\r\n", p->name);
+        return;
+    }
+    if (!parse_u32(value, &v)) {
+        printf("ERR %s echo value \"%s\" is not a number\r\n", p->name, value);
+        return;
+    }
+
+    p->echo(v);
+    printf("OK echo %s %lu\r\n", p->name, (unsigned long)v);
+}
+
+static void cmd_stop(const char *rest)
+{
+    char name[24];
+
+    PortCmd_Word(rest, name, sizeof(name), NULL);
+
+    if (strcmp(name, "all") == 0) {
+        stop_all();
+        printf("OK stopped all%s\r\n", line_suffix());
+        return;
+    }
+
+    porttool_port_t *p = find_port(name);
+    if (p == NULL) {
+        printf("ERR no such port \"%s\"\r\n", name);
+        return;
+    }
+    if (p->stop != NULL) {
+        p->stop();
+    }
+    p->running = 0;
+    printf("OK stopped %s%s\r\n", p->name, line_suffix());
 }
 
 static void cmd_hold(const char *rest)
@@ -536,11 +602,8 @@ static void cmd_hold(const char *rest)
     printf("OK hold=%lu\r\n", (unsigned long)ms);
 }
 
-/* The indicator, driven from the PC. Every verdict is made up there, so the
- * lamp is told what to show rather than deciding anything here.
- *
- * Distinct from pt.run led.blink, which blocks for a fixed six pulses: that is
- * a one-shot check of the lamp, not a warning that has to stay up. */
+/* The indicator, driven from the PC, which makes every verdict. pt.run
+ * led.blink is the one-shot lamp check; this one stays up. */
 static void cmd_led(const char *rest)
 {
     char word[24];
@@ -558,15 +621,12 @@ static void cmd_led(const char *rest)
     printf("OK led fault=%lu\r\n", (unsigned long)on);
 }
 
-/* Sessions are left alone, and a target that measures nothing still answers
- * with a line the PC can read. */
+/* Leaves sessions alone; what follows the target name is the target's args. */
 static void cmd_run(const char *rest)
 {
     char name[32];
     const char *args = NULL;
 
-    /* What follows the target name is handed to the target, so a one-shot can
-     * be parameterised from a plan the same way a session is. */
     PortCmd_Word(rest, name, sizeof(name), &args);
 
     if (name[0] == '\0') {
@@ -595,6 +655,10 @@ static void dispatch(const char *line)
         reply_caps();
     } else if (strcmp(verb, "pt.id") == 0) {
         reply_id();
+    } else if (strcmp(verb, "pt.cal") == 0) {
+        reply_cal();
+    } else if (strcmp(verb, "pt.calw") == 0) {
+        PortTool_CalWrite(rest);
     } else if (strcmp(verb, "pt.list") == 0) {
         reply_list();
     } else if (strcmp(verb, "pt.start") == 0) {
@@ -609,6 +673,8 @@ static void dispatch(const char *line)
         cmd_hold(rest);
     } else if (strcmp(verb, "pt.led") == 0) {
         cmd_led(rest);
+    } else if (strcmp(verb, "pt.aodiag") == 0) {   /* TEMPORARY, porttool_aodiag.h */
+        PortTool_AoDiag(rest, stop_all);
     } else {
         printf("ERR unknown command \"%s\"\r\n", verb);
     }
@@ -619,13 +685,8 @@ static void poll_command(void)
 {
     uint8_t b;
 
-    /* Receive errors are cleared in the ISR now - it is the only code that
-     * touches the peripheral. What is left here is draining the ring.
-     *
-     * An error still costs the command it interrupted, so line_len is reset
-     * when one has been seen: keeping a half-line would splice two commands
-     * into one. That reset lives here rather than in the ISR because line_len
-     * belongs to this loop. */
+    /* A receive error costs the command it interrupted: drop the half-line
+     * rather than splice two commands into one. */
     if (rx_err_seen) {
         rx_err_seen = 0;
         line_len = 0U;
@@ -634,7 +695,7 @@ static void poll_command(void)
     while (rx_tail != rx_head) {
         b = rx_ring[rx_tail];
         rx_tail = (uint16_t)((rx_tail + 1U) % RX_RING_SIZE);
-        {
+        line_heard(HAL_GetTick());
         if (b == '\r' || b == '\n') {
             if (line_len > 0U) {
                 line_buf[line_len] = '\0';
@@ -645,27 +706,17 @@ static void poll_command(void)
         } else if (line_len + 1U < sizeof(line_buf)) {
             line_buf[line_len++] = (char)b;
         } else {
-            /* Overlong input is dropped whole rather than truncated into a
-             * command that means something else. */
+            /* Dropped whole, not truncated into a different command. */
             line_len = 0U;
             printf("ERR line too long\r\n");
-        }
         }
     }
 }
 
-/* The command port's receive interrupt.
- *
- * Defined here rather than in Core/Src/stm32h7xx_it.c deliberately: that file
- * is CubeMX-generated and this handler belongs to the tool. If UART4's global
- * interrupt is ever switched on in the .ioc, CubeMX generates its own and the
- * link fails on a duplicate symbol - which is the loud failure, not a silent
- * one.
- *
- * Raw registers, and deliberately NOT HAL_UART_IRQHandler: printf is inside a
- * blocking HAL_UART_Transmit most of the time this fires, and the HAL's own
- * handler would touch the same handle state that call is using. Nothing here
- * reads or writes any of huart4's HAL fields. */
+/* The command port's receive interrupt. Here, not in the CubeMX-generated
+ * stm32h7xx_it.c; enabling UART4's IRQ in the .ioc would fail the link loudly.
+ * Raw registers, not HAL_UART_IRQHandler: printf's HAL_UART_Transmit is usually
+ * using huart4's handle state when this fires. */
 void UART4_IRQHandler(void)
 {
     uint32_t isr = UART4->ISR;
@@ -684,19 +735,14 @@ void UART4_IRQHandler(void)
             rx_ring[rx_head] = b;
             rx_head = next;
         } else {
-            /* The reader fell behind. Counted rather than overwritten:
-             * dropping the oldest byte would corrupt a command already
-             * half-read, which is worse than losing the newest one. */
+            /* Drop the newest: overwriting would corrupt a half-read line. */
             rx_dropped++;
         }
     }
 }
 
-/* Releases everything when the PC stops renewing - see the hold_armed block.
- *
- * now_ms is a parameter for the same reason tick_sessions takes one: the host
- * test's clock does not run on its own, and a deadman that could only be
- * reached through HAL_GetTick() would be untestable off a board. */
+/* Releases everything when the PC stops renewing. Takes now_ms so the host
+ * test can drive the clock. */
 static void hold_check(uint32_t now_ms)
 {
     if (!hold_armed) {
@@ -714,12 +760,13 @@ static void hold_check(uint32_t now_ms)
            (unsigned long)hold_span_ms);
 }
 
-/* Gives every running session a chance to push a frame. Each one decides for
- * itself whether its period has elapsed. Factored out of the superloop so the
- * host test can advance time by hand: without it the frame path - the whole
- * data plane - could only be exercised on a board. */
+/* Gives every running session a chance to push a frame; each decides whether
+ * its period has elapsed. Takes now_ms so the host test can drive the clock. */
 static void tick_sessions(uint32_t now_ms)
 {
+    if (!line_settled) {
+        return;   /* the PC has not followed a line-rate switch yet */
+    }
     for (uint32_t i = 0; i < PORT_COUNT; i++) {
         if (ports[i]->running && ports[i]->tick != NULL) {
             ports[i]->tick(now_ms);
@@ -729,15 +776,9 @@ static void tick_sessions(uint32_t now_ms)
 
 void PortTool_Run(void)
 {
-    /* Receive on interrupt, so command bytes are captured while printf is
-     * blocking inside HAL_UART_Transmit - see the ring buffer's comment for
-     * the measurement that made this necessary.
-     *
-     * Priority 6 is below the HAL timebase (TIM6 takes uwTickPrio, which
-     * HAL_Init leaves at 0): the tick must not be delayed by this, and the
-     * handler is a few register accesses either way. Only RXNE is enabled -
-     * transmission stays polled, because printf's ordering with the sample
-     * frames is what makes the log readable by a person. */
+    /* Priority 6 preempts the HAL timebase (TIM6, TICK_INT_PRIORITY 15); the
+     * handler is a few register accesses. Only RXNE: transmit stays polled so
+     * printf and frames keep their order. */
     HAL_NVIC_SetPriority(UART4_IRQn, 6, 0);
     HAL_NVIC_EnableIRQ(UART4_IRQn);
     __HAL_UART_ENABLE_IT(&huart4, UART_IT_RXNE);
@@ -758,6 +799,8 @@ void PortTool_Run(void)
         tick_sessions(now);
         PortEth_Poll();
         poll_command();
+        line_apply(now);
+        line_check(now);
     }
 }
 

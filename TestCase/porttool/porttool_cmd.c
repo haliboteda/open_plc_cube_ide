@@ -120,10 +120,7 @@ int PortCmd_GetPairs(const char *args, const char *key, uint32_t max_ch,
                      uint32_t val_max, uint32_t *vals, uint32_t *touched)
 {
     char buf[96];
-    /* Parsed into a scratch copy and only committed once the whole value is
-     * known good. Writing as we go would leave the channels named before a bad
-     * entry already changed, and "the command was refused" would no longer be
-     * the same thing as "nothing moved". */
+    /* Committed only once the whole value is good: refused means nothing moved. */
     uint32_t scratch[PORTTOOL_MAX_CHANNELS];
     uint32_t ch = 0, val = 0, seen = 0;
     int ch_digits = 0, val_digits = 0;
@@ -158,8 +155,7 @@ int PortCmd_GetPairs(const char *args, const char *key, uint32_t max_ch,
             if (ch < 1U || ch > max_ch || val > val_max) {
                 return 0;
             }
-            /* Naming the same channel twice means the caller does not know
-             * what it asked for; picking one is worse than saying no. */
+            /* The same channel twice is refused rather than guessed. */
             if ((seen & (1U << (ch - 1U))) != 0U) {
                 return 0;
             }
@@ -230,6 +226,14 @@ void PortCmd_FormatMask(uint32_t mask, uint32_t max_ch, char *out, uint32_t out_
         n += (uint32_t)w;
         first = 0;
     }
+}
+
+int PortCmd_HexDigit(char c)
+{
+    if (c >= '0' && c <= '9') { return c - '0'; }
+    if (c >= 'A' && c <= 'F') { return c - 'A' + 10; }
+    if (c >= 'a' && c <= 'f') { return c - 'a' + 10; }
+    return -1;
 }
 
 const char *PortCmd_Word(const char *line, char *out, uint32_t out_len, const char **rest)

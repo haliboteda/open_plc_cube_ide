@@ -6,11 +6,7 @@
 
 static UART_HandleTypeDef huart_rs485;
 
-/* Overruns since the last PortRs485_Init. Reported rather than hidden: a lost
- * byte is a real event on a half-duplex pair, and a counter that says how
- * often is the difference between "the wiring is dead" and "the reader was
- * late". */
-static uint32_t s_rs485_overruns;
+static uint32_t s_rs485_overruns;   /* PortRs485_Overruns */
 
 uint32_t PortRs485_Overruns(void)
 {
@@ -21,7 +17,6 @@ void PortRs485_ResetOverruns(void)
 {
     s_rs485_overruns = 0u;
 }
-
 
 void PortRs485_DriveEnable(int on)
 {
@@ -50,8 +45,7 @@ int PortRs485_Init(uint32_t baud)
     gpio.Pin       = PORT_RS485_TX_PIN;
     HAL_GPIO_Init(PORT_RS485_DIR_PORT, &gpio);
 
-    /* RO goes high-Z when /RE is driven high, so the pull-up is what makes an
-     * off receiver read as an idle line instead of as noise. */
+    /* RO is high-Z while /RE is high: the pull-up makes that read as idle. */
     gpio.Pull = GPIO_PULLUP;
     gpio.Pin  = PORT_RS485_RX_PIN;
     HAL_GPIO_Init(PORT_RS485_DIR_PORT, &gpio);
@@ -94,22 +88,9 @@ int PortRs485_Send(const uint8_t *data, uint16_t len)
     return st;
 }
 
-/* Raw registers, deliberately NOT HAL_UART_Receive.
- *
- * ⚠️ An overrun latches ORE, and HAL_UART_Receive returns an error with that
- * flag still set - it does not clear it, and its own RxState machine then
- * refuses later calls. One lost byte therefore made the receiver deaf for the
- * rest of the session, recoverable only by a hardware reset. Measured
- * 2026-09-09: after a single pt.stop/pt.start the pair reported rxbytes=0
- * forever while the peer was provably echoing every line.
- *
- * At 115200 a byte occupies 87 us and this USART has no FIFO enabled, so an
- * overrun is not exotic - it is what happens whenever a superloop pass takes
- * longer than that, which any pass that prints a frame does.
- *
- * This is the same shape UART4's own handler uses for the control channel
- * (TestCase/porttool/porttool.c) - clear the error flags, then take the byte
- * if one is there. That one has always worked; this one was the odd path out. */
+/* Raw registers, not HAL_UART_Receive: that leaves ORE latched after an overrun
+ * and the receiver deaf until reset. Same shape as UART4_IRQHandler in
+ * porttool.c: clear the error flags, then take the byte. */
 int PortRs485_RecvByte(uint8_t *out)
 {
     USART_TypeDef *u = huart_rs485.Instance;

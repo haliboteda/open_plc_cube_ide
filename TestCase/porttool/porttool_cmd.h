@@ -25,16 +25,10 @@ int PortCmd_GetMask(const char *args, const char *key, uint32_t max_ch, uint32_t
 /* Renders a channel bitmask back as "1,3,5" for replies and caps lines. */
 void PortCmd_FormatMask(uint32_t mask, uint32_t max_ch, char *out, uint32_t out_len);
 
-/* Parses "1:20,3:50" - a value per named channel - into vals[0..max_ch-1],
- * and reports which channels were named in `touched`. Channels not named keep
- * whatever they held.
- *
- * Returns 0 for anything malformed: a channel outside 1..max_ch, a value above
- * val_max, a missing half, or the same channel twice. Nothing is written to
- * vals in that case, so a rejected parameter cannot half-apply.
- *
- * This is what lets a port be driven per channel rather than all together -
- * dout's duty= and relay's on= both use it. */
+/* Parses "1:20,3:50" into vals[0..max_ch-1] and reports the named channels in
+ * `touched`; others keep their value. Returns 0 for anything malformed (channel
+ * out of range, value above val_max, missing half, channel twice) and then
+ * writes nothing, so a refused parameter cannot half-apply. */
 int PortCmd_GetPairs(const char *args, const char *key, uint32_t max_ch,
                      uint32_t val_max, uint32_t *vals, uint32_t *touched);
 
@@ -45,5 +39,8 @@ void PortCmd_FormatPairs(const uint32_t *vals, uint32_t mask, uint32_t max_ch,
 /* Splits the first whitespace-delimited word off `line`, leaving `rest`
  * pointing at whatever follows it. */
 const char *PortCmd_Word(const char *line, char *out, uint32_t out_len, const char **rest);
+
+/* One hexadecimal digit, either case; -1 for anything else. */
+int PortCmd_HexDigit(char c);
 
 #endif /* TESTCASE_PORTTOOL_PORTTOOL_CMD_H_ */

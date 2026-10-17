@@ -1,8 +1,7 @@
 // sdram_test.c
 //
-// Standalone external SDRAM bring-up test - see sdram_test.h for the full
-// picture (hardware, why the vendor files are copied in here, and what
-// each of the three entry points proves).
+// External SDRAM diagnostics - see sdram_test.h for the hardware and what
+// each call proves.
 //
 // Measured on this board (2026-08-31): zeroing runs at 91 MB/s - 16 MiB in
 // 175.1 ms, so a full 64 MiB takes about 700 ms. Bringing the controller up
@@ -17,18 +16,7 @@
 #define SDRAM_BASE_ADDR   0xC0000000UL
 #define SDRAM_SIZE_BYTES  0x04000000UL /* 64 MiB = 512Mbit AS4C32M16SB-7BIN */
 
-#ifndef SDRAM_TEST_RUN_FULL_SWEEP
-#define SDRAM_TEST_RUN_FULL_SWEEP 1 /* set to 0 to skip the slower whole-array pass */
-#endif
-
 #define SDRAM_TEST_NUM_RANDOM_ADDR 64U
-
-#define SDRAM_TEST_VERIFY_OFFSET  0x00000000UL
-#define SDRAM_TEST_VERIFY_LENGTH  285UL /* set this to your test file's exact byte size -
-                                            the firmware always CRCs this many bytes
-                                            regardless of how long the file you wrote
-                                            actually was, so a mismatched length here
-                                            is the most common false "integrity failure" */
 
 /* ---- Bring-up is no longer this file's job --------------------------------
  *
@@ -229,8 +217,8 @@ static int SDRAM_Test_FullSweep(sdram_sweep_t *acc)
 
 /* ---- Public entry point: the same checks, reported as numbers ---------
  *
- * Same three checks the capacity entry runs, but it returns, and it reports
- * what it measured instead of a verdict. The verdict belongs to the PC (see
+ * Data bus, address bus and full sweep, reported as what was measured
+ * instead of a verdict. The verdict belongs to the PC (see
  * $PROD/docs/tables/DECISIONS.md 22), which is what lets a production limit
  * change without reflashing.
  *
@@ -280,44 +268,7 @@ int SDRAM_Test_SweepOnce(sdram_sweep_t *out)
     return SDRAM_Test_FullSweep(out) && out->mismatches == 0U;
 }
 
-/* ---- Public entry point 1/3: how big is it really? -------------------- */
-
-void SDRAM_Test_Capacity(void)
-{
-    int ok;
-
-    printf("SDRAM_TEST: capacity test - data bus, address bus"
-#if SDRAM_TEST_RUN_FULL_SWEEP
-           ", full 64MiB sweep"
-#endif
-           "\r\n");
-
-    if (!SDRAM_Test_Bringup()) {
-        printf("SDRAM_TEST: FAIL reason=bringup\r\n");
-        for (;;) { HAL_Delay(1000); }
-    }
-
-    ok = SDRAM_Test_DataBus();
-    ok &= SDRAM_Test_AddressBus();
-#if SDRAM_TEST_RUN_FULL_SWEEP
-    ok &= SDRAM_Test_FullSweep(NULL);
-#endif
-
-    if (ok) {
-        printf("SDRAM_TEST: CAPACITY CONFIRMED = %lu MiB (0x%08lX bytes) @ 0x%08lX, all buses OK\r\n",
-               (unsigned long)(SDRAM_SIZE_BYTES / (1024UL * 1024UL)),
-               (unsigned long)SDRAM_SIZE_BYTES, (unsigned long)SDRAM_BASE_ADDR);
-    } else {
-        printf("SDRAM_TEST: CAPACITY TEST FAILED - see failures above for the affected line/pattern\r\n");
-    }
-
-    for (;;) {
-        HAL_Delay(5000);
-        printf("SDRAM_TEST: capacity test finished (%s) - see result above\r\n", ok ? "PASS" : "FAIL");
-    }
-}
-
-/* ---- Public entry point 2/3: random addresses survive a 5s wait? ------ */
+/* ---- Retention: random addresses survive a wait? ---------------------- */
 
 static uint32_t SDRAM_Test_Rand(uint32_t *state)
 {
@@ -341,10 +292,8 @@ static uint32_t SDRAM_Test_Signature(uint32_t address)
  * a caller that must not block waits between them on its own clock. */
 static uint32_t sdram_retention_addresses[SDRAM_TEST_NUM_RANDOM_ADDR];
 
-/* The two halves, silent. Whoever drives them decides what to print - the
- * blocking entry below prints its prose around them, and a session cannot
- * print per cycle at all without burying the control port it shares with every
- * other port. */
+/* The two halves, silent: a session cannot print per cycle without burying
+ * the control port it shares with every other port. */
 
 void SDRAM_Test_RetentionWrite(uint32_t *rng_state, sdram_retention_t *out)
 {
@@ -384,79 +333,7 @@ void SDRAM_Test_RetentionVerify(sdram_retention_t *out)
     }
 }
 
-/* One cycle: write the signatures, let them sit, read them back. `rng_state`
- * carries across calls so each cycle picks a different address set. */
-
-static void SDRAM_Test_RetentionCycle(uint32_t *rng_state, sdram_retention_t *out)
-{
-    SDRAM_Test_RetentionWrite(rng_state, out);
-    printf("SDRAM_TEST: retention cycle - rng_seed=0x%08lX\r\n", (unsigned long)out->seed);
-
-    printf("SDRAM_TEST: written, waiting 5s (proves auto-refresh keeps cells alive)...\r\n");
-    HAL_Delay(SDRAM_TEST_RETENTION_WAIT_MS);
-
-    SDRAM_Test_RetentionVerify(out);
-    if (out->failed > 0U) {
-        printf("SDRAM_TEST: RETENTION FAIL - first bad @ 0x%08lX\r\n",
-               (unsigned long)out->first_bad_addr);
-    }
-
-    if (out->failed == 0U) {
-        printf("SDRAM_TEST: retention PASS - all %u addresses correct after 5s\r\n",
-               (unsigned)SDRAM_TEST_NUM_RANDOM_ADDR);
-    } else {
-        printf("SDRAM_TEST: retention FAIL - %lu/%u addresses lost data (refresh not working?)\r\n",
-               (unsigned long)out->failed, (unsigned)SDRAM_TEST_NUM_RANDOM_ADDR);
-    }
-}
-
-/* One cycle and back to the command loop, so a station decides how many
- * cycles to run instead of the firmware looping forever. */
-
-int SDRAM_Test_RetentionOnce(sdram_retention_t *out)
-{
-    static uint32_t rng_state;
-    sdram_retention_t local;
-
-    if (out == NULL) {
-        out = &local;
-    }
-    memset(out, 0, sizeof(*out));
-
-    if (rng_state == 0U) {
-        rng_state = HAL_GetTick() | 1U; /* xorshift needs a non-zero seed */
-    }
-
-    out->ready = SDRAM_Test_Bringup() ? 1 : 0;
-    if (!out->ready) {
-        return 0;
-    }
-
-    SDRAM_Test_RetentionCycle(&rng_state, out);
-    return out->failed == 0U;
-}
-
-void SDRAM_Test_Retention(void)
-{
-    uint32_t rng_state = HAL_GetTick() | 1U; /* xorshift needs a non-zero seed */
-
-    printf("SDRAM_TEST: retention test - write %u random addresses, wait 5s, read back\r\n",
-           (unsigned)SDRAM_TEST_NUM_RANDOM_ADDR);
-
-    if (!SDRAM_Test_Bringup()) {
-        printf("SDRAM_TEST: FAIL reason=bringup\r\n");
-        for (;;) { HAL_Delay(1000); }
-    }
-
-    for (;;) {
-        sdram_retention_t r;
-
-        SDRAM_Test_RetentionCycle(&rng_state, &r);
-        HAL_Delay(1000);
-    }
-}
-
-/* ---- Public entry point 3/3: STM32CubeProgrammer write + firmware verify */
+/* ---- CRC32 of a window, e.g. what STM32CubeProgrammer wrote there ----- */
 
 static uint32_t SDRAM_Test_Crc32(const volatile uint8_t *data, uint32_t len)
 {
@@ -503,39 +380,4 @@ int SDRAM_Test_Crc32Once(uint32_t offset, uint32_t length, sdram_crc_t *out)
     out->crc = SDRAM_Test_Crc32(
         (const volatile uint8_t *)(SDRAM_BASE_ADDR + offset), length);
     return 1;
-}
-
-void SDRAM_Test_CubeProgrammerVerify(void)
-{
-    volatile uint8_t *region = (volatile uint8_t *)(SDRAM_BASE_ADDR + SDRAM_TEST_VERIFY_OFFSET);
-
-    printf("SDRAM_TEST: CubeProgrammer verify - bring-up only, memory contents untouched\r\n");
-
-    if (!SDRAM_Test_Bringup()) {
-        printf("SDRAM_TEST: FAIL reason=bringup\r\n");
-        for (;;) { HAL_Delay(1000); }
-    }
-
-    printf("SDRAM_TEST: watching 0x%08lX + 0x%lX bytes (%lu KiB) - write your file there via\r\n"
-           "            STM32CubeProgrammer's Read & Write Memory panel (connect with \"no reset\"),\r\n"
-           "            then compare the CRC32 below against your PC-side computation, e.g. Python:\r\n"
-           "            zlib.crc32(open('file','rb').read()[:0x%lX])\r\n",
-           (unsigned long)(SDRAM_BASE_ADDR + SDRAM_TEST_VERIFY_OFFSET),
-           (unsigned long)SDRAM_TEST_VERIFY_LENGTH,
-           (unsigned long)(SDRAM_TEST_VERIFY_LENGTH / 1024UL),
-           (unsigned long)SDRAM_TEST_VERIFY_LENGTH);
-
-    for (;;) {
-        uint32_t crc = SDRAM_Test_Crc32(region, SDRAM_TEST_VERIFY_LENGTH);
-        uint32_t i;
-
-        printf("SDRAM_TEST: CRC32(0x%08lX, %lu bytes) = 0x%08lX | first16=",
-               (unsigned long)(SDRAM_BASE_ADDR + SDRAM_TEST_VERIFY_OFFSET),
-               (unsigned long)SDRAM_TEST_VERIFY_LENGTH, (unsigned long)crc);
-        for (i = 0; i < 16U && i < SDRAM_TEST_VERIFY_LENGTH; i++) {
-            printf("%02X ", (unsigned)region[i]);
-        }
-        printf("\r\n");
-        HAL_Delay(1000);
-    }
 }

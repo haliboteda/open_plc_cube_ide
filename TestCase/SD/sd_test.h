@@ -1,9 +1,7 @@
 // sd_test.h
 //
-// Standalone microSD card bring-up test for the STM32H743 OpenPLC board.
-// Not part of the bootloader's core logic - safe to delete once the SD
-// card reader has been validated and its init ported into a real
-// MX_SDMMC1_SD_Init()/MX_FATFS_Init().
+// microSD card diagnostics for the STM32H743 OpenPLC board, called by the
+// port tool's sd session and pt.run sd.*. Not part of the bootloader.
 //
 // Hardware under test (Bridge board, connector J6, Molex 104031-0811
 // microSD socket - see Hardware/Bridge_overview.txt section 3):
@@ -15,7 +13,7 @@
 // This project's .ioc never enabled SDMMC1 (no pins, no
 // HAL_SD_MODULE_ENABLED, no MX_SDMMC1_SD_Init, no FatFs anywhere in
 // Middlewares/ - same situation as ADC/SDRAM before this), so - same
-// pattern as adc_test.c/sdram_test.c - the missing vendor files
+// pattern as port_adc.c - the missing vendor files
 // (stm32h7xx_hal_sd.c/.h, stm32h7xx_ll_sdmmc.c/.h) plus the FatFs core
 // (ff.c/.h, diskio.c/.h, ff_gen_drv.c/.h, integer.h, ffconf.h) live right
 // here alongside the test code, with HAL_SD_MODULE_ENABLED #define'd
@@ -38,32 +36,15 @@
 // Only polling-mode HAL_SD_ReadBlocks()/WriteBlocks() are used (no _IT/_DMA
 // variants), so SDMMC1_IRQHandler is never needed - stm32h7xx_it.c (core-
 // owned) is left untouched.
-//
-// Two independent entry points - uncomment exactly one in main.c at a
-// time (see pwm_test.h/sdram_test.h for the same convention). Both run
-// forever (do not return).
-//
-//   SD_Test_Info()           - answers "is a card detected, how big is
-//       it?": brings up SDMMC1, reads the PE6 detect pin, calls
-//       HAL_SD_Init() + HAL_SD_GetCardInfo(), and prints card type
-//       (SDSC/SDHC/SDXC), capacity, block size and speed class. Re-checks
-//       the detect pin and card state every 2s forever, so you can watch
-//       it react live if you pull the card out and reinsert it.
-//
-//   SD_Test_FileIntegrity()  - answers "can I actually read/write it
-//       correctly?": mounts FatFs, writes a 4KiB file ("0:/PLCTEST.BIN")
-//       with a pseudo-random pattern, closes it, reopens and reads it
-//       back, and compares both a full byte-for-byte match and a CRC32.
-//       Repeats forever (regenerating the pattern each cycle) as a
-//       continuous soak test - same idea as SDRAM_Test_Retention().
 
 #ifndef INC_SD_TEST_H_
 #define INC_SD_TEST_H_
 
-// SD_Test_Probe(), SD_Test_IntegrityOnce() and SD_Test_StressOnce() are the
-// exception to "both run forever": they perform one pass, report what they
-// measured and return. They exist for pt.run, where the PC applies the limit -
-// so they report numbers and no verdict.
+// Every call below performs one pass, reports what it measured and returns.
+// They exist for pt.run, where the PC applies the limit - so they report
+// numbers and no verdict. SD_Test_IntegrityOnce() writes a 4KiB pseudo-random
+// file ("0:/PLCTEST.BIN"), reads it back and compares byte for byte and by
+// CRC32.
 //
 // SD_Test_StressOnce() is SD_Test_IntegrityOnce() repeated: the production
 // test guide asks for an "SD read/write stress test" at stations 6 and 10, and
@@ -166,7 +147,25 @@ int  SD_Test_Speed(uint32_t bytes, sd_speed_t *out);
  * it - the firmware only measures (DECISIONS.md 22). */
 int  SD_Test_StressOnce(uint32_t bytes, uint32_t passes, sd_stress_t *out);
 
-void SD_Test_Info(void);
-void SD_Test_FileIntegrity(void);
+
+/* ---- File access for the panel's SD file transfer ---------------------
+ *
+ * One file at a time, inside SD_FILE_DIR, used by porttool_sdfile.c
+ * (PORTTOOL-FLOW.md B.11). Every call mounts on demand, so a card pulled
+ * after SD_File_Eject and pushed back in works without a reset. Return
+ * values are FRESULT (0 is FR_OK); -1 means the card did not come up. */
+#define SD_FILE_DIR "0:/PORTTOOL"
+
+typedef void (*sd_file_each_t)(const char *name, uint32_t size,
+                               uint16_t fdate, uint16_t ftime, void *ctx);
+
+int SD_File_OpenWrite(const char *name);
+int SD_File_OpenRead(const char *name, uint32_t *size);
+int SD_File_Write(const uint8_t *buf, uint32_t n);
+int SD_File_Read(uint8_t *buf, uint32_t n, uint32_t *got);
+int SD_File_Close(void);
+int SD_File_List(sd_file_each_t each, void *ctx, uint32_t *count);
+int SD_File_Remove(const char *name);
+int SD_File_Eject(void);
 
 #endif /* INC_SD_TEST_H_ */

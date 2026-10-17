@@ -160,47 +160,6 @@ static int SD_Test_Bringup(void)
     return 1;
 }
 
-/* ---- Public entry point 1/2: is a card detected, how big is it? ------- */
-
-void SD_Test_Info(void)
-{
-    int ok;
-    int was_present;
-    int now_present;
-
-    printf("SDCARD_TEST: card info test\r\n");
-    ok = SD_Test_Bringup();
-    was_present = SD_Test_IsCardDetected();
-
-    for (;;) {
-        HAL_Delay(2000);
-        now_present = SD_Test_IsCardDetected();
-
-        /* A removed card invalidates the RCA session HAL_SD_Init() assigned -
-           HAL_SD_GetCardState() would just keep reporting a bogus state (0,
-           not any real HAL_SD_CARD_* value) forever otherwise. Re-run the
-           full bring-up (fresh CMD0/CMD8/ACMD41/CMD2/CMD3 identification) on
-           every ABSENT->PRESENT transition to pick up a new session. */
-        if (now_present && !was_present) {
-            printf("SDCARD_TEST: card (re)inserted - re-running bring-up for a fresh session\r\n");
-            ok = SD_Test_Bringup();
-        } else if (!now_present && was_present) {
-            printf("SDCARD_TEST: card removed\r\n");
-        }
-        was_present = now_present;
-
-        if (!now_present) {
-            printf("SDCARD_TEST: detect_pin=ABSENT\r\n");
-            continue;
-        }
-        if (!ok) {
-            printf("SDCARD_TEST: bring-up FAILED - see reason above\r\n");
-            continue;
-        }
-        printf("SDCARD_TEST: detect_pin=PRESENT card_state=%d\r\n", (int)HAL_SD_GetCardState(&hsd1));
-    }
-}
-
 /* ---- FatFs diskio glue (replaces the reference project's separate
    bsp_driver_sd.c/sd_diskio.c layers with one direct wrapper around
    HAL_SD_ReadBlocks/WriteBlocks) ------------------------------------ */
@@ -359,12 +318,10 @@ static int SD_Test_IntegrityRound(uint32_t bytes, sd_integrity_t *out)
     if (fr != FR_OK) {
         printf("SDCARD_TEST: f_mount FAILED (FRESULT=%d)\r\n", (int)fr);
         if (fr == FR_NO_FILESYSTEM) {
-            /* The one failure here that is not the board's fault, and the one
-             * a station will hit: this FatFs is built without exFAT
-             * (_FS_EXFAT 0 in ffconf.h), and any card over 32 GB ships
-             * exFAT-formatted. sd.probe's fs= field names it outright. */
-            printf("SDCARD_TEST: no FAT filesystem - this build has no exFAT "
-                   "support, so the card must be FAT16/FAT32\r\n");
+            /* Not the board's fault: the card has no FAT/exFAT volume (e.g.
+             * NTFS, GPT or unformatted). sd.probe's fs= field names it. */
+            printf("SDCARD_TEST: no FAT/exFAT filesystem - format the card "
+                   "FAT16/FAT32/exFAT on an MBR partition\r\n");
         }
         return 0;
     }
@@ -794,27 +751,172 @@ int SD_Test_StressOnce(uint32_t bytes, uint32_t passes, sd_stress_t *out)
     return out->first_bad_pass == 0U;
 }
 
-void SD_Test_FileIntegrity(void)
+/* ---- File access (sd_test.h "File access") ---------------------------- */
+
+static FIL sd_file_fil;
+static int sd_file_open;
+static int sd_file_mounted;
+
+static int SD_File_Mount(void)
 {
-    printf("SDCARD_TEST: file integrity test - write/read/verify %s (%u bytes)\r\n",
-           SD_TEST_FILE_NAME, (unsigned)SD_TEST_FILE_SIZE);
+    FRESULT fr;
 
-    if (!SD_Test_MountReady()) {
-        for (;;) { HAL_Delay(1000); }
+    if (sd_file_mounted) {
+        return FR_OK;
     }
+    if (!SD_Test_MountReady()) {
+        return -1;
+    }
+    fr = f_mount(&sd_test_fs, sd_test_path, 1);
+    if (fr != FR_OK) {
+        return (int)fr;
+    }
+    fr = f_mkdir(SD_FILE_DIR);
+    if ((fr != FR_OK) && (fr != FR_EXIST)) {
+        return (int)fr;
+    }
+    sd_file_mounted = 1;
+    return FR_OK;
+}
 
+static void SD_File_Path(char *out, uint32_t len, const char *name)
+{
+    snprintf(out, len, "%s/%s", SD_FILE_DIR, name);
+}
+
+int SD_File_Close(void)
+{
+    FRESULT fr = FR_OK;
+
+    if (sd_file_open) {
+        fr = f_close(&sd_file_fil);
+        sd_file_open = 0;
+    }
+    return (int)fr;
+}
+
+int SD_File_OpenWrite(const char *name)
+{
+    char path[96];
+    int r;
+    FRESULT fr;
+
+    (void)SD_File_Close();
+    r = SD_File_Mount();
+    if (r != FR_OK) {
+        return r;
+    }
+    SD_File_Path(path, sizeof(path), name);
+    fr = f_open(&sd_file_fil, path, FA_CREATE_ALWAYS | FA_WRITE);
+    sd_file_open = (fr == FR_OK);
+    return (int)fr;
+}
+
+int SD_File_OpenRead(const char *name, uint32_t *size)
+{
+    char path[96];
+    int r;
+    FRESULT fr;
+
+    (void)SD_File_Close();
+    r = SD_File_Mount();
+    if (r != FR_OK) {
+        return r;
+    }
+    SD_File_Path(path, sizeof(path), name);
+    fr = f_open(&sd_file_fil, path, FA_READ);
+    sd_file_open = (fr == FR_OK);
+    if (sd_file_open && (size != NULL)) {
+        *size = (uint32_t)f_size(&sd_file_fil);
+    }
+    return (int)fr;
+}
+
+int SD_File_Write(const uint8_t *buf, uint32_t n)
+{
+    UINT done = 0;
+    FRESULT fr;
+
+    if (!sd_file_open) {
+        return (int)FR_INVALID_OBJECT;
+    }
+    fr = f_write(&sd_file_fil, buf, (UINT)n, &done);
+    if ((fr == FR_OK) && (done != n)) {
+        fr = FR_DENIED;   /* the volume is full */
+    }
+    return (int)fr;
+}
+
+int SD_File_Read(uint8_t *buf, uint32_t n, uint32_t *got)
+{
+    UINT done = 0;
+    FRESULT fr;
+
+    if (!sd_file_open) {
+        return (int)FR_INVALID_OBJECT;
+    }
+    fr = f_read(&sd_file_fil, buf, (UINT)n, &done);
+    if (got != NULL) {
+        *got = (uint32_t)done;
+    }
+    return (int)fr;
+}
+
+int SD_File_List(sd_file_each_t each, void *ctx, uint32_t *count)
+{
+    DIR dir;
+    FILINFO fno;
+    FRESULT fr;
+    int r;
+    uint32_t n = 0;
+
+    r = SD_File_Mount();
+    if (r != FR_OK) {
+        return r;
+    }
+    fr = f_opendir(&dir, SD_FILE_DIR);
+    if (fr != FR_OK) {
+        return (int)fr;
+    }
     for (;;) {
-        sd_integrity_t r;
-
-        if (SD_Test_IntegrityRound(SD_TEST_FILE_SIZE, &r)) {
-            printf("SDCARD_TEST: PASS - %u bytes written and read back identical, "
-                   "CRC32=0x%08lX\r\n",
-                   (unsigned)r.bytes, (unsigned long)r.write_crc);
-        } else if (!r.mounted) {
-            HAL_Delay(1000);
+        fr = f_readdir(&dir, &fno);
+        if ((fr != FR_OK) || (fno.fname[0] == 0)) {
+            break;
+        }
+        if (fno.fattrib & AM_DIR) {
             continue;
         }
-
-        HAL_Delay(5000);
+        n++;
+        if (each != NULL) {
+            each(fno.fname, (uint32_t)fno.fsize, fno.fdate, fno.ftime, ctx);
+        }
     }
+    (void)f_closedir(&dir);
+    if (count != NULL) {
+        *count = n;
+    }
+    return (int)fr;
+}
+
+int SD_File_Remove(const char *name)
+{
+    char path[96];
+    int r;
+
+    (void)SD_File_Close();
+    r = SD_File_Mount();
+    if (r != FR_OK) {
+        return r;
+    }
+    SD_File_Path(path, sizeof(path), name);
+    return (int)f_unlink(path);
+}
+
+/* After this the card can be pulled: nothing is cached and the next call
+ * mounts again. */
+int SD_File_Eject(void)
+{
+    (void)SD_File_Close();
+    sd_file_mounted = 0;
+    return (int)f_mount(NULL, sd_test_path, 0);
 }

@@ -1,14 +1,11 @@
 // port_rs485.h
 //
-// Shared USART2 / SP3485EN access, so a bring-up case and the port tool drive
-// the same transceiver through one piece of code instead of each carrying its
-// own copy of the pin map and the direction handling.
+// USART2 / SP3485EN access for the port tool: the pin map and the direction
+// handling.
 //
-// The wiring gotchas for this port are kept in rs485_test.h, where the
-// documented "grep for ***" sweep over *_test.h finds them.
-//
-// Half duplex: PD4 drives /RE and DE at once, so the board cannot receive while
-// it transmits. Nothing here can work around that - it is one net.
+// Half duplex: PD4 drives /RE and DE as one net (Hardware/Production/
+// UpperDeck/netlist.ipc:497-498), so the board cannot hear itself; a second
+// device is required. PD4 is the only control.
 
 #ifndef TESTCASE_COMMON_PORT_RS485_H_
 #define TESTCASE_COMMON_PORT_RS485_H_
@@ -43,14 +40,11 @@ int PortRs485_Send(const uint8_t *data, uint16_t len);
 /* Stores one byte and returns 1 if one was waiting, 0 otherwise. Never blocks. */
 int PortRs485_RecvByte(uint8_t *out);
 
-/* Overruns since PortRs485_Init. A lost byte on a half-duplex pair is a real
- * event; reporting the count is what tells "the reader was late" apart from
- * "the pair is dead". */
+/* Overruns since PortRs485_Init: tells "the reader was late" from "the pair is
+ * dead". */
 uint32_t PortRs485_Overruns(void);
 
-/* Zeroes that counter. A session calls it at start so the number means "lost
- * during this run" rather than "since the board booted" - a limit can only
- * judge the former. */
+/* Zeroes that counter, at session start. */
 void PortRs485_ResetOverruns(void);
 
 #endif /* TESTCASE_COMMON_PORT_RS485_H_ */

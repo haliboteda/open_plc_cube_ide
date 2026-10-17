@@ -1,11 +1,6 @@
 // port_can.c
 //
 // FDCAN1 hardware layer - see port_can.h.
-//
-// Lifted out of TestCase/CAN/can_test.c on 2026-09-08, value for value, so the
-// port tool could drive CAN without entering a test that never returns. The
-// timing table, the FIFO sizes and the "no filter at all" choice are that
-// file's, with its reasoning kept.
 
 #include "port_can.h"
 
@@ -34,10 +29,8 @@ static const can_timing_t CAN_TIMINGS[PORT_CAN_RATE_COUNT] = {
     { 1000000u, 1u,  21u,  3u, 3u },
 };
 
-/* 32 frames of slack between the bus and the console: a frame at 500 kbit/s is
- * about 110 us and one console line costs 5 ms at 115200 baud, so the FIFO is
- * what keeps a burst from being lost while printing. HAL caps FIFO0 at 64
- * elements and TxBuffers + TxFifoQueue at 32. */
+/* RX slack for a burst while the console prints (a line is about 5 ms). HAL
+ * caps FIFO0 at 64 elements and TxBuffers + TxFifoQueue at 32. */
 #define CAN_RX_FIFO_ELMTS 32u
 #define CAN_TX_FIFO_ELMTS  8u
 
@@ -175,8 +168,7 @@ int PortCan_Open(uint8_t rate_index, uint32_t mode, int auto_retx)
         return 0;
     }
 
-    /* No ID filter at all: during bring-up the question is whether anything
-     * arrived, not whether the expected ID arrived. */
+    /* No ID filter: everything is received; the session sorts by ID. */
     if (HAL_FDCAN_ConfigGlobalFilter(&s_h, FDCAN_ACCEPT_IN_RX_FIFO0,
                                      FDCAN_ACCEPT_IN_RX_FIFO0,
                                      FDCAN_FILTER_REMOTE,
@@ -271,6 +263,20 @@ uint32_t PortCan_LastError(void)
     return ps.LastErrorCode;
 }
 
+int PortCan_State(void)
+{
+    FDCAN_ProtocolStatusTypeDef ps = { 0 };
+
+    if (!s_open) {
+        return PORT_CAN_STATE_ACTIVE;
+    }
+    (void) HAL_FDCAN_GetProtocolStatus(&s_h, &ps);
+    if (ps.BusOff)       { return PORT_CAN_STATE_BUSOFF; }
+    if (ps.ErrorPassive) { return PORT_CAN_STATE_PASSIVE; }
+    if (ps.Warning)      { return PORT_CAN_STATE_WARNING; }
+    return PORT_CAN_STATE_ACTIVE;
+}
+
 int PortCan_Alive(void)
 {
     return (FDCAN1->ENDN == PORT_CAN_ENDN_EXPECT) ? 1 : 0;
@@ -292,9 +298,4 @@ const char *PortCan_ClockName(void)
     case RCC_FDCANCLKSOURCE_PLL2: return "PLL2Q";
     default:                      return "unknown";
     }
-}
-
-FDCAN_HandleTypeDef *PortCan_Handle(void)
-{
-    return &s_h;
 }

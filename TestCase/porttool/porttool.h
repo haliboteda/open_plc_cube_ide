@@ -4,25 +4,19 @@
 // the RS232 log port. Pick a port, set its parameters, start it, and it keeps
 // reporting until stopped - the hardware engineer watches while probing.
 //
-// This is not a pass/fail production test. Nothing here judges anything; it
-// samples, and the PC side decides what to show.
+// The board only samples; the PC makes every verdict. main.c calls
+// PortTool_Run() behind PORTTOOL_ENABLE and it never returns, so the
+// bootloader's normal path never runs.
 //
-// *** Entry point only. main.c calls PortTool_Run() behind PORTTOOL_ENABLE and
-// *** it never returns, so the IAP server never starts and nothing in the
-// *** bootloader's normal path is touched.
-//
-// One serial line carries two kinds of output:
-//
-//   !din t=48213 v=0x16 ...      pushed samples, for the PC side
-//   [T1 ] inputs: PB5=0 ...      the existing bring-up printf log, for a person
-//
-// A "!" first character is the whole protocol difference. A person watching a
-// plain terminal sees both and can read either.
+// One serial line carries pushed sample frames ("!din t=48213 v=0x16 ...", a
+// leading "!") and the printf log for a person.
 //
 // Commands (one per line, echoed nowhere - the reply is the answer):
 //
 //   pt.caps                    what this firmware exposes
 //   pt.id                      board identity
+//   pt.cal                     the calibration area's bytes, read-only
+//   pt.calw  <112 hex digits>  write the calibration area into sector 15
 //   pt.list                    which sessions are running
 //   pt.start <port> [k=v ...]  start one
 //   pt.set   <port> k=v ...    change parameters while it runs
@@ -31,12 +25,10 @@
 //   pt.hold  [<ms>]            renew the deadman, 0 disarms, bare word queries
 //   pt.led   fault=0|1         drive the indicator from the PC
 //   pt.run   [<target>]        list one-shot actions, or perform one
+//   pt.aodiag exp=E0..E6 ...   TEMPORARY AO noise experiment, not in pt.caps
 //
-// A timed run is timed by the PC, which also makes every verdict: the board
-// only samples. pt.hold is the one thing the board decides on its own, and it
-// decides whether anyone is still listening - not whether the board is good.
-// Without it a PC that dies leaves the outputs driven until somebody presses
-// reset. See $PROD/docs/tables/DECISIONS.md 37.
+// pt.hold is the one thing the board decides on its own: whether the PC is
+// still there, so a dead PC does not leave outputs driven (DECISIONS.md 37).
 
 #ifndef TESTCASE_PORTTOOL_PORTTOOL_H_
 #define TESTCASE_PORTTOOL_PORTTOOL_H_
@@ -44,17 +36,9 @@
 #include <stdint.h>
 
 /* Every porttool_*.c wraps its whole body in this, so an image built without it
- * carries none of this code. Turn it on with a project symbol:
- * PORTTOOL_ENABLE=1
- *
- * The gate is about the port table, not about flash: the ports[] array in
- * porttool.c references every session, so nothing here is "merely uncalled"
- * and the linker could not drop it on its own.
- *
- * (An earlier version of this comment said the project links without
- * --gc-sections. It does not - the build has -ffunction-sections
- * -fdata-sections -Wl,--gc-sections and -Os. Checked 2026-09-08 against the
- * real build log.) */
+ * carries none of this code: ports[] in porttool.c references every session,
+ * so --gc-sections alone could not drop them. Set PORTTOOL_ENABLE=1 to build
+ * the fixture image (tools/build_fixture.py in $PORTTOOL). */
 #ifndef PORTTOOL_ENABLE
 #define PORTTOOL_ENABLE 0
 #endif
@@ -63,43 +47,26 @@
  * too fast stalls the loop it lives in. */
 #define PORTTOOL_PERIOD_MIN_MS   50U
 #define PORTTOOL_PERIOD_DEF_MS   200U
-#define PORTTOOL_LINE_MAX        192U
+/* LINE_MAX is one line from the PC; 256 fits six different relay values
+ * (decision 123). REPLY_MAX is every line the board sends. PORTTOOL-FLOW.md A.3. */
+#define PORTTOOL_LINE_MAX        256U
 #define PORTTOOL_REPLY_MAX       192U
 
-/* Channel sets are carried in a uint32_t bitmask, so no port may have more
- * channels than that holds. The widest today is eight. */
+/* Channel sets are a uint32_t bitmask. */
 #define PORTTOOL_MAX_CHANNELS    32U
 
-/* The product's four boards, plus one for a test that spans them.
- *
- * These are protocol values, so they stay English and lowercase; the panel
- * turns them into whatever it shows a person, and displays an unrecognised one
- * verbatim rather than dropping the port. The set is the product's structure
- * (OPLC-SPEC-HW-001 section 1), not a list of ports, which is why it can live
- * as a fixed set here and in the panel at the same time without the staleness
- * problem a port list would have. */
+/* The product's four boards plus "whole" (OPLC-SPEC-HW-001 section 1). Protocol
+ * values: English lowercase; the panel translates them and shows an unknown
+ * one verbatim. */
 #define PORTTOOL_BOARD_BRIDGE   "bridge"    /* CPU, SDRAM, Ethernet, USB, SD, RTC */
 #define PORTTOOL_BOARD_UPPER    "upper"     /* Upper Deck: DI, AI, AO, CAN, RS485, RS232, KNX */
 #define PORTTOOL_BOARD_LOWER    "lower"     /* Lower Deck: high-side out, relays, temperature */
 #define PORTTOOL_BOARD_JUNCTION "junction"  /* Junction Link: 24 V in, rails, DIN rail connector */
 #define PORTTOOL_BOARD_WHOLE    "whole"     /* spans boards - bringup does */
 
-/* noreturn is not documentation here, it is what makes the image fit.
- *
- * main.c calls this from Phase 1 and everything after the call - the BOOT0
- * gesture, the start decision, the IAP server, the USB stack, mbedTLS - is
- * unreachable in a PORTTOOL_ENABLE image. Without noreturn the compiler cannot
- * know that, so all of it stays live: the project already builds with
- * -ffunction-sections -fdata-sections -Wl,--gc-sections, and the linker still
- * had to keep every one of those functions because main() still called them.
- *
- * Measured 2026-09-08: the tool image overflowed the 120K bootloader region by
- * 47,608 bytes for exactly this reason.
- *
- * lwIP is the one exception, as of the ethernet session (DECISIONS.md 28): it
- * is reachable again because porttool_eth.c calls MX_LWIP_Init() itself. That
- * is why the tool image is now 153,956 bytes rather than about 100K - which
- * costs nothing, since it is flashed whole by ST-Link and has no size gate. */
+/* noreturn lets --gc-sections drop everything main() calls after this (BOOT0
+ * gesture, IAP server, USB stack, mbedTLS). lwIP stays: porttool_eth.c calls
+ * MX_LWIP_Init() itself (DECISIONS.md 28). */
 __attribute__((noreturn)) void PortTool_Run(void);
 
 /* Where a port's echo counter travels. The PC replies to every sample frame
@@ -111,26 +78,13 @@ typedef enum {
                                 the control port and the loop are alive, never
                                 that the port under test works */
     PORTTOOL_LOOP_LINK,      /* rides the port under test: proves that link */
-    PORTTOOL_LOOP_SELF,      /* the port under test IS the control port, so the
-                                control-port round trip does prove the link.
-                                Only rs232: its bytes physically cross the
-                                terminal, the MAX3221 and PC10/PC11 on their way
-                                to and from the PC. Distinct from ctrl because
-                                for this one port the counter really is the
-                                verdict, and a panel that said otherwise would
-                                be lying about the only test it has. */
+    PORTTOOL_LOOP_SELF,      /* the port under test IS the control port (rs232
+                                only), so the round trip is its verdict
+                                (DECISIONS.md 16) */
 } porttool_loop_t;
 
-/* A port is a session that can be started and stopped. */
-typedef enum {
-    PORTTOOL_KIND_SESSION = 0,
-} porttool_kind_t;
-
-/* The echo counter one session keeps.
- *
- * The board sends a number, the PC sends it back, and the board counts on from
- * what it got. Whether that round trip proves anything about the port depends
- * on which wire the reply came back over - see porttool_loop_t. */
+/* The echo counter one session keeps: the board sends a number, the PC sends
+ * it back, the board counts on from what it got. */
 typedef struct {
     uint32_t seq;      /* the number the last frame carried */
     uint32_t rx;       /* the last number that actually came back */
@@ -148,11 +102,8 @@ void PortTool_EchoReset(porttool_echo_t *e);
 void PortTool_EchoGot(porttool_echo_t *e, uint32_t value);
 
 /* Advances the counter one period. Call once per frame, before formatting.
- *
- * A reply that matches advances seq and clears miss. Anything else - nothing
- * back, or a number that does not match what was sent - leaves seq where it is
- * and counts a miss, so a stalled counter is visible rather than a counter
- * that keeps climbing on its own and looks healthy. */
+ * A matching reply advances seq and clears miss; anything else holds seq and
+ * counts a miss, so a dead loop shows as a stalled counter. */
 void PortTool_EchoTick(porttool_echo_t *e);
 
 /* Writes "seq=<n> rx=<n> miss=<n>" and returns how many characters. No leading
@@ -160,20 +111,29 @@ void PortTool_EchoTick(porttool_echo_t *e);
  * else adds its own separator. */
 uint32_t PortTool_EchoFields(const porttool_echo_t *e, char *out, uint32_t out_len);
 
+/* Where a decimal scan of a link's bytes has got to; kept by the caller across
+ * calls, so a number split over two reads still comes out whole. */
+typedef struct {
+    uint32_t acc;
+    int      in_number;
+} porttool_numscan_t;
+
+/* Reads back the numbers the peer echoed on a loop=link port: decimal runs,
+ * any other byte ends one, each finished number goes to PortTool_EchoGot.
+ * Counters only, no printf: the USB session calls it in interrupt context. */
+void PortTool_EchoScan(porttool_echo_t *e, porttool_numscan_t *s,
+                       const uint8_t *data, uint32_t len);
+
+/* CRC-32 (IEEE, zlib-compatible) over n more bytes. Start from 0xFFFFFFFF and
+ * invert the result. */
+uint32_t PortTool_Crc32Update(uint32_t crc, const uint8_t *p, uint32_t n);
+
 /* One testable port. Each porttool_<name>.c defines one and the table in
- * porttool.c lists it.
- *
- * The const fields are what pt.caps reports so the PC can build its panel from
- * the firmware rather than from a hard-coded copy: adding a port here is the
- * only edit needed for it to appear on screen. */
+ * porttool.c lists it. The const fields are what pt.caps reports, so the panel
+ * is built from the firmware, not from a copy. */
 typedef struct {
     const char *name;
-
-    /* Which of the product's boards this port physically lives on, so the
-     * panel can group by board without keeping its own table of which port is
-     * where - a table that would go stale the moment a port is added here.
-     * One of PORTTOOL_BOARD_*. */
-    const char *board;
+    const char *board;   /* PORTTOOL_BOARD_*: where the port physically lives */
 
     const char *blk;     /* Klemmblock letter, "-" when the port has no terminal */
     const char *term;    /* terminal range, e.g. "D02-D09", or "-" */
@@ -200,34 +160,23 @@ typedef struct {
     void (*tick)(uint32_t now_ms);
 
     /* Hands the session a number the PC echoed back over the control port.
-     * Only loop=ctrl ports have one: a loop=link port takes its reply off the
-     * link under test, and accepting one here instead would let its counter
-     * climb while that link is dead - a pass the hardware never earned. */
+     * Only loop=ctrl ports have one: a loop=link port must take its reply off
+     * the link under test, or its counter would climb while that link is dead. */
     void (*echo)(uint32_t value);
 
-    /* The port's *current parameter values* for pt.caps, as "k=v k=v".
-     * Everything fixed about the port is in the const fields above, so this
-     * reports only what pt.start and pt.set can change. */
+    /* The port's current parameter values for pt.caps, as "k=v k=v". */
     void (*caps)(char *out, uint32_t out_len);
 
-    /* What each parameter will accept, as "name:spec name:spec". Optional; a
-     * port with nothing worth stating leaves it NULL.
-     *
-     * Four spec shapes, and no others:
-     *   lo..hi   a closed range          duty:0..100
-     *   lo..     open at the top         period:50..
-     *   a|b|c    an enumeration          mode:hold|blink
-     *   1..n     channel numbers         ch:1..8
-     *
-     * *** Build the string from the same constants the apply() checks use. ***
-     * Written out by hand it would be a second copy of every limit, and the
-     * two would drift - which is the exact failure this line exists to stop on
-     * the PC side. snprintf from the macros costs nothing and cannot disagree.
-     *
-     * Why it is a separate caps line and not part of params=: the port= line
-     * is already 138 bytes for can, and PORTTOOL_LINE_MAX is 192. A truncated
-     * caps line is a limit the panel silently never enforces. */
+    /* What each parameter accepts, as "name:spec name:spec" (lo..hi, lo..,
+     * a|b|c, 1..n; PORTTOOL-FLOW.md A.4). Optional. Build it with snprintf from
+     * the same constants apply() checks, so the two cannot drift. Its own caps
+     * line because the port= line would overflow PORTTOOL_REPLY_MAX. */
     void (*limits)(char *out, uint32_t out_len);
+
+    /* Read-only hardware facts for pt.caps, as "k=v k=v" on an "OK info="
+     * line - not parameters, pt.set cannot change them. Optional.
+     * See PORTTOOL-FLOW.md A.4. */
+    void (*info)(char *out, uint32_t out_len);
 
     int running;
 } porttool_port_t;
@@ -238,50 +187,67 @@ void PortTool_Frame(const char *port, const char *fmt, ...);
 /* "ctrl" / "link" / "self" / "none", as pt.caps spells them. */
 const char *PortTool_LoopName(porttool_loop_t loop);
 
-/* How many complete lines the command port has taken in since reset.
- *
- * This is the RS232 session's evidence that the receive direction is carrying
- * real traffic and not just sitting idle: a number that climbs means bytes are
- * crossing the terminal, the MAX3221 and PC11 the whole time. */
+/* Complete lines the command port has taken in since reset: the rs232
+ * session's evidence that the receive direction carries traffic. */
 uint32_t PortTool_LinesReceived(void);
 
-/* Receive errors cleared on the command port since reset - overrun, framing or
- * noise. Reported by pt.id.
- *
- * Nonzero means at least one command was lost. It has to be visible: the board
- * keeps pushing frames either way, so a station with a deaf control channel
- * looks alive, and a plan step that timed out looks like a fault in the port it
- * was testing rather than in the cable carrying the request. */
+/* Receive errors (overrun, framing, noise) cleared on the command port since
+ * reset, reported by pt.id. Nonzero means a command was lost, which would
+ * otherwise look like a fault in the port under test. */
 uint32_t PortTool_RxErrors(void);
 
 /* Clamps a requested sampling period to something the serial line can carry. */
 uint32_t PortTool_ClampPeriod(uint32_t requested_ms);
 
-/* Whether a port name belongs to a session. porttool_run.c asks so it can keep
- * a port's pt.run targets on the session's caps row instead of printing a
- * second row under the same name - see DECISIONS.md 17. */
+/* The control line's own rate (decision 104, PORTTOOL-FLOW.md B.7).
+ *
+ * The rs232 session asks for a rate; the reply to the command that asked ends
+ * in " line=<baud>" and the switch happens only after that reply has gone out,
+ * so the PC reads it at the rate it is listening on. Frames are held until a
+ * byte arrives at the new rate, and 3 s without any byte switches back. */
+#define PORTTOOL_LINE_DEFAULT_BAUD 115200U
+#define PORTTOOL_LINE_SILENCE_MS   3000U
+
+/* Asks for a rate, applied after the current command's reply. */
+void PortTool_LineRequest(uint32_t baud);
+
+/* The rate the line runs at now. */
+uint32_t PortTool_LineBaud(void);
+
+/* Whether a port name belongs to a session, so porttool_run.c can put that
+ * port's pt.run targets on the session's caps row (DECISIONS.md 17). */
 int PortTool_IsSessionPort(const char *name);
 
-/* Whether that port's session is running right now. A pt.run target asks when
- * it is about to reconfigure pins the session owns: pt.run deliberately leaves
- * sessions alone, so a target that re-muxed PD4 under a live rs485 session
- * would break it silently and the session would go on reporting misses as if
- * the pair were at fault. Returns 0 for a name that is not a session port. */
+/* Whether that port's session is running; 0 for a name that is not a session
+ * port. A pt.run target asks before re-muxing pins a live session owns. */
 int PortTool_PortRunning(const char *name);
 
-/* Services lwIP, once the ethernet session has brought it up. Called every
- * superloop pass; does nothing in an image whose operator never started that
- * session. Lives in porttool_eth.c. */
+/* Services lwIP once the ethernet session has brought it up; called every
+ * superloop pass. Lives in porttool_eth.c. */
 void PortEth_Poll(void);
 
-/* Hands the usb session bytes that arrived on the CDC pipe.
- *
- * Called from CDC_Receive_FS, which runs in USB interrupt context - so it
- * counts and scans and does nothing else. Frames are pushed from the tick.
- *
- * *** usbd_cdc_if.c calls this INSTEAD of IAP_data_recv under PORTTOOL_ENABLE.
- * *** That is not only about behaviour: the IAP call is what would link the
- * *** whole bootloader server into the tool image. Lives in porttool_usb.c. */
+/* Hands the usb session bytes from the CDC pipe. Runs in USB interrupt context
+ * (CDC_Receive_FS), so it only counts and scans; frames go out from the tick.
+ * usbd_cdc_if.c calls this instead of IAP_data_recv under PORTTOOL_ENABLE, so
+ * the IAP server is not linked in (DECISIONS.md 31). Lives in
+ * porttool_usb.c. */
 void PortUsb_Received(const uint8_t *data, uint32_t len);
+
+
+/* ---- SD file transfer (porttool_sdfile.c, PORTTOOL-FLOW.md B.11) -------
+ *
+ * The eth and usb sessions in mode=file hand received bytes to
+ * PortSdFile_Rx and call PortSdFile_Pump from their tick with a sender for
+ * their own link. A sender returns how many bytes it accepted: all or none. */
+typedef uint32_t (*sdf_send_t)(const uint8_t *data, uint32_t len);
+
+void PortSdFile_Rx(const uint8_t *data, uint32_t len);
+void PortSdFile_Pump(sdf_send_t send, uint32_t now_ms);
+void PortSdFile_Abort(const char *why);
+void PortSdFile_RunPut(const char *args, char *out, uint32_t len);
+void PortSdFile_RunGet(const char *args, char *out, uint32_t len);
+void PortSdFile_RunList(const char *args, char *out, uint32_t len);
+void PortSdFile_RunRemove(const char *args, char *out, uint32_t len);
+void PortSdFile_RunEject(const char *args, char *out, uint32_t len);
 
 #endif /* TESTCASE_PORTTOOL_PORTTOOL_H_ */

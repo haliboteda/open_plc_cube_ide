@@ -12,21 +12,9 @@
 // Frame:
 //   !aout t=48213 seq=1 rx=0 miss=0 ch1=500/488/4883 ef1=0 ch2=1500/1465/14648 ef2=0
 //
-// *** ch<n> is asked/quantised/microamps: what was requested, what the DAC can
-// *** actually produce with its step size, and the current that should appear
-// *** at the terminal. Reporting the request alone would hide a rounding of
-// *** several millivolts; reporting only the quantised value would make the
-// *** panel look like it ignored what was typed.
-//
-// *** The microamp figure is what the terminal SHOULD read, computed from the
-// *** XTR111 set resistor. It is not a measurement - nothing on this board can
-// *** read that current back. A meter in the loop is the only judge, which is
-// *** the whole reason this port exists.
-//
-// *** It also only holds while jumpers JP3/JP4 are open. Closed, they feed
-// *** VREF into the XTR111 summing node and the output becomes a 4-20 mA
-// *** live-zero, about 4.85 mA with the DAC at zero. That is a soldered choice
-// *** this firmware cannot read back, so the number here assumes open.
+// ch<n> is asked/quantised/microamps. The microamps are computed from the
+// XTR111 set resistor, not measured, and assume JP3/JP4 open
+// (PORTTOOL-FLOW.md A.5, HARDWARE-FACTS.md AOUT).
 
 #include "porttool.h"
 #include "porttool_cmd.h"
@@ -39,8 +27,9 @@
 
 #if PORTTOOL_ENABLE
 
-/* The DAC is fed from VREF+, so a setting can never exceed it. */
-#define AOUT_MV_MAX 3300U
+/* The DAC is fed from VREF+ (VREFBUF, 2.5 V), so a setting can never exceed
+ * it; a larger code overflows the 12-bit register and wraps back towards 0. */
+#define AOUT_MV_MAX PortDac_VrefMv()
 
 static uint32_t aout_mask = (1U << PORT_AOUT_COUNT) - 1U;
 static uint32_t aout_mv[PORT_AOUT_COUNT];
@@ -129,10 +118,8 @@ static int aout_start(const char *args, char *err, uint32_t err_len)
         return 0;
     }
     if (!aout_inited) {
-        /* The DAC's full scale is VREF+, which on this board comes from
-         * VREFBUF. Without it the output voltage is whatever VREF+ happens to
-         * float at, so the current at the terminal would be neither what was
-         * asked for nor anything this session could report honestly. */
+        /* The DAC's full scale is VREF+, i.e. VREFBUF on this board
+         * (HARDWARE-FACTS.md 模拟量). */
         if (!PortVref_Enable()) {
             snprintf(err, err_len,
                      "VREFBUF would not come up, and the DAC's full scale is "
@@ -162,8 +149,7 @@ static int aout_set(const char *args, char *err, uint32_t err_len)
 
 static void aout_stop(void)
 {
-    /* These drive current into whatever is wired to the terminal, so they go
-     * back to zero rather than being left wherever the session ended. */
+    /* Back to zero: these drive current into whatever is wired. */
     for (int i = 1; i <= PORT_AOUT_COUNT; i++) {
         aout_mv[i - 1] = 0U;
         (void)PortDac_SetMv(i, 0U);
@@ -186,12 +172,8 @@ static void aout_tick(uint32_t now_ms)
     for (int i = 1; i <= PORT_AOUT_COUNT && n < sizeof(body); i++) {
         if ((aout_mask & (1U << (i - 1))) == 0U) { continue; }
         uint32_t asked = aout_mv[i - 1];
-        /* ef<n> is the XTR111's fault flag as the pin reads, nothing more -
-         * which level means fault is not settled anywhere in Hardware/, so
-         * the plan judges it once somebody has (DECISIONS.md 22). It is here
-         * because it is the ONLY output-fault signal on this board that
-         * reaches the MCU at all: the high-side switches' fault bits do not,
-         * so without this an ageing run has nothing to watch. */
+        /* ef<n>: the XTR111 fault pin's raw level; which level means fault
+         * is the plan's to judge (DECISIONS.md 22). */
         int w = snprintf(body + n, sizeof(body) - n, " ch%d=%lu/%lu/%lu ef%d=%d",
                          i, (unsigned long)asked,
                          (unsigned long)PortDac_QuantisedMv(asked),

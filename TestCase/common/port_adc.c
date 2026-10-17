@@ -2,10 +2,8 @@
 //
 // Shared ADC access - see port_adc.h.
 
-// Enables the ADC HAL module for this translation unit only (see
-// stm32h7xx_hal_adc.c in TestCase/common for why) - must come before main.h
-// pulls in stm32h7xx_hal.h, which is what conditionally declares
-// ADC_HandleTypeDef/HAL_ADC_* based on this macro.
+// Enables the local ADC HAL copy for this file only; must precede main.h
+// (testcase_hal_guard.h).
 #include "testcase_hal_guard.h"   /* fires if this peripheral becomes real -- read it */
 #define HAL_ADC_MODULE_ENABLED
 
@@ -22,7 +20,6 @@ static ADC_HandleTypeDef hadc3;   /* PC3_C (AIN1), VREFINT */
 
 static uint32_t adc_vdda_mv = ADC_VREF_FALLBACK_MV;
 static int      adc_vdda_measured;
-static uint32_t adc_vrefint_raw;
 static int      adc_ready;
 
 static void PortAdc_GpioInit(void)
@@ -35,8 +32,8 @@ static void PortAdc_GpioInit(void)
     gpio.Pin  = GPIO_PIN_0 | GPIO_PIN_3 | GPIO_PIN_6;
     HAL_GPIO_Init(GPIOA, &gpio);
 
-    /* PC3_C is a dedicated analog pad - no GPIO config reaches it. Its only
-     * control is the SYSCFG analog switch, handled per read. */
+    /* PC3_C is a dedicated analog pad, controlled only by the SYSCFG analog
+     * switch (set per read). */
 }
 
 static int PortAdc_InitInstance(ADC_HandleTypeDef *h, ADC_TypeDef *instance)
@@ -70,8 +67,7 @@ static int PortAdc_ReadRaw(ADC_HandleTypeDef *h, uint32_t channel, uint32_t *val
     ADC_ChannelConfTypeDef cfg = {0};
     cfg.Channel      = channel;
     cfg.Rank         = ADC_REGULAR_RANK_1;
-    /* The LM50 drives the sampling cap directly - no filter cap on the net -
-     * so the sampling window has to be long or the reading comes out low. */
+    /* Long window: the LM50 drives the sampling cap with no filter cap. */
     cfg.SamplingTime = ADC_SAMPLETIME_387CYCLES_5;
     cfg.SingleDiff   = ADC_SINGLE_ENDED;
     cfg.OffsetNumber = ADC_OFFSET_NONE;
@@ -97,12 +93,10 @@ static uint32_t PortAdc_ToMillivolts(uint32_t raw)
     return (raw * adc_vdda_mv) / ADC_FULL_SCALE;
 }
 
-/* Averaged, because this one number scales every reading taken against it - a
- * single VREFINT sample carries its own noise straight into every millivolt,
- * both temperatures and every DAC code. */
+/* Averaged: this one number scales every reading taken against it. */
 static void PortAdc_MeasureVdda(void)
 {
-    uint32_t sum = 0, taken = 0;
+    uint32_t sum = 0, taken = 0, vrefint_raw;
 
     for (uint32_t i = 0; i < ADC_VREF_SAMPLES; i++) {
         uint32_t raw = 0;
@@ -115,8 +109,8 @@ static void PortAdc_MeasureVdda(void)
         return;
     }
 
-    adc_vrefint_raw = sum / taken;
-    adc_vdda_mv = __LL_ADC_CALC_VREFANALOG_VOLTAGE(adc_vrefint_raw, ADC_RESOLUTION_BITS);
+    vrefint_raw = sum / taken;
+    adc_vdda_mv = __LL_ADC_CALC_VREFANALOG_VOLTAGE(vrefint_raw, ADC_RESOLUTION_BITS);
     adc_vdda_measured = 1;
 }
 
@@ -152,7 +146,6 @@ int PortAdc_Init(void)
 }
 
 uint32_t PortAdc_VddaMv(void)      { return adc_vdda_mv; }
-uint32_t PortAdc_VrefintRaw(void)  { return adc_vrefint_raw; }
 int      PortAdc_VddaMeasured(void) { return adc_vdda_measured; }
 
 int PortAdc_VddaTrusted(void)
@@ -168,9 +161,8 @@ int PortAdc_ReadAin(int ch, uint32_t *raw, uint32_t *mv)
     int ok;
 
     if (ch == 1) {
-        /* SYSCFG_PMCR.PC3SO decides whether the analog pad is also tied to the
-         * digital PC3 cell. Reset default is tied; analog sampling wants it
-         * open, so set it every read rather than relying on init order. */
+        /* PC3SO open: untie the pad from the digital PC3 cell (reset default
+         * is tied); set every read rather than relying on init order. */
         SYSCFG->PMCR |= SYSCFG_PMCR_PC3SO;
         ok = PortAdc_ReadRaw(&hadc3, ADC_CHANNEL_1, &v);
     } else if (ch == 2) {
@@ -184,21 +176,6 @@ int PortAdc_ReadAin(int ch, uint32_t *raw, uint32_t *mv)
     }
     if (raw) { *raw = v; }
     if (mv)  { *mv  = PortAdc_ToMillivolts(v); }
-    return 1;
-}
-
-int PortAdc_ReadAin1SwitchClosed(uint32_t *raw)
-{
-    uint32_t v = 0;
-
-    SYSCFG->PMCR &= ~SYSCFG_PMCR_PC3SO;
-    int ok = PortAdc_ReadRaw(&hadc3, ADC_CHANNEL_1, &v);
-    SYSCFG->PMCR |= SYSCFG_PMCR_PC3SO;
-
-    if (!ok) {
-        return 0;
-    }
-    if (raw) { *raw = v; }
     return 1;
 }
 

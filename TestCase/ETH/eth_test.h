@@ -57,8 +57,4 @@ typedef struct {
  * Returns 1 when a PHY answered. Exists for pt.run. */
 int ETH_Test_Probe(eth_probe_t *out);
 
-/* Runs forever, printing the same readings once a second - for a person with a
- * cable in one hand. Plug and unplug it and watch link= follow. */
-void ETH_Test_Run(void);
-
 #endif /* INC_ETH_TEST_H_ */

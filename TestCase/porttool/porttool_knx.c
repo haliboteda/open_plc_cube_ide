@@ -9,6 +9,9 @@
 //   ga=31/7/255    destination group address      (default 31/7/255, or none)
 //   src=15.15.250  source individual address      (default 15.15.250)
 //   val=toggle     toggle | 0 | 1                 (default toggle)
+//   tx=<ga>:<v>    pt.set only, mode=frames only: send one GroupValueWrite
+//                  of v (0..63) to ga now, from src= (the KNX analyser
+//                  window, DECISIONS.md 138 #8, PORTTOOL-FLOW.md B.12)
 //
 // Frames:
 //   !knx t=48213 seq=1 rx=0 miss=0 mode=loopback bus=ok vcc=1 ok=1 idle=0
@@ -17,43 +20,23 @@
 //        raw=BC.FF.FA.08.01.E1.00.81.2F inv=43.00.05.F7.FE.1E.FF.7E.D0
 //   !knx.tx t=48250 n=9 dst=1/0/1 val=1 idle=1 raw=BC.FF.FA.08.01.E1.00.81.2F
 //
-// *** A received frame is an event, not a periodic reading, so it gets its own
-// line. *** The periodic !knx line is already 150 characters; two readings of
-// a frame's octets would not fit beside it in PORTTOOL_REPLY_MAX.
+// A received frame is an event on its own line: it would not fit beside the
+// periodic !knx line in PORTTOOL_REPLY_MAX.
 //
-// *** crc= is the machine's answer to "which reading is the real frame". ***
-// raw = the octets as received pass the check octet, inv = they pass only
-// bit-inverted, bad = neither. Both readings' octets are reported either way,
-// so a person can still look; but nobody has to decide by eye. The RX chain's
-// polarity is unsettled on this board - see $PROD/docs/hardware/HARDWARE-FACTS.md.
+// crc= says which reading passes the check octet: raw (as received), inv (only
+// bit-inverted) or bad. Both readings' octets are reported; the RX polarity is
+// unsettled (HARDWARE-FACTS.md KNX).
 //
-// *** The default group address is 31/7/255, the last one that exists. ***
-// A GroupValueWrite actuates whatever subscribes to the address it carries, so
-// the default has to be one a real installation is least likely to have
-// assigned: main groups are handed out from 0 upwards by function, so the top
-// of the range is the quiet corner - the same reasoning that picked
-// 15.15.250 for the source address. ga=none stops sending altogether.
+// The defaults 31/7/255 and 15.15.250 sit at the top of the address space,
+// which installations assign last. ga=none stops sending. 31/7/255 packs to
+// 0xFFFF, a legal address, so knx_ga_set is the "given" flag.
 //
-// ⚠️ 31/7/255 packs to 0xFFFF. Do not use that value as a "no address"
-// sentinel - it is a legal address, and knx_ga_set is the flag that says
-// whether one was given.
+// loop=link over MCU -> STKNX -> bus -> STKNX -> MCU; pt.echo is refused
+// (DECISIONS.md 9). mode=listen never transmits: judge pulses=, chars= and the
+// width statistics.
 //
-// *** loop=link, and the link is the real one. *** The round trip is
-// MCU -> STKNX -> bus -> STKNX -> MCU, so a closed loop proves the transceiver
-// and the bus, not just the controller. pt.echo is refused for the same reason
-// as rs485 and can (DECISIONS.md 9).
-//
-// *** mode=listen never transmits, and its loop counter does not move. ***
-// Judge pulses=, chars= and the width statistics instead. A counter that
-// climbed while nothing was sent would be a number with no meaning.
-//
-// ⚠️ Sending spins for about 1.35 ms - see KNX_Test_SessionSendChar. One
-// character a period is fine; the frame's own console output already costs
-// several times that.
-//
-// ⚠️ w_avg is the active pulse width and should sit near KNX_PULSE_US (35 us).
-// A bus with no power reads as pulses=0 with bus=dead, which is the honest
-// answer rather than a timing complaint.
+// Sending spins about 1.35 ms (KNX_Test_SessionSendChar). w_avg should sit near
+// KNX_PULSE_US (35 us); an unpowered bus reads pulses=0 bus=dead.
 
 #include "porttool.h"
 #include "porttool_cmd.h"
@@ -65,8 +48,7 @@
 
 #if PORTTOOL_ENABLE
 
-/* Walks so a stuck value is visible, and avoids 0x00/0xFF which are the two
- * patterns a dead line can imitate. */
+/* Walks so a stuck value shows; avoids 0x00/0xFF, which a dead line imitates. */
 static const uint8_t KNX_PATTERN[] = { 0xAAu, 0x55u, 0x5Au, 0xA5u };
 #define KNX_PATTERN_COUNT (sizeof(KNX_PATTERN) / sizeof(KNX_PATTERN[0]))
 
@@ -81,9 +63,6 @@ static uint32_t knx_period_ms = 1000u;
 static uint32_t knx_due_ms;
 static int      knx_inited;
 
-/* 31/7/255 packs to 0xFFFF, so every one of the 65536 bit patterns is a legal
- * group address and "no address" needs its own flag, not a sentinel value.
- * ga=none is what clears it. */
 #define KNX_SRC_DEFAULT   0xFFFAu   /* 15.15.250 - no real device owns this */
 #define KNX_GA_DEFAULT    0xFFFFu   /* 31/7/255 - the last address there is */
 
@@ -111,10 +90,8 @@ static porttool_echo_t knx_echo;
 
 /* --- Address text ------------------------------------------------------- */
 
-/* Group addresses are written main/middle/sub, individual ones area.line.dev.
- * Both pack into 16 bits, and both are parsed here rather than as plain
- * numbers because that is how they appear in ETS and on a wiring diagram.
- * eth's ip= sets the precedent for a dotted parameter (DECISIONS.md 28). */
+/* Group addresses main/middle/sub, individual ones area.line.dev, as ETS
+ * writes them; both pack into 16 bits. */
 static int knx_parse_addr(const char *s, char sep, uint32_t hi_max,
                           uint32_t mid_max, uint8_t hi_shift, uint8_t mid_shift,
                           uint16_t *out)
@@ -276,20 +253,95 @@ static int knx_start(const char *args, char *err, uint32_t err_len)
     return 1;
 }
 
+static void knx_collect(void);
+
+/* Sends one GroupValueWrite and reports it as !knx.tx. */
+static void knx_send_write(uint16_t ga, uint8_t val)
+{
+    uint8_t f[KNX_FRAME_MAX];
+    uint8_t idle = 0;
+    uint8_t sent = KNX_Test_SessionSendGroupWrite(knx_src, ga, val,
+                                                  f, (uint8_t)sizeof(f), &idle);
+    if (sent != 0u) {
+        char line[PORTTOOL_REPLY_MAX];
+        char addr[16];
+        uint32_t k;
+
+        knx_tx_frames++;
+        knx_ga_text(ga, addr, sizeof(addr));
+        k = (uint32_t)snprintf(line, sizeof(line),
+                               "n=%u dst=%s val=%u idle=%u raw=",
+                               (unsigned)sent, addr, (unsigned)val,
+                               (unsigned)idle);
+        for (uint8_t i = 0; i < sent; i++) {
+            k += (uint32_t)snprintf(line + k, sizeof(line) - k, "%s%02X",
+                                    (i == 0u) ? "" : ".", (unsigned)f[i]);
+        }
+        PortTool_Frame("knx.tx", "%s", line);
+    }
+    /* The frame comes back over the bus a few character times later. */
+    knx_collect();
+}
+
+/* tx=main/middle/sub:value, value 0..63 (the APCI octet's 6 bits). */
+static int knx_parse_tx(const char *s, uint16_t *ga, uint8_t *val)
+{
+    char g[24];
+    const char *colon = strchr(s, ':');
+    uint32_t n, v = 0u;
+
+    if ((colon == NULL) || (colon == s) || (colon[1] == '\0')) {
+        return 0;
+    }
+    n = (uint32_t)(colon - s);
+    if (n >= sizeof(g)) {
+        return 0;
+    }
+    memcpy(g, s, n);
+    g[n] = '\0';
+    if (!knx_parse_ga(g, ga)) {
+        return 0;
+    }
+    for (const char *p = colon + 1; *p != '\0'; p++) {
+        if ((*p < '0') || (*p > '9')) { return 0; }
+        v = (v * 10u) + (uint32_t)(*p - '0');
+        if (v > 63u) { return 0; }
+    }
+    *val = (uint8_t)v;
+    return 1;
+}
+
 static int knx_set(const char *args, char *err, uint32_t err_len)
 {
-    return knx_apply(args, err, err_len);
+    char probe[64];
+    uint16_t ga = 0u;
+    uint8_t val = 0u;
+    int tx = PortCmd_GetStr(args, "tx", probe, sizeof(probe));
+
+    /* Checked before anything is applied: a refused line changes nothing. */
+    if (tx && (knx_mode != KNX_MODE_FRAMES)) {
+        snprintf(err, err_len, "tx= is for mode=frames only");
+        return 0;
+    }
+    if (tx && !knx_parse_tx(probe, &ga, &val)) {
+        snprintf(err, err_len,
+                 "tx=\"%s\" must be <main/middle/sub>:<value 0..63>", probe);
+        return 0;
+    }
+    if (!knx_apply(args, err, err_len)) {
+        return 0;
+    }
+    if (tx) {
+        knx_send_write(ga, val);
+    }
+    return 1;
 }
 
 static void knx_stop(void)
 {
-    /* Nothing is driven between characters: the bit engine idles the line low
-     * by itself, which is what PB14 must never be left floating from. */
+    /* Nothing to undo: the bit engine idles PB14 low by itself. */
 }
 
-/* Takes every character the capture ISR has completed. Called each superloop
- * pass, not once a period: the decoder closes a character on its own timeout,
- * and one only drained per period would age out of the ring. */
 /* One line per received frame, with both readings of its octets. */
 static void knx_report_rx(const uint8_t *f, uint8_t n, uint8_t which)
 {
@@ -306,8 +358,7 @@ static void knx_report_rx(const uint8_t *f, uint8_t n, uint8_t which)
         d = g;
     }
 
-    /* A lone octet is an acknowledge: no check octet, so crc= names what the
-     * acknowledge said instead of judging a frame that is not there. */
+    /* A lone octet is an acknowledge: crc= names its kind. */
     if (n == 1u) {
         uint8_t kind = KNX_Test_AckKind(f[0]);
         PortTool_Frame("knx.rx", "n=1 crc=%s raw=%02X inv=%02X",
@@ -323,11 +374,9 @@ static void knx_report_rx(const uint8_t *f, uint8_t n, uint8_t which)
                             (which == KNX_FRAME_CRC_RAW) ? "raw"
                           : (which == KNX_FRAME_CRC_INV) ? "inv" : "bad");
 
-    /* Octet 5 bit 7 says whether the destination is a group or an individual
-     * address; octet 7 carries GroupValueWrite plus a 6-bit value. The same
-     * unpacking is printed for a person by knx_frame_report() in
-     * TestCase/KNX/knx_test.c - that one builds prose, this one builds
-     * key=value for the host, so the bit shifts appear in both places. */
+    /* Octet 5 bit 7: group or individual destination; octet 7: GroupValueWrite
+     * plus a 6-bit value. knx_frame_report() in KNX/knx_test.c unpacks the
+     * same for a person. */
     if ((which != KNX_FRAME_CRC_BAD) && (n >= 8u)) {
         uint16_t sa = (uint16_t)(((uint16_t)d[1] << 8) | d[2]);
         uint16_t da = (uint16_t)(((uint16_t)d[3] << 8) | d[4]);
@@ -374,9 +423,7 @@ static void knx_collect_frames(void)
         }
         knx_chars += n;
         if (n == 1u) {
-            /* Counted as an acknowledge, not a frame: a real installation
-             * answers every frame it accepts, so counting these as bad frames
-             * would make a working bus look broken. */
+            /* An acknowledge, not a bad frame. */
             uint8_t kind = KNX_Test_AckKind(f[0]);
             if (kind == KNX_ACK_ACK) { knx_acks++; }
             else                     { knx_ack_other++; }
@@ -390,13 +437,14 @@ static void knx_collect_frames(void)
     }
 }
 
+/* Takes every character the capture ISR has completed. Called each superloop
+ * pass, or a character would age out of the ring. */
 static void knx_collect(void)
 {
     uint8_t got = 0, framing_ok = 0;
 
     if (knx_mode == KNX_MODE_FRAMES) {
-        /* The frame layer takes the characters instead: both draining the same
-         * decoder queue would race for them. */
+        /* The frame layer drains the same decoder queue instead. */
         knx_collect_frames();
         return;
     }
@@ -411,8 +459,7 @@ static void knx_collect(void)
             continue;
         }
         if (got == knx_sent_byte) {
-            /* The character we put on the bus came back intact, so this period
-             * closed. The echo counter carries the sequence, not the byte. */
+            /* Our character came back intact: this period closed. */
             PortTool_EchoGot(&knx_echo, knx_echo.seq);
         } else {
             knx_mismatch++;
@@ -455,39 +502,14 @@ static void knx_tick(uint32_t now_ms)
         knx_sent_byte = KNX_PATTERN[knx_pattern_i];
         knx_pattern_i = (uint8_t)((knx_pattern_i + 1u) % KNX_PATTERN_COUNT);
         (void) KNX_Test_SessionSendChar(knx_sent_byte);
-        /* The reply is back within a couple of character times, so draining
-         * here lets a period close in the same tick it opened. */
+        /* Back within a couple of character times: close it this tick. */
         knx_collect();
         PortTool_EchoTick(&knx_echo);
     } else if ((knx_mode == KNX_MODE_FRAMES) && (knx_ga_set != 0)) {
-        uint8_t f[KNX_FRAME_MAX];
-        uint8_t idle = 0;
-        uint8_t sent;
-
         if (knx_val_toggle) {
             knx_val = (uint8_t)(knx_val ^ 1u);
         }
-        sent = KNX_Test_SessionSendGroupWrite(knx_src, knx_ga, knx_val,
-                                              f, (uint8_t)sizeof(f), &idle);
-        if (sent != 0u) {
-            char line[PORTTOOL_REPLY_MAX];
-            char addr[16];
-            uint32_t k;
-
-            knx_tx_frames++;
-            knx_ga_text(knx_ga, addr, sizeof(addr));
-            k = (uint32_t)snprintf(line, sizeof(line),
-                                   "n=%u dst=%s val=%u idle=%u raw=",
-                                   (unsigned)sent, addr, (unsigned)knx_val,
-                                   (unsigned)idle);
-            for (uint8_t i = 0; i < sent; i++) {
-                k += (uint32_t)snprintf(line + k, sizeof(line) - k, "%s%02X",
-                                        (i == 0u) ? "" : ".", (unsigned)f[i]);
-            }
-            PortTool_Frame("knx.tx", "%s", line);
-        }
-        /* The frame comes back over the bus a few character times later. */
-        knx_collect();
+        knx_send_write(knx_ga, knx_val);
     }
 
     KNX_Test_SessionStats(&st);
@@ -505,8 +527,7 @@ static void knx_tick(uint32_t now_ms)
                     (unsigned long)st.w_avg, (unsigned long)st.d_avg,
                     (unsigned long)st.ms_since_edge);
 
-    /* Frame-mode totals only, so the other two modes keep the line they had.
-     * crc_raw / crc_inv are the running answer to which reading is real. */
+    /* Frame-mode totals, only in mode=frames. */
     if (knx_mode == KNX_MODE_FRAMES) {
         (void) snprintf(body + n, sizeof(body) - n,
                         " rx_frames=%lu tx_frames=%lu crc_raw=%lu crc_inv=%lu"
@@ -540,12 +561,8 @@ static void knx_caps(char *out, uint32_t out_len)
              knx_val_toggle ? "toggle" : (knx_val ? "1" : "0"));
 }
 
-/* ga and src are deliberately absent: a limits entry is a range or a set of
- * values, and a formatted address is neither. Spelling one as
- * "ga:main/middle/sub|none" would make the panel read the vertical bar as a
- * two-item choice and offer those words instead of an address field. eth's
- * ip= sets the same precedent - the current value echoed in vals= is what
- * shows the format. */
+/* ga and src are left out: a formatted address fits no spec shape (as eth's
+ * ip=). */
 static void knx_limits(char *out, uint32_t out_len)
 {
     snprintf(out, out_len, "mode:loopback|listen|frames period:%lu.. "
@@ -566,8 +583,7 @@ porttool_port_t porttool_knx = {
     .set      = knx_set,
     .stop     = knx_stop,
     .tick     = knx_tick,
-    /* The loop travels over the KNX pair; answering on the control port would
-     * let it climb with the bus dead - DECISIONS.md 9. */
+    /* No echo hook: the loop travels over the KNX pair (DECISIONS.md 9). */
     .echo     = NULL,
     .caps     = knx_caps,
     .limits   = knx_limits,

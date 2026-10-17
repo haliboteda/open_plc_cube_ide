@@ -9,23 +9,14 @@
 // Frame:
 //   !sd t=48213 seq=1 rx=0 miss=0 detected=1 changes=2 in=1 out=1
 //
-// *** This session polls ONE GPIO and nothing else. Bringing SDMMC1 up and
-// *** reading the card's registers takes long enough to be felt in the
-// *** superloop, and doing it on every insertion would stall every other
-// *** running session for as long as the card takes to answer. What kind of
-// *** card went in, how big it is and what filesystem it holds stay with the
-// *** pt.run targets on this same port - the panel puts them on one card.
+// Polls the detect GPIO only: bringing SDMMC1 up would stall the superloop.
+// Card identity, size and filesystem are the pt.run targets on this port.
 //
-// *** changes counts every edge, in counts insertions and out counts
-// *** removals. A count is what makes hot-plug decidable by a plan: "detected
-// *** went 0 then 1" is a claim about two frames, and a step that only ever
-// *** sees the end state cannot tell a card that was always there from one
-// *** that was just put in.
+// changes counts every edge, in insertions, out removals, so a plan can tell
+// a card just put in from one that was always there.
 //
-// *** The detect pin is active-low with a pull-up, on the assumption that the
-// *** switch closes to ground on insertion (sd_test.h). If a board turns out
-// *** to be wired the other way the counts still work - an edge is an edge -
-// *** but detected= would read inverted.
+// The detect pin is taken as active-low with a pull-up (sd_test.h); wired the
+// other way, detected= reads inverted but the counts still hold.
 
 #include "porttool.h"
 #include "porttool_cmd.h"
@@ -43,8 +34,7 @@ static uint32_t sd_changes;
 static uint32_t sd_in;
 static uint32_t sd_out;
 
-/* Rides the RS232 control port: it says the loop is alive and nothing about
- * the card. Whether a card is there is detected= below. */
+/* loop=ctrl: nothing about the card (DECISIONS.md 9). */
 static porttool_echo_t sd_echo;
 
 static void sd_echo_got(uint32_t value)
@@ -72,8 +62,7 @@ static int sd_start(const char *args, char *err, uint32_t err_len)
     if (!sd_apply(args, err, err_len)) {
         return 0;
     }
-    /* Counters zeroed by starting, so a plan's "a card was inserted during
-     * this step" cannot be satisfied by something that happened before it. */
+    /* Zeroed on start, so only this step's edges count. */
     sd_changes = 0;
     sd_in = 0;
     sd_out = 0;
@@ -90,8 +79,7 @@ static int sd_set(const char *args, char *err, uint32_t err_len)
 
 static void sd_stop(void)
 {
-    /* The detect pin is an input and the card was never powered by this
-     * session; there is nothing to put back. */
+    /* Nothing to put back. */
 }
 
 static void sd_tick(uint32_t now_ms)
@@ -99,8 +87,7 @@ static void sd_tick(uint32_t now_ms)
     char body[PORTTOOL_REPLY_MAX];
     uint32_t n;
 
-    /* Before the due check, so a card that goes in and straight back out
-     * between two frames is still counted rather than missed. */
+    /* Before the due check, so an edge between two frames is counted. */
     int now = SD_Test_Detected() ? 1 : 0;
     if (sd_last < 0) {
         sd_last = now;

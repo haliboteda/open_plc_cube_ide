@@ -11,24 +11,13 @@
 //   !sdram t=48213 seq=1 rx=0 miss=0 ready=1 phase=wait cycles=3 checked=64
 //          failed=0 first_bad=0x00000000 wait_ms=5000 seed=0x12345678
 //
-// *** What this proves: auto-refresh is actually running. *** SDRAM cells lose
-// their charge in tens of milliseconds without it, so data that is still there
-// after seconds could not have survived any other way. Nothing shorter tests
-// it - which is why wait= has a floor and why the waiting cannot be skipped.
+// Proves auto-refresh runs: cells lose charge in tens of ms without it, hence
+// the wait= floor. A session so the PC can judge a long run while it runs
+// (DECISIONS.md 38): write and read-back happen inside a tick, the wait is a
+// deadline.
 //
-// *** Why a session. *** The long run is the point, and the PC has to be able
-// to judge it while it runs (DECISIONS.md 38). The cycle is therefore split:
-// the write and the read-back are short and happen inside a tick, and the wait
-// between them is just a deadline this session checks on its way past.
-//
-// *** loop=ctrl. *** seq/rx/miss ride the control port, so they say the
-// control port and the loop are alive and NOTHING about the array
-// (DECISIONS.md 9). The verdict here is failed= against checked=.
-//
-// ⚠️ The one-shot pt.run targets on this same hardware - sdram.probe,
-// sdram.sweep, sdram.crc - stay where they are and appear on
-// this session's caps row as runs=, the way eth.link does on eth's
-// (DECISIONS.md 17). They block while they run; this does not.
+// loop=ctrl (DECISIONS.md 9): the verdict is failed= against checked=.
+// sdram.probe / sweep / crc are pt.run targets on this row (DECISIONS.md 17).
 
 #include "porttool.h"
 #include "porttool_cmd.h"
@@ -41,10 +30,7 @@
 
 #if PORTTOOL_ENABLE
 
-/* Nothing below a second is a retention test. Cells hold for tens of
- * milliseconds unrefreshed, so a short wait would pass on a board whose
- * refresh never started - a green result that means the opposite of what it
- * looks like. */
+/* Below a second a board with no refresh would still pass. */
 #define SDRAM_WAIT_MIN_MS 1000U
 #define SDRAM_WAIT_DEF_MS 5000U
 
@@ -87,9 +73,7 @@ static int sdram_apply(const char *args, char *err, uint32_t err_len)
             snprintf(err, err_len, "wait=\"%s\" is not a number", probe);
             return 0;
         }
-        /* Refused rather than clamped. Clamping would answer a question the
-         * caller did not ask: a plan that says wait=50 believes it is testing
-         * retention, and silently giving it 1000 would let that belief stand. */
+        /* Refused rather than clamped: the plan should learn its wait is wrong. */
         if (v < SDRAM_WAIT_MIN_MS) {
             snprintf(err, err_len,
                      "wait=%lu is below %lu ms - cells hold for tens of "
@@ -122,10 +106,7 @@ static int sdram_start(const char *args, char *err, uint32_t err_len)
         return 0;
     }
 
-    /* The controller has to be up before anything written means anything. A
-     * session that started anyway would report failed=0 for a while and then a
-     * flood, and the flood would look like an array fault rather than an FMC
-     * that never came up. */
+    /* Refused without the FMC up, or its failures would look like the array's. */
     SDRAM_Test_Probe(&p);
     if (!p.ready) {
         snprintf(err, err_len,
@@ -170,10 +151,7 @@ static void sdram_tick(uint32_t now_ms)
     char body[PORTTOOL_REPLY_MAX];
     uint32_t n;
 
-    /* The state machine runs on every pass, not on the frame period: the
-     * whole point is that the wait is measured against the clock rather than
-     * held by blocking, and a cycle that only advanced when a frame was due
-     * would take its timing from the reporting rate instead. */
+    /* Runs every pass, so the cycle's timing does not follow the frame rate. */
     switch (sdram_phase) {
     case SDRAM_PHASE_WRITE:
         SDRAM_Test_RetentionWrite(&sdram_rng_state, &sdram_last);
@@ -209,9 +187,7 @@ static void sdram_tick(uint32_t now_ms)
     PortTool_EchoTick(&sdram_echo);
     n = PortTool_EchoFields(&sdram_echo, body, sizeof(body));
 
-    /* failed= is summed over the whole run, not the last cycle: a limit of
-     * "failed eq 0" over four hours has to see a single bad cycle from three
-     * hours ago, and a per-cycle count would have washed it away. */
+    /* failed= is summed over the whole run, so one bad cycle stays visible. */
     (void) snprintf(body + n, sizeof(body) - n,
                     " ready=%u phase=%s cycles=%lu checked=%lu failed=%lu"
                     " first_bad=0x%08lX wait_ms=%lu seed=0x%08lX",

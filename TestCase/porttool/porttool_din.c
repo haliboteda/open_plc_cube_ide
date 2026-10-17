@@ -11,29 +11,21 @@
 //
 // Frame:
 //   !din t=48213 v=0x16 mode=level ch1=1 ch3=0 ch5=1
-//   !din t=48213 v=0x16 mode=quad g1=124 d1=1 g2=0 d2=0 g3=0 d3=0 g4=0 d4=0 err=0
+//   !din t=48213 v=0x16 mode=quad g1=124 d1=1 g2=0 d2=0 g3=0 d3=0 g4=0 d4=0 err=0 moved=0x03
 //
-// *** v is the whole eight-bit field in terminal order, bit 0 = DI1, whatever
-// *** was selected - so a reading is never ambiguous about which pin it came
-// *** from. The ch<n>= pairs are only the selected ones.
+// v is all eight pins, bit 0 = DI1, whatever was selected; ch<n>= are only the
+// selected ones.
 //
-// *** The encoders are NOT a port of their own, and this is why: the eight
-// *** digital inputs and the four encoder A/B pairs are the same eight pins.
-// *** Their signal names say so - DIN1_PC6-Enc1a through DIN8_PI6-Enc4b. Two
-// *** ports would suggest both can be measured at once, and physically they
-// *** cannot.
+// The encoders are not a port of their own: they are the same eight pins
+// (DIN1_PC6-Enc1a .. DIN8_PI6-Enc4b). Encoder n is channels 2n-1 (A) and 2n (B).
+// g<n> is a signed count, d<n> the last direction (+1/-1, 0 = not moved);
+// restarting the session zeroes them.
 //
-// *** Encoder n is channels 2n-1 (A) and 2n (B), so encoder 1 is DI1/DI2.
-// *** g<n> is a signed count and d<n> the last direction seen, +1 or -1, or 0
-// *** for an encoder that has not moved since the session started. Restarting
-// *** the session is what zeroes them.
+// err counts samples where A and B both changed: a missed step (too fast, or a
+// phase not connected), reported rather than guessed.
 //
-// *** err counts transitions where both A and B changed between two samples.
-// *** That is not a direction anything can infer - it means a step was missed,
-// *** either because the encoder turned faster than this loop samples or
-// *** because a phase is not connected. A count that climbs while err climbs
-// *** with it is not a count anybody should believe, which is why it is
-// *** reported rather than quietly resolved one way or the other.
+// moved is every pin that changed level since start, laid out like v, so a dead
+// pin of a pair shows (decision 107).
 
 #include "porttool.h"
 #include "porttool_cmd.h"
@@ -59,12 +51,12 @@ static int32_t din_enc_count[DIN_ENC_COUNT];
 static int8_t   din_enc_dir[DIN_ENC_COUNT];
 static uint8_t  din_enc_prev[DIN_ENC_COUNT];
 static uint32_t din_enc_err;
+static uint8_t  din_moved;
+static uint8_t  din_last_bits;
 static int      din_enc_primed;   /* the first sample sets prev, it is not a step */
 
-/* One step per transition of the A/B pair, indexed prev*4 + now with the pair
- * read as (A<<1)|B. 2 marks a transition where both changed at once: no
- * direction can be read out of it, so it is counted as a miss instead of being
- * guessed at. */
+/* Step per A/B transition, indexed prev*4 + now with the pair as (A<<1)|B.
+ * 2 = both changed: counted as a miss. */
 static const int8_t din_quad_step[16] = {
      0,  1, -1,  2,
     -1,  0,  2,  1,
@@ -72,9 +64,8 @@ static const int8_t din_quad_step[16] = {
      2, -1,  1,  0,
 };
 
-/* The echo counter rides the RS232 control port for this port, so it says the
- * loop is alive and nothing more. Whether the eight inputs work is decided by
- * v= below, never by this number. */
+/* loop=ctrl: says the control loop is alive, never that the inputs work
+ * (DECISIONS.md 9). */
 static porttool_echo_t din_echo;
 
 static void din_echo_got(uint32_t value)
@@ -82,11 +73,8 @@ static void din_echo_got(uint32_t value)
     PortTool_EchoGot(&din_echo, value);
 }
 
-/* A parameter that is present but malformed is refused rather than ignored -
- * silently keeping the previous channel set would report the wrong pins.
- *
- * Parsed into locals and committed at the end, so a line refused on its second
- * parameter has not already applied its first. */
+/* A malformed parameter is refused, not ignored; committed only at the end, so
+ * a refused line applies nothing. */
 static int din_apply(const char *args, char *err, uint32_t err_len)
 {
     char probe[64];
@@ -130,8 +118,7 @@ static int din_apply(const char *args, char *err, uint32_t err_len)
     return 1;
 }
 
-/* Zeroed by starting the session, never by a parameter: a count that could be
- * cleared mid-run is a count a report cannot be read back from. */
+/* Zeroed only by starting the session, never by a parameter. */
 static void din_quad_reset(void)
 {
     for (int i = 0; i < DIN_ENC_COUNT; i++) {
@@ -141,14 +128,17 @@ static void din_quad_reset(void)
     }
     din_enc_err = 0;
     din_enc_primed = 0;
+    din_moved = 0;
 }
 
-/* Called on every pass of the super loop, not once per frame: at the frame
- * period a turning encoder would be several steps further on by the time it
- * was next looked at, and every one of those would read as a both-changed
- * miss. */
+/* Called every superloop pass, not per frame, or a turning encoder would read
+ * as both-changed misses. */
 static void din_quad_sample(uint8_t bits)
 {
+    if (din_enc_primed) {
+        din_moved |= (uint8_t)(bits ^ din_last_bits);
+    }
+    din_last_bits = bits;
     for (int i = 0; i < DIN_ENC_COUNT; i++) {
         uint8_t a = (bits >> (2 * i)) & 1U;
         uint8_t b = (bits >> (2 * i + 1)) & 1U;
@@ -192,7 +182,7 @@ static int din_set(const char *args, char *err, uint32_t err_len)
 
 static void din_stop(void)
 {
-    /* The pins are high-impedance inputs; there is nothing to put back. */
+    /* Inputs only; nothing to put back. */
 }
 
 static void din_tick(uint32_t now_ms)
@@ -225,16 +215,11 @@ static void din_tick(uint32_t now_ms)
             if (w < 0) { break; }
             n += (uint32_t)w;
         }
-        n += (uint32_t)snprintf(body + n, sizeof(body) - n, " err=%lu",
-                                (unsigned long)din_enc_err);
+        n += (uint32_t)snprintf(body + n, sizeof(body) - n, " err=%lu moved=0x%02X",
+                                (unsigned long)din_enc_err, din_moved);
     } else {
-        /* *** Only in level mode, and that is a line-length decision, not a
-         * *** taste one. With all eight ch<n>= pairs alongside the four
-         * *** counters the worst case is 226 bytes against a
-         * *** PORTTOOL_LINE_MAX of 192 - ten-digit tick, ten-digit counters,
-         * *** eleven-digit counts - and the frame would be silently truncated
-         * *** into something the parser cannot read. Dropping them costs
-         * *** nothing: v= above is all eight pins, so no reading is lost. */
+        /* Level mode only: next to the quad counters the frame would exceed
+         * PORTTOOL_REPLY_MAX, and v= already carries all eight pins. */
         for (uint32_t i = 0; i < PORT_DIN_COUNT && n < sizeof(body); i++) {
             if ((din_mask & (1U << i)) == 0U) { continue; }
             int w = snprintf(body + n, sizeof(body) - n, " ch%lu=%d",

@@ -10,22 +10,12 @@
 // Frame (on the CONTROL port, not on the link):
 //   !rs485 t=48213 seq=3 rx=2 miss=0 baud=115200 rxbytes=12 junk=0
 //
-// *** loop=link. The echo travels over the pair being tested, so this counter
-// *** is the verdict on that pair - unlike a loop=ctrl port, where it only
-// *** says the control port is alive. The firmware therefore REFUSES pt.echo
-// *** for this port: answering on the control port instead would let the
-// *** counter climb with the RS485 pair dead, which is the one thing this tool
-// *** must never do.
+// loop=link: the echo travels over the pair, so the counter is its verdict and
+// pt.echo is refused (DECISIONS.md 9). Status still goes out on the control
+// port.
 //
-// *** Status still goes out on the control port. The PC reads every port's
-// *** state from one place, and reporting RS485 health over RS485 would be
-// *** unreadable exactly when it matters.
-//
-// *** Half duplex, and it is one net: PD4 drives /RE and DE together, so the
-// *** board is deaf while it transmits and CANNOT hear itself. With nothing
-// *** on the other end the counter will never close - that is the wiring
-// *** being wrong, not the session. A second device is required; see
-// *** $TEST/tools/rs485_echo.py or the panel's own link responder.
+// Half duplex on one net: PD4 drives /RE and DE together, so the board cannot
+// hear itself. A second device must answer (e.g. the panel's link responder).
 
 #include "porttool.h"
 #include "porttool_cmd.h"
@@ -39,17 +29,11 @@
 /* Long enough for "PT 4294967295\n". */
 #define RS485_LINE_MAX 24U
 
-/* How long the tick keeps reading after sending, waiting for the reply.
- *
- * Same value as RS485_IDLE_GAP_MS in TestCase/RS485/rs485_test.c, which is the
- * silence that marks the end of an inbound frame there - so both agree on when
- * a reply has either arrived or is not coming. It is a spin, but a bounded one
- * and only once a period; PortRs485_Send already spins for the transmit. */
+/* How long the tick keeps reading after sending, waiting for the reply. */
 #define RS485_REPLY_WINDOW_MS 20U
 
-/* A second bound on that wait, in iterations. 20 ms of polling on this core is
- * far fewer passes than this, so on a board the time bound is what ends the
- * loop; this one only matters where the clock does not move. */
+/* A second bound, in iterations, for the host harness whose clock does not
+ * move; on a board the time bound ends the loop first. */
 #define RS485_REPLY_MAX_SPINS 200000U
 
 static uint32_t rs485_baud = PORT_RS485_DEFAULT_BAUD;
@@ -74,9 +58,7 @@ static int rs485_apply(const char *args, char *err, uint32_t err_len)
     uint32_t want_period = rs485_period_ms;
 
     if (PortCmd_GetStr(args, "baud", probe, sizeof(probe))) {
-        /* The usual RS485 rates. A number the UART cannot divide down to would
-         * come out as a line rate nothing on the pair agrees with, and the
-         * symptom would look like broken wiring. */
+        /* The usual RS485 rates only. */
         if (!PortCmd_GetU32(args, "baud", &v) ||
             (v != 9600U && v != 19200U && v != 38400U &&
              v != 57600U && v != 115200U)) {
@@ -106,17 +88,8 @@ static int rs485_start(const char *args, char *err, uint32_t err_len)
     if (!rs485_apply(args, err, err_len)) {
         return 0;
     }
-    /* *** Every start, not only the first. *** PD4/PD5 belong to USART2 only
-     * while something has muxed them there, and pt.run rs485.pins deliberately
-     * takes them back as plain GPIO to read them. Skipping the init because it
-     * "was initialised once" then leaves a session driving pins that are no
-     * longer wired to the UART: the board reports frames going out, the counter
-     * never closes, and every symptom points at the cable. Found 2026-09-14,
-     * the day rs485.pins was added - and it took a board reset to tell it apart
-     * from a real wiring fault.
-     *
-     * Re-initialising a UART costs microseconds, and it is the only way to be
-     * correct without knowing who else touched those pins. */
+    /* Every start, not only the first: pt.run rs485.pins re-muxes PD4/PD5 to
+     * GPIO, and a stale mux looks exactly like a wiring fault. */
     if (!PortRs485_Init(rs485_baud)) {
         snprintf(err, err_len, "USART2 would not start at %lu baud",
                  (unsigned long)rs485_baud);
@@ -150,16 +123,13 @@ static int rs485_set(const char *args, char *err, uint32_t err_len)
 
 static void rs485_stop(void)
 {
-    /* The direction pin goes back to receive so the session does not leave the
-     * driver holding the pair. */
+    /* Back to receive, so the driver does not hold the pair. */
     if (rs485_inited) {
         PortRs485_DriveEnable(0);
     }
 }
 
-/* Takes whatever is waiting on the pair. Called every superloop pass, not just
- * when the period elapses: the reply can arrive at any moment, and a receiver
- * only drained once per period would lose it. */
+/* Takes whatever is waiting on the pair; called every superloop pass. */
 static void rs485_drain(void)
 {
     uint8_t b;
@@ -186,8 +156,7 @@ static void rs485_drain(void)
             if (digits > 0) {
                 PortTool_EchoGot(&rs485_echo, v);
             } else {
-                /* Counted rather than ignored: something IS on the pair, which
-                 * is a different fault from silence and worth telling apart. */
+                /* Something is on the pair: a different fault from silence. */
                 rs485_junk++;
             }
             rs485_in_len = 0U;
@@ -215,38 +184,17 @@ static void rs485_tick(uint32_t now_ms)
 
     PortTool_EchoTick(&rs485_echo);
 
-    /* Sent on the pair under test. The number is what the other end has to
-     * send straight back. */
+    /* Sent on the pair under test; the other end sends it straight back. */
     n = (uint32_t)snprintf(out, sizeof(out), "%lu\n",
                            (unsigned long)rs485_echo.seq);
     (void)PortRs485_Send((const uint8_t *)out, (uint16_t)n);
 
-    /* Then take the reply here, in a tight loop, instead of leaving it to the
-     * next superloop pass.
-     *
-     * ⚠️ This is what makes the port work at all, and it is why the bring-up
-     * entry point in TestCase/RS485 always did. At 115200 a byte occupies
-     * 87 us and the H7's USART holds exactly one - no FIFO - so the receiver
-     * has to be read faster than that. A superloop pass that prints a frame
-     * spends more than ten milliseconds, so the reply's second byte was gone
-     * before anyone looked, the overrun flag latched, and every later read
-     * failed: rxbytes stuck at 0 until a hardware reset. Measured 2026-09-09
-     * over 265 periods at three different rates - one closed loop, the rest
-     * lost, on wiring that was provably fine.
-     *
-     * RS485_Test_Run's own loop has no printf in it for exactly this reason;
-     * this session has to buy the same property with a bounded spin. The
-     * window is the idle gap the bring-up test uses to mark a frame's end, so
-     * both agree on what "the reply is in" means. */
+    /* Take the reply here in a bounded spin, so a frame's printf (over 10 ms)
+     * cannot sit inside the receive window and overrun the USART. */
     {
         uint32_t until = HAL_GetTick() + RS485_REPLY_WINDOW_MS;
         uint32_t spins = RS485_REPLY_MAX_SPINS;
 
-        /* ⚠️ Bounded by iterations as well as by time. The time bound alone is
-         * not enough: on the PC contract harness HAL_GetTick() is a stub whose
-         * clock does not advance, so a loop waiting only on it never ends.
-         * That is the same trap the usb source mode fell into, where the host
-         * stub always accepted a packet and the loop had no other way out. */
         while ((spins-- > 0u) && ((int32_t)(HAL_GetTick() - until) < 0)) {
             rs485_drain();
             if (rs485_echo.have) {
@@ -291,8 +239,7 @@ porttool_port_t porttool_rs485 = {
     .set      = rs485_set,
     .stop     = rs485_stop,
     .tick     = rs485_tick,
-    /* No echo hook on purpose: this port takes its reply off the pair being
-     * tested, so pt.echo has to be refused. See the note at the top. */
+    /* No echo hook: the reply comes off the pair (DECISIONS.md 9). */
     .echo     = NULL,
     .caps     = rs485_caps,
     .limits   = rs485_limits,
