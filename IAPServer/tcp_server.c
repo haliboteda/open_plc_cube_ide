@@ -1,8 +1,5 @@
 /*
- * tcp_server_simple.c
- *
- *  Created on: May 7, 2025
- *      Author: WhoamIamwhO
+ * tcp_server.c -- the single-session TCP command channel.
  */
 
 #include <IAP_config.h>
@@ -143,7 +140,6 @@ void tcp_server_start(void) {
 
 	server_pcb = tcp_listen(server_pcb);
 	tcp_accept(server_pcb, _accept);
-	// TCP_PRINT("Server listening on port %d", OPENPLC_SERVER_PORT);
 }
 
 

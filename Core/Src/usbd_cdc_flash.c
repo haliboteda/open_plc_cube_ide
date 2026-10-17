@@ -32,7 +32,7 @@ uint16_t Flash_If_Write(uint8_t *DataAddress, uint8_t *FlashAddress, uint32_t Le
  *         banks.)
  * @param  Add: Address of sector to be erased.
  * @param NbSectors: number of sectors
- * @retval 0 if operation is successful, MAL_FAIL else.
+ * @retval HAL_OK (0) on success, otherwise non-zero.
  */
 uint16_t Flash_If_Erase(uint32_t Add, uint32_t NbSectors)
 {
@@ -84,7 +84,7 @@ uint16_t Flash_If_Erase(uint32_t Add, uint32_t NbSectors)
  * @param  DataAddress specifies the address of data to be programmed.
  *         This parameter shall be 32-bit aligned
  * @param  Len: Number of data to be written (in bytes).
- * @retval 0 if operation is successful, MAL_FAIL else.
+ * @retval HAL_OK (0) on success, otherwise non-zero.
  */
 
 uint16_t Flash_If_Write(uint8_t *DataAddress, uint8_t *FlashAddress, uint32_t Len)
@@ -99,8 +99,6 @@ uint16_t Flash_If_Write(uint8_t *DataAddress, uint8_t *FlashAddress, uint32_t Le
   {
     uint32_t w;
 
-    /* Device voltage range supposed to be [2.7V to 3.6V], the operation will
-     * be done by byte */
     if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_FLASHWORD, (uint32_t)(FlashAddress + i),
                           (uint32_t)(DataAddress + i)) != HAL_OK)
     {
@@ -127,9 +125,7 @@ uint16_t Flash_If_Write(uint8_t *DataAddress, uint8_t *FlashAddress, uint32_t Le
     }
   }
 
-  /* One exit, so the lock and the I-cache are restored on every path. Returning
-   * straight out of the loop left the I-cache disabled for the rest of the run
-   * -- a failed write silently slowed everything after it. */
+  /* One exit, so the lock and the I-cache are restored on every path. */
   HAL_FLASH_Lock();
   SCB_EnableICache();
   return result;
@@ -234,12 +230,11 @@ static uint32_t GetGlobalSectorIndex(uint32_t Address)
  * @brief  Erase Flash.
  * @param  flashAddress: flash address to be written to.
  * @param  Len: Number of data to be written (in bytes).
- * @retval 0 if operation is successful, MAL_FAIL else.
+ * @retval HAL_OK (0) on success, otherwise non-zero.
  */
 uint16_t Erase_FLASH(uint8_t *flashAddress, uint32_t Len)
 {
-  // never erase into the reserved tail sector (bootloader state: firmware
-  // metadata + tamper-evident event log)
+  // never erase into the reserved tail sector (bootloader state, sector 15)
   if ((uint32_t)flashAddress + Len > IAP_STATE_SECTOR_ADDR)
   {
     return HAL_ERROR;
@@ -260,27 +255,6 @@ uint16_t Erase_FLASH(uint8_t *flashAddress, uint32_t Len)
   HAL_StatusTypeDef status = Flash_If_Erase((uint32_t)flashAddress, NbSectors);
   if (status != HAL_OK)
   {
-    //printf("There is error when erasing flash. Addr:%x Sectors:%d Status:%d\r\n", flashAddress, NbSectors, status);
-    return HAL_ERROR;
-  }
-  //printf("Erasing flash Done. Addr:%x Sectors:%d\r\n", flashAddress, NbSectors);
-  return HAL_OK;
-}
-
-/**
- * @brief  Writes Data into Flash.
- * @param  dataAddress: Data Address .
- * @param  flashAddress: flash address to be written to.
- * @param  Len: Number of data to be written (in bytes).
- * @retval 0 if operation is successful, MAL_FAIL else.
- */
-
-uint16_t Write_FLASH(uint8_t *dataAddress, uint8_t *flashAddress, uint32_t Len)
-{
-  HAL_StatusTypeDef status = Flash_If_Write(dataAddress, flashAddress, Len);
-  if (status != HAL_OK)
-  {
-//    printf("There is error when writing flash. Addr:%x Data:%x Status:%d", flashAddress, dataAddress, status);
     return HAL_ERROR;
   }
   return HAL_OK;

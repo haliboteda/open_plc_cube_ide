@@ -1,8 +1,5 @@
 /*
- * ota_processor.c
- *
- *  Created on: Apr 30, 2025
- *      Author: ziotier
+ * IAP_server.c -- IAP command state machine and the boot decision.
  */
 #include <inttypes.h>
 #include "IAP_server.h"
@@ -23,13 +20,10 @@
 
 #include "fmc.h"            /* iap_sdram_selftest_passed(), for the reject text */
 #include "lwip/netif.h"     /* netif_default, to notice a link that never came up */
-#include "usart.h"          /* huart4, de-initialised before jumping to the app */
 #include "usbd_cdc_flash.h"
 
 #include "usbd_cdc_if.h"
 #include "boot_selfupgrade.h"
-
-pFunction JumpToApplication;
 
 uint32_t expected_size;
 uint32_t expected_checksum;
@@ -38,29 +32,19 @@ static bool have_expected_signature;
 static iap_cert_t expected_cert;   /* the leaf cert that (claims to) authorise expected_signature */
 static bool s_staging_is_bootloader; /* this transfer is a flashboot, not a flash */
 
-// volatile: written from IAP_data_recv() (USB/lwIP receive callback context)
-// and read/cleared from IAP_task() (main superloop context) -- without it
-// the compiler is free to assume nothing outside the current function
-// changes these between accesses.
-volatile uint8_t data_is_ready = 0; // 0 - no 1 - yes
-volatile uint32_t len_in_RX_buffer = 0;    // received data length in buffer
-uint8_t RXBuffer[IAP_RX_BUFFER_SIZE]; // buffer to receive data
-volatile uint32_t received_bytes = 0; // received Bytes of Flash bin file
+/* volatile: written from the USB/lwIP receive callbacks, read and cleared
+ * from the superloop. */
+volatile uint8_t data_is_ready = 0;
+volatile uint32_t len_in_RX_buffer = 0;
+uint8_t RXBuffer[IAP_RX_BUFFER_SIZE];
+volatile uint32_t received_bytes = 0;   /* image bytes staged so far */
 
-//uint8_t FlashBuffer[IAP_RX_BUFFER_SIZE];
-//uint32_t LenInFlashBuffer = 0;
 volatile IAP_STATUS current_status = IDLE;
 
 static IAP_Method current_method = IAP_NONE;
 
-//
-extern uint32_t _sdata, _edata;
-extern uint32_t _sbss, _ebss;
-extern uint32_t _estack;
 extern uint16_t Erase_FLASH(uint8_t *flashAddress, uint32_t Len);
-extern uint16_t Flash_If_Write(uint8_t *DataAddress, uint8_t *FlashAddress,
-		uint32_t Len);
-//
+
 uint32_t app_base, app_msp, app_reset;
 
 /* The staging buffer has to hold the largest image the app region accepts, plus
@@ -70,16 +54,9 @@ _Static_assert(IAP_STAGE_SIZE >= (uint32_t)IAP_APP_MAX_SIZE + 32U,
 
 /*
  * Erase the application region and copy the verified image out of SDRAM.
- *
- * Only reached once the staged image has passed both CRC and signature, which is
- * the entire point of staging: this is the first moment the currently-installed
- * application is at risk, and the exposure lasts the erase plus the write rather
- * than the whole transfer.
- *
- * On failure the app region is left half-written with stale metadata still
- * describing the old image, so the next boot reports an invalid application and
- * asks for another upload -- the same recoverable state an interrupted transfer
- * used to leave behind.
+ * Only reached once the staged image has passed CRC and signature. On failure
+ * the stale metadata no longer matches the app region, so the next boot stays
+ * in the bootloader and asks for another upload.
  */
 static bool stage_commit_to_flash(void) {
 	/* HAL_FLASH_Program always consumes a full 32-byte flash word, so the copy
@@ -116,7 +93,7 @@ void reset_buf(void) {
 	s_staging_is_bootloader = false;
 }
 
-// 接口特定的发送响应
+/* Reply on the channel the current command came in on. */
 void send_response(char *msg) {
 	switch (current_method) {
 	case IAP_CDC: {
@@ -183,12 +160,23 @@ void iap_identity_string(char *out, uint32_t out_len)
 			OPENPLC_DEVICE_NAME, uid_hex, role, OPENPLC_FW_VERSION, "-");
 }
 
+/* TCP/CDC keep their prefix match; the reply text comes from the builder UDP
+ * uses too (udp_server.c, mirror 21). */
+static void send_query_reply(const char *name)
+{
+	char reply[IAP_QUERY_REPLY_MAX];
+
+	if (iap_query_reply(name, reply, sizeof(reply))) {
+		send_response(reply);
+	}
+}
+
 void process_command() {
 	if (current_status == IDLE) {
 		// check the command type
 		if (strncmp((char *)RXBuffer, "openplc_server_where_r_y", 24) == 0) {
 			// Same string the UDP discovery reply carries, so a PC tool identifies
-			// a board the same way on both channels: name_uid_role_version, with
+			// a board the same way on both channels (see iap_identity_string()), with
 			// role telling BOOTLD from BOOTLD-INVALID.
 			char identity[96];
 			iap_identity_string(identity, sizeof(identity));
@@ -207,30 +195,9 @@ void process_command() {
 				send_response("ERR");
 			}
 		} else if (strncmp((char *)RXBuffer, "getuid", 6) == 0) {
-			// Lets a PC tool connected over CDC (no discovery reply available)
-			// learn this device's machine ID, so it can tell one board from
-			// another in its own logs and output.
-			char uid_hex[IAP_MACHINE_ID_HEX_LEN + 1U];
-			iap_keyderive_get_machine_id_hex(uid_hex);
-			send_response(uid_hex);
+			send_query_reply("getuid");
 		} else if (strncmp((char *)RXBuffer, "getpubkey", 9) == 0) {
-			// Lets the PC tool confirm its signing key matches the key this
-			// bootloader verifies against, before it spends time sending an
-			// image that would be rejected at the end.
-			//
-			// "none" when the board has no root: IAPTool then claims it before
-			// uploading (decision 72).
-			const uint8_t *root = owner_slot_root();
-			char pubhex[64 * 2U + 1U];
-			uint32_t i;
-			if (root == NULL) {
-				send_response("none");
-			} else {
-				for (i = 0; i < 64U; i++) {
-					(void)sprintf(&pubhex[i * 2U], "%02x", root[i]);
-				}
-				send_response(pubhex);
-			}
+			send_query_reply("getpubkey");
 		} else if (strncmp((char *)RXBuffer, "takeown ", 8) == 0) {
 			// "takeown <128 hex chars>" -- bind this board to a signing key.
 			//
@@ -258,36 +225,9 @@ void process_command() {
 				send_response("Refused");
 			}
 		} else if (strncmp((char *)RXBuffer, "getowner", 8) == 0) {
-			// Generation of the record in force, 0 when unclaimed. The host
-			// needs it to build the next record's signed prefix -- both sides
-			// must agree on the exact bytes, and the generation is in them.
-			char genbuf[16];
-			snprintf(genbuf, sizeof(genbuf), "%" PRIu32, owner_slot_generation());
-			send_response(genbuf);
+			send_query_reply("getowner");
 		} else if (strncmp((char *)RXBuffer, "getapprevoked", 13) == 0) {
-			// Has the leaf that signed the installed image been revoked?
-			//
-			// Since decision 60 that image boots anyway, so nothing in the
-			// field shows it. Without this the operator cannot tell which
-			// boards want a re-upload after revoking somebody, and would have
-			// to re-flash every board to be sure.
-			//
-			// "none" is not "no": a board with no runnable image has nothing to
-			// re-upload, whereas "no" says the image present is fine. Merging
-			// them would read as a clean bill of health for a blank board.
-			//
-			// The metadata record alone does not prove there is an image: it
-			// lives in sector 15 and outlives an erase of the application. The
-			// question is whether the board would RUN what it has, which is
-			// what the boot decision already worked out. Since decision 60 that
-			// verdict ignores revocation, so it does not swallow the answer.
-			iap_fw_metadata_t meta;
-			char *answer = "none";
-			if (bootloader_state_app_is_valid()
-					&& bootloader_state_get_metadata(&meta) && meta.app_size > 0U) {
-				answer = owner_slot_is_revoked(meta.cert.leaf_pubkey) ? "yes" : "no";
-			}
-			send_response(answer);
+			send_query_reply("getapprevoked");
 		} else if ((strncmp((char *)RXBuffer, "setownerwipe ", 13) == 0)
 				|| (strncmp((char *)RXBuffer, "setowner ", 9) == 0)) {
 			// "setowner <generation> <newkey_hex> <sig_hex>"
@@ -425,13 +365,9 @@ void process_command() {
 			char sig_hex[129] = {0};
 			char cert_hex[(IAP_CERT_SIZE * 2U) + 1U] = {0};
 			char noncesig_hex[129] = {0};
-			/* %256s is IAP_CERT_SIZE*2 written out: scanf field widths are
-			 * literals, not something the preprocessor can substitute a macro
-			 * into. Update this by hand if IAP_CERT_SIZE ever changes again --
-			 * it did once already (132 -> 128 bytes, 2026-09-20, when the
-			 * certificate's `serial` field was dropped) and this number was
-			 * found stale then. The mirror of this parser in open_plc_arduino's
-			 * udp_server.c has the same literal for the same reason. */
+			/* %256s is IAP_CERT_SIZE*2 written out: a scanf field width cannot
+			 * be a macro. Update it by hand with IAP_CERT_SIZE, here and in
+			 * open_plc_arduino's udp_server.c. */
 			int nParsed = sscanf((char *)RXBuffer + strlen(verb),
 					" %" SCNu32 " %" SCNx32 " %128s %256s %128s",
 					&expected_size, &expected_checksum, sig_hex, cert_hex, noncesig_hex);
@@ -479,10 +415,9 @@ void process_command() {
 					 * caller can reach, so it must never touch Flash. */
 					bootloader_state_note_auth_fail(tcp_server_get_client_ip());
 				} else {
-					/* Nothing is erased here any more: the image goes to SDRAM
-					 * first and the app region is only touched once it has
-					 * passed CRC and signature. So a rejected, corrupt or
-					 * interrupted upload leaves the running app alone. */
+					/* Nothing is erased yet: the image is staged in SDRAM and
+					 * the app region is only touched once it has passed CRC
+					 * and signature. */
 					printf("File size %" PRIu32 ", checksum %" PRIx32 ". Staging in SDRAM.\r\n",
 	                        expected_size, expected_checksum);
 					received_bytes = 0;
@@ -521,7 +456,7 @@ void process_command() {
 			send_response("OK");
 		}
 
-		// 检查是否传输完成
+		/* Whole image staged? */
 		if (received_bytes >= expected_size) {
 			printf("Transfer complete, verifying the staged image...\r\n");
 
@@ -588,14 +523,9 @@ void process_command() {
 				} else {
 					printf("Checksum and signature OK. Rebooting...\r\n");
 					bootloader_state_save_metadata(expected_size, expected_signature, &expected_cert);
-					/* No "OK" here, and it is not an oversight: one was
-					 * tried and measured on 2026-09-22. The board reaches
-					 * send_response() and tcp_write/tcp_output both report
-					 * success, but the two bytes never reach the peer -- the
-					 * reset below takes the MAC down with them. A success on
-					 * this path is therefore silent on the wire by nature,
-					 * and the tool confirms it by watching for the board to
-					 * come back instead. See $PROD/docs/modules/M1-firmware-upgrade.md. */
+					/* No "OK": the reset below takes the MAC down before the
+					 * reply leaves, so the tool confirms success by watching
+					 * the board come back. See $PROD/docs/modules/M1-firmware-upgrade.md. */
 					HAL_Delay(500);
 					HAL_NVIC_SystemReset();
 				}
@@ -616,19 +546,8 @@ void process_command() {
 uint8_t boot0_is_pressed(void) {
 	return (HAL_GPIO_ReadPin(BOOT0_GPIO_Port, BOOT0_Pin) == GPIO_PIN_SET) ? 1U : 0U;
 }
-// __set_MSP() from inside an ordinary C function is unsafe if anything else
-// in that function runs afterward: the compiler doesn't know the hardware
-// stack pointer just moved, and still emits its normal epilogue (restoring
-// callee-saved registers and deallocating locals) relative to the *old*
-// stack. If that epilogue instead executes after MSP already points at the
-// jumped-to app's fresh stack, "restore/deallocate" becomes "read garbage
-// past the top of the app's RAM" -- which is exactly what was happening
-// here: server_jump_to_app()'s compiler-generated epilogue (`add sp,#0xA0` +
-// `ldmia sp!,{r4-r9,sl,lr}`) ran *after* MSP had already been set to
-// app_msp, corrupting SP to app_msp+0xA0 (0x240800A0, just past the end of
-// AXI SRAM) and bus-faulting on the register pop. A naked function has no
-// compiler-generated prologue/epilogue at all, so nothing can run between
-// setting MSP and jumping.
+/* Naked: no compiler epilogue may run between setting MSP and the jump, or it
+ * pops registers relative to the app's fresh stack and bus-faults. */
 #ifndef IAP_SERVER_HOST_TEST
 __attribute__((naked)) static void jump_to_app(uint32_t msp, uint32_t reset_vector)
 {
@@ -691,11 +610,8 @@ IAP_Method server_decide(uint8_t boot0Pressed) {
 	printf(boot0Pressed ? "BOOT0 button is pressed!\r\n"
 	                    : "BOOT0 button is not pressed.\r\n");
 
-	// Is the app region's actual content the one that was signed and accepted
-	// at the last successful update? This replaces the old "does the MSP
-	// value merely look like a plausible RAM address" heuristic, which could
-	// not tell a legitimate app from corrupted or maliciously-written flash
-	// as long as the first word happened to look like a stack pointer.
+	/* Is the app region's actual content the one that was signed and accepted
+	 * at the last successful update? */
 	if (bootloader_state_crypto_selftest_passed() && (owner_slot_root() != NULL)) {
 		iap_fw_metadata_t meta;
 		if (bootloader_state_get_metadata(&meta) && meta.app_size > 0U && meta.app_size <= IAP_APP_MAX_SIZE) {
@@ -759,10 +675,9 @@ IAP_Method server_decide(uint8_t boot0Pressed) {
 		}
 	}
 
-	/* current_method tracks the channel actually in use and is (re)set by
-	 * IAP_data_recv() as soon as a command arrives. Pre-seed it for the
-	 * single-channel modes to keep the old behaviour; IAP_ALL has no single
-	 * channel yet, so leave it until the first command says which one. */
+	/* current_method is (re)set by IAP_data_recv() when a command arrives.
+	 * Pre-seed it for the single-channel modes; IAP_ALL waits for the first
+	 * command to say which channel. */
 	if ((mode == IAP_CDC) || (mode == IAP_ETHERNET)) {
 		current_method = mode;
 	}
@@ -780,9 +695,8 @@ IAP_Method server_decide(uint8_t boot0Pressed) {
  * Hand the hardware back and jump. Only valid when server_decide() returned
  * IAP_NONE, and only on the boot path -- a completed upload resets instead (see
  * process_command()), which is what keeps the I-cache out of the picture.
- *
- * There is no MX_USB_DEVICE_DeInit() here any more: on this path USB was never
- * brought up in the first place.
+ * USB, ethernet and FMC are never brought up on this path, so they need no
+ * de-init.
  */
 void server_jump_to_app(void) {
 	/* Give the application a clean slate. Our MPU regions describe the
@@ -791,17 +705,9 @@ void server_jump_to_app(void) {
 	 * write, so unlike a peripheral de-init there is nothing to forget. */
 	HAL_MPU_Disable();
 
-	/* UART4 is the only peripheral Phase 1 brought up (for the boot log). Its
-	 * MspDeInit also releases the PC10/PC11 pins; the MAX3221 enable is a plain
-	 * GPIO and has to be handed back separately, so the application starts with
-	 * the transceiver in the same shutdown state a cold board has.
-	 *
-	 * Order matters: shut the transceiver down BEFORE releasing the pins.
-	 * MspDeInit leaves PC10 -- the MAX3221's data input -- floating, and a
-	 * floating input on a still-powered transceiver drives whatever it picks up
-	 * onto the line. */
-	Disable_RX_RS232();
-	HAL_UART_DeInit(&huart4);
+	/* No UART or transceiver to hand back: the bootloader never opens them
+	 * (R1-43). A last line without its newline would otherwise be lost. */
+	boot_log_flush_stdout();
 
 	__disable_irq();
 
@@ -810,17 +716,25 @@ void server_jump_to_app(void) {
 	SysTick->LOAD = 0;
 	SysTick->VAL = 0;
 
+	HAL_RCC_DeInit();
+	HAL_DeInit();
+
+	/* Leave nothing on that a cold board has off (decision 4): HAL_RCC_DeInit()
+	 * re-arms the TIM6 time base, and the clock enables below survive both
+	 * DeInits. See $PROD/docs/modules/M3-app-runtime.md R3-02. */
+	__HAL_RCC_TIM6_CLK_DISABLE();
+	__HAL_RCC_SYSCFG_CLK_DISABLE();
+	RCC->AHB4ENR = 0U;   /* GPIOA-K, BKPRAM: reset value; safe_outputs_init() re-enables its ports */
+	HAL_PWR_DisableBkUpAccess();
+
 	/* clear interrupt pending -- NVIC->ICER/ICPR are 8 words (256 IRQs,
 	 * the ARMv7-M architectural max), not 16; looping past 8 wrote into
-	 * the reserved padding between register banks. */
+	 * the reserved padding between register banks. After the DeInits, which
+	 * enable the TIM6 IRQ again. */
 	for (uint32_t i = 0; i < 8; i++) {
 		NVIC->ICER[i] = 0xFFFFFFFFU;
 		NVIC->ICPR[i] = 0xFFFFFFFFU;
 	}
-
-	/* */
-	HAL_RCC_DeInit();
-	HAL_DeInit();
 
 	/* HAL_DeInit() just reset every GPIO port, so the outputs float again: drive
 	 * them back to 0 and leave them for the sketch's first write. The one
@@ -843,18 +757,30 @@ void server_jump_to_app(void) {
  * lwIP already initialised; CDC needs no server object at all, because
  * usbd_cdc_if.c calls IAP_data_recv() straight from the USB receive callback.
  */
+#define IAP_LINK_REPORT_MS 5000U
+static bool s_link_report_pending;
+static uint32_t s_link_report_start;
+
+/* Say so when the link is still not usable 5 s after the channels opened.
+ * ethernetif.c returns silently when LAN8742_Init() fails, in a CubeMX region,
+ * so the report has to happen here. Not earlier: right after lwIP init the PHY
+ * is often still auto-negotiating. See $PROD/docs/modules/M1/BOOT-SEQUENCE.md. */
+static void IAP_link_report(void) {
+	if (!s_link_report_pending
+			|| (HAL_GetTick() - s_link_report_start) < IAP_LINK_REPORT_MS) {
+		return;
+	}
+	s_link_report_pending = false;
+	if ((netif_default == NULL) || !netif_is_link_up(netif_default)) {
+		printf("** Ethernet link is DOWN - this board will not answer discovery. **\r\n"
+		       "** Check the cable; if it is in, the PHY did not initialise. **\r\n");
+	}
+}
+
 void IAP_servers_start(IAP_Method mode) {
 	if ((mode == IAP_ETHERNET) || (mode == IAP_ALL)) {
-		/* Say so when the link is not usable. ethernetif.c returns silently
-		 * when LAN8742_Init() fails -- it only calls netif_set_link_down() and
-		 * netif_set_down() -- and that code sits in a CubeMX-generated region,
-		 * so the report has to happen here instead. Without it a dead PHY and
-		 * an unplugged cable both present to the operator as "the tool cannot
-		 * find the board", with nothing in the log either way. */
-		if ((netif_default == NULL) || !netif_is_link_up(netif_default)) {
-			printf("** Ethernet link is DOWN - this board will not answer discovery. **\r\n"
-			       "** Check the cable; if it is in, the PHY did not initialise. **\r\n");
-		}
+		s_link_report_pending = true;
+		s_link_report_start = HAL_GetTick();
 		tcp_server_start();
 		openplc_udp_server_start();
 	}
@@ -864,6 +790,7 @@ void IAP_servers_start(IAP_Method mode) {
 static volatile uint32_t s_idle_rx_last_tick;
 
 void IAP_task(void) {
+	IAP_link_report();
 	if (data_is_ready > 0) {
 		data_is_ready = 0;
 		process_command();
@@ -889,20 +816,11 @@ void IAP_data_recv(IAP_Method iapM, uint8_t *Buf, uint32_t Len) {
 		len_in_RX_buffer += copyLen;
 		s_idle_rx_last_tick = HAL_GetTick();
 
-		// A text command is framed by a trailing '\n' or '\r' (see
-		// IAPTranfer_Tool's SendCommandReadResponse/SendCommandWaitForResponse
-		// and the TCP sendCommand* helpers, which send '\n'; either is
-		// accepted so a raw terminal whose Enter key only sends '\r' still
-		// works). Without this, a command longer than one USB CDC packet or
-		// one TCP segment -- e.g. "flash <size> <crc32> <128-hex-sig>
-		// <cert_hex> <noncesig_hex>", ~610 bytes -- can arrive split across several
-		// IAP_data_recv() calls; overwriting RXBuffer from offset 0 on every
-		// call (the old behavior) meant only the LAST fragment survived by
-		// the time process_command() ran, which is why "flash" landed as
-		// "Unknown command" the first time this was tested end-to-end on
-		// real hardware. Waiting for a terminator (or the buffer filling up,
-		// as a safety net) fixes that; IAP_task()'s stale-buffer check
-		// handles a terminator that never arrives at all.
+		// A text command ends at '\n' or '\r' (IAPTool sends '\n'; a raw
+		// terminal may send only '\r'). The "flash" command (~610 bytes)
+		// spans several USB packets / TCP segments, so fragments accumulate
+		// until the terminator or a full buffer; IAP_task() drops a partial
+		// command that never gets one.
 		if (memchr(RXBuffer, '\n', len_in_RX_buffer) != NULL
 				|| memchr(RXBuffer, '\r', len_in_RX_buffer) != NULL
 				|| len_in_RX_buffer >= IAP_RX_BUFFER_SIZE) {
@@ -910,9 +828,6 @@ void IAP_data_recv(IAP_Method iapM, uint8_t *Buf, uint32_t Len) {
 			printf("IDLE ready \r\n");
 		}
 	} else {
-
-		//printf("--LenInRXBuffer %d : Len %d \r\n", LenInRXBuffer, Len);
-
 		uint32_t remaining = IAP_RX_BUFFER_SIZE - len_in_RX_buffer;
 		if (Len > remaining) {
 			printf("RX overflow: Len %" PRIu32 " exceeds remaining buffer %" PRIu32 ". Aborting transfer.\r\n",
@@ -926,13 +841,9 @@ void IAP_data_recv(IAP_Method iapM, uint8_t *Buf, uint32_t Len) {
 		memcpy(RXBuffer + len_in_RX_buffer, Buf, Len);
 		len_in_RX_buffer += Len;
 
-//		printf("--LenInRXBuffer %d : receivedBytes %d of %d \r\n",
-//				LenInRXBuffer, receivedBytes, expected_size);
-
-		// all data received or receive length reach the buffer size
+		// Hand over when the buffer is full or the image is complete.
 		if (len_in_RX_buffer >= IAP_RX_BUFFER_SIZE
 				|| received_bytes + len_in_RX_buffer >= expected_size) {
-			// buffer is full
 			data_is_ready = 1;
 			printf("Data is ready to FLash LenInRXBuffer %"PRIu32 " : received %"PRIu32 " of %"PRIu32 " \r\n",
 					len_in_RX_buffer, received_bytes, expected_size);

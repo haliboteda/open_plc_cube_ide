@@ -142,7 +142,7 @@ static bool arm_and_burn(uint32_t image_size, const char *what)
 	printf("%s: erasing and rewriting sector 0 (%" PRIu32 " bytes). "
 			"DO NOT CUT POWER.\r\n", what, image_size);
 	fflush(stdout);
-	HAL_Delay(200);   /* let that line leave the UART before interrupts stop */
+	HAL_Delay(200);   /* let that line drain over SWO before interrupts stop */
 
 	/* The I-cache would otherwise keep serving instructions from a sector
 	 * that no longer holds them. Interrupts go last, so nothing between here

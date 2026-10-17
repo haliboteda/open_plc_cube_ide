@@ -18,13 +18,13 @@ STM32H743IIKx（Cortex-M7，2 MB Flash / 1 MB RAM）的 **bootloader**。带签�
 
 | 目录 / 文件 | 装什么 |
 |---|---|
-| `Core/Inc` `Core/Src` | CubeMX 生成的外设初始化，**加几个手写的**：`fmc.c`（外部 SDRAM 上电时序 + 自检）、`relay.c`（继电器驱动，只有工装和 `TestCase/RELAY` 用；开机不动继电器，决策 71）、`usbd_cdc_flash.c`（flash 擦写 + 扇区地址表）、`crc.c`、`rtc.c`、`usart.c` |
+| `Core/Inc` `Core/Src` | CubeMX 生成的外设初始化，**加几个手写的**：`fmc.c`（外部 SDRAM 上电时序 + 自检）、`relay.c`（继电器驱动，只有工装用；开机不动继电器，决策 71）、`usbd_cdc_flash.c`（flash 擦写 + 扇区地址表）、`crc.c`、`rtc.c`、`usart.c` |
 | `Core/Inc/IAP_config.h` | **唯一的编译期配置点。** 固件版本号（必须和 core 的 `boards.txt` 一致，**没有机制强制**，靠用例 P1 查）、服务端口、`UDP_SERVER_NAME`（bootloader 报 `BOOTLD`、app 报 `CUSAPP`，工具靠这一个字段区分两者）、SDRAM 暂存区基址和大小（**故意不在链接脚本的 MEMORY 块里**）、接收缓冲大小、`IAP_Method` 枚举 |
 | `Core/Startup/` | 复位向量 |
 | `IAPServer/` | **本工程的产品代码，CubeMX 不碰这里。** 命令状态机与启动决策（`IAP_server.c`）、flash 上的 metadata 与校准值区（`bootloader_state.c`）、ECDSA 验签（`fw_verify.c` + `uecc/` 里 vendored 的 micro-ecc）、签名挑战认证（`iap_auth.c`）、证书验签（`iap_cert.c`）、本机 machine ID（`iap_keyderive.c`，**只剩这一件事，不再派生任何密钥**）、SHA-256（`sha256.c`）、根区（`owner_slot.c`，在扇区 15）、回收时的备份 SRAM 暂存（`bkp_stash.c`）、SRAM4 交接记录（`IAP_boot_handoff.c`）、lwIP raw TCP/UDP（`tcp_server.c` / `udp_server.c`）。另有 `SECURITY.md`，配图版是 `$PROD/docs/modules/M2-ownership.md`。<br>⚠️ **找不到合适的 CubeMX USER CODE 块时，代码挪到这里，不要改生成区** |
 | `LWIP/` | `App/lwip.c` + `Target/{ethernetif.c,lwipopts.h}`。配置要点见 `$PROD/docs/build/BOOTLOADER-PROJECT-LAYOUT.md` |
 | `USB_DEVICE/` | CDC 通道，含 1200 bps touch 触发 |
-| `TestCase/` | 板级测试入口，**一个端口一个子目录**：`ADC/` `CAN/` `DAC/` `DIN/` `KNX/` `PWM/` `RELAY/` `RS232/` `RS485/` `SD/` `SDRAM/`，每个一份 `<x>_test.c/.h`。<br>⚠️ **两种入口形状并存**：老的是 `<X>_Test_Run()`，自己死循环、不返回；Digital In / 继电器 / 模拟输入 / 模拟输出 / 板载温度五项改成了 `<X>_Test_Init()` + `<X>_Test_Tick()` 的非阻塞对，由 `common/bringup_test.c` 的 `BringUp_Test_Run()` 统一调度，**一次烧录五项同时跑**（为什么能同时跑、共享了什么，写在 `common/bringup_test.h` 的头注释里）。<br>`common/` 装公用件：`testcase_hal_guard.h`、`bringup_test.c`、vendored FatFs、以及 ⚠️ **工程里唯一自带 HAL 副本的地方**（ADC / **DAC** / SD / SDMMC / FDCAN，靠那个守卫头与工程的 `stm32h7xx_hal_conf.h` 隔离）。它不是产品路径，改 HAL 行为之前先读守卫头。<br>⚠️ `common/` 必须在 include path 上（`.cproject` 里那一条 `../TestCase/common`；工程只有一个 build config，叫 `Debug`）—— `stm32h7xx_hal_conf.h` 找那些副本头文件走的是 include path，不是相对路径 |
+| `TestCase/` | **工装固件**（`porttool/`，`PORTTOOL_ENABLE=1` 时编进去）和它调用的测量函数：`ETH/` `KNX/` `SD/` `SDRAM/` 各一份 `<x>_test.c/.h`，全部是调一次就返回的函数。原来一次烧一个、不返回的旧端口测试已删（决策 87）。<br>`common/` 装公用件：各端口的硬件层 `port_*.c`、`testcase_hal_guard.h`、vendored FatFs、以及 ⚠️ **工程里唯一自带 HAL 副本的地方**（ADC / **DAC** / SD / SDMMC / FDCAN，靠那个守卫头与工程的 `stm32h7xx_hal_conf.h` 隔离）。它不是产品路径，改 HAL 行为之前先读守卫头。<br>⚠️ `common/` 必须在 include path 上（`.cproject` 里那一条 `../TestCase/common`；工程只有一个 build config，叫 `Debug`）—— `stm32h7xx_hal_conf.h` 找那些副本头文件走的是 include path，不是相对路径 |
 | `Drivers/` `Middlewares/` | ST HAL + CMSIS + USB device library，CubeMX 拉进来的，不动 |
 | `STM32H743IIKX_FLASH.ld` | bootloader 的链接脚本。FLASH LENGTH 是整个扇区 0 的 128K（根区在扇区 15）。规矩在 `$PROD/docs/build/CUBEMX-RULES.md` |
 | `STM32H743IIKX_FLASH_PORTTOOL.ld` | **工装镜像专用**，FLASH 拿整片 2048K（ST-Link 整片烧，不走 IAP，没有 app 和 owner 记录要避让）。⚠️ **用它编出来的东西不能当 bootloader 烧。** 哪次构建用哪份由 `PLC_LD_SCRIPT` 决定 —— 见 `$PROD/docs/build/CUBEMX-RULES.md` |
@@ -48,7 +48,7 @@ arm-none-eabi-gcc -fsyntax-only -mcpu=cortex-m7 -mthumb \
 
 1. **CubeMX 生成区不能手工改**，重新生成后有两项必查 —— `$PROD/docs/build/CUBEMX-RULES.md`
 2. **`docs/` 下的笔记是本仓库事实的唯一出处。** 发现和现状不符就地改掉，不要另起一份 —— 约定见 `$PROD/docs/repo/CONVENTIONS.md`
-3. ⚠️ **`TestCase/` 里的代码是已经测试通过的，写任何测试用例都必须先参考它。**（用户 2026-09-11：「testcase 是测试通过的代码，你写测试用例都要必须参考」）做一个端口的新用例、或者怀疑工装某个端口有问题时，**先读 `TestCase/<PORT>/<port>_test.c`** —— 那份在真板子上跑通过。两边行为不一致时，**差异本身就是线索**：2026-09-11 的 RS485 overrun 就是这么找到的（独立测试的紧循环不丢字节，工装的超循环丢，根因是 USART FIFO 没开）。
+3. ⚠️ **`TestCase/` 里的代码是已经测试通过的，写任何测试用例都必须先参考它。**（用户 2026-09-11：「testcase 是测试通过的代码，你写测试用例都要必须参考」）做一个端口的新用例、或者怀疑工装某个端口有问题时，**先读 `TestCase/common/port_<port>.c` 和 `TestCase/porttool/porttool_<port>.c`** —— 端口代码只剩工装这一套（决策 87）。原来一次烧一个的旧端口测试已删，要对照时去 git 历史里找。
 4. **这个仓库只放测 bootloader 自己的测试**（`tests/`，决策 78）。要用到别的仓、或者要上真板子的测试在 `$TEST`（`OpenPLC_Test`）。判据在 `$PROD/docs/engineering/HOW-TO-RUN-TESTS.md`
 
 ## 五、这个仓库的四份入口文件
@@ -65,7 +65,7 @@ arm-none-eabi-gcc -fsyntax-only -mcpu=cortex-m7 -mthumb \
 cd tests
 cmake --preset local          # 第一次；local 预设在 gitignored 的 CMakeUserPresets.json 里，写法见 tests/README.md
 cmake --build --preset local
-ctest --preset local          # 34 项：T1-16、owner 区 7 组、T2-34 的 24 个断电场景、P16、P17
+ctest --preset local          # 35 项：T1-16、owner 区 7 组、T2-34 的 24 个断电场景、P16、P17、T1-36
 ```
 
 只要 gcc、cmake、ninja，不读任何本机配置文件（决策 78）。本机这三样在 `D:\Soft\mingw64\bin`，不在 PATH 上，由 `CMakeUserPresets.json` 指过去。

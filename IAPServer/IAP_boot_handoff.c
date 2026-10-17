@@ -156,10 +156,8 @@ bool boot_handoff_request(boot_req_t mode)
 	h->check   = chk;
 	sync_to_memory();
 
-	/* Read-back verification. This is the guard the old RTC-backup-register
-	 * scheme lacked: a write that the hardware discarded looked identical to a
-	 * write that succeeded, so the board reset with the old flag still in place
-	 * and booted the wrong mode with nothing logged anywhere. */
+	/* Read back before resetting: a discarded write must not silently boot
+	 * the wrong mode. */
 	if ((h->magic != BOOT_HANDOFF_MAGIC) ||
 	    (h->version != (uint16_t)BOOT_HANDOFF_VERSION) ||
 	    (h->mode != (uint32_t)mode) ||

@@ -18,7 +18,7 @@
  * owner-slot flash to read -- see open_plc_arduino's owner_root_ro.c, which
  * gets the root a different way and hands it to the same functions here.
  *
- * Revocation (2026-09-20) works the same way: `leaf_is_revoked` is a plain
+ * Revocation works the same way: `leaf_is_revoked` is a plain
  * bool the caller supplies, computed however that caller's environment
  * answers "has this leaf been revoked" (owner_slot_is_revoked() in the
  * bootloader; open_plc_arduino's mirror of the same on-flash records
@@ -39,15 +39,8 @@ extern "C" {
 #endif
 
 /* leaf_pubkey[64] || root_sig[64]. No parser -- two fields at fixed offsets,
- * same style as owner_record_t.
- *
- * 2026-09-20: dropped the `serial` field this used to carry. It existed so a
- * revocation list would have something to name, but revocation ended up
- * naming leaves by their public key instead (see
- * $PROD/maps/owner-revoke-and-boot-upgrade/issues/OWN-01-revoke-by-serial-or-by-pubkey.md)
- * -- a scheme that needs no board-assigned number, and works even if the tool
- * that issued a certificate is never seen again. `serial` never did anything
- * a verifier checked; it was signed and stored, never compared. */
+ * same style as owner_record_t. No serial number: revocation names leaves by
+ * public key ($PROD/docs/modules/M2-ownership.md, "定下来的取舍"). */
 #define IAP_CERT_SIZE        128U
 #define IAP_CERT_SIGNED_LEN   64U   /* leaf_pubkey, covered by root_sig */
 

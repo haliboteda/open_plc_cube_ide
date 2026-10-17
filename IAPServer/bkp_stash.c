@@ -38,11 +38,13 @@ static void digest_of(const uint8_t uid[IAP_MACHINE_ID_SIZE], const uint8_t *pay
 
 bool bkp_stash_enable(void)
 {
+	/* Every call, not once: iap_auth_report_backup_domain() clears DBP, and a
+	 * write with DBP clear is a BusFault. See $PROD/docs/modules/M1/SECTOR-15.md. */
+	HAL_PWR_EnableBkUpAccess();
 	if (s_enabled) {
 		return true;
 	}
 	__HAL_RCC_BKPRAM_CLK_ENABLE();
-	HAL_PWR_EnableBkUpAccess();
 	/* Waits for BRRDY: only then is what gets written kept on VBAT. */
 	s_enabled = (HAL_PWREx_EnableBkUpReg() == HAL_OK);
 	return s_enabled;

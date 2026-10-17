@@ -2,9 +2,8 @@
  * iap_auth.c
  *
  * See iap_auth.h. The nonce is 16 bytes straight from the RNG peripheral, so
- * none of it has to survive a power cycle. It used to be a counter kept in an
- * RTC backup register; that counter is gone, along with everything it needed to
- * stay alive -- see $PROD/docs/tables/DECISIONS.md, decision 66.
+ * none of it has to survive a power cycle ($PROD/docs/tables/DECISIONS.md,
+ * decision 66).
  *
  * Uniqueness -- not unpredictability -- is what defeats replay here: the leaf
  * private key is what an attacker actually needs, and observing nonces never
@@ -151,13 +150,9 @@ void iap_auth_report_backup_domain(void)
 	if (witness == IAP_VBAT_WITNESS_VALUE) {
 		printf("Backup domain retained\r\n");
 	} else {
-		/* Do not name a cause here. A mismatched RTCSEL between bootloader and
-		 * application wipes this domain with a healthy battery in place, and
-		 * blaming the battery cost a full day of debugging (2026-09-18).
-		 * See $PROD/docs/tables/DECISIONS.md, decision 57.
-		 *
-		 * Says nothing about replay protection: since decision 66 the nonce does
-		 * not come from this domain. What is lost is the RTC's time. */
+		/* Do not blame the battery: a mismatched RTCSEL between bootloader and
+		 * application wipes this domain with a healthy one (decision 57). The
+		 * nonce does not live here (decision 66); what is lost is the RTC time. */
 		printf("** Backup domain was lost - VBAT supply or RTC clock source changed. **\r\n"
 				"** The RTC has restarted from a fixed time. **\r\n");
 	}

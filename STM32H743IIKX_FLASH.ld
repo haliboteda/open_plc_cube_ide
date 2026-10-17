@@ -63,8 +63,10 @@ MEMORY
      the boot-mode handoff record (see IAPServer/IAP_boot_handoff.h). Because the
      address is outside every MEMORY region the linker cannot place anything
      there, in this image or any future one -- a guarantee, not a convention.
-     Keep this identical to the Arduino core's variants/.../ldscript.ld. */
-  RAM_D3 (xrw)   : ORIGIN = 0x38000020, LENGTH = 64K - 32
+     Keep this identical to the Arduino core's variants/.../ldscript.ld.
+     The next 4096 bytes are the boot log, carved out the same way: see
+     $PROD/docs/modules/M1/BOOT-LOG.md. */
+  RAM_D3 (xrw)   : ORIGIN = 0x38001020, LENGTH = 64K - 32 - 4096
   ITCMRAM (xrw)  : ORIGIN = 0x00000000, LENGTH = 64K
 }
 

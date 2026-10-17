@@ -53,6 +53,8 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
+/* Write the stdout line still waiting for its newline to the boot log. */
+void boot_log_flush_stdout(void);
 
 /* USER CODE END EFP */
 

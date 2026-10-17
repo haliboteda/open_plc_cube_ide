@@ -742,18 +742,6 @@ bool owner_slot_write_carry(const owner_carry_t *carry)
 	return true;
 }
 
-bool owner_slot_is_empty(void)
-{
-	owner_slot_init();
-	return s_empty;
-}
-
-uint32_t owner_slot_record_count(void)
-{
-	owner_slot_init();
-	return s_valid_count;
-}
-
 void owner_slot_report(void)
 {
 	owner_slot_init();

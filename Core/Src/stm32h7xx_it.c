@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
+#include "boot_log.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -299,6 +300,47 @@ __attribute__((naked)) void UsageFault_Handler(void)
   );
 }
 
+/* Appends " <key>0x<8 hex digits>" at p; returns the new end. */
+static char *fault_put_hex(char *p, const char *key, uint32_t v)
+{
+    static const char hex[] = "0123456789abcdef";
+
+    *p++ = ' ';
+    while (*key != '\0') {
+        *p++ = *key++;
+    }
+    *p++ = '0';
+    *p++ = 'x';
+    for (int shift = 28; shift >= 0; shift -= 4) {
+        *p++ = hex[(v >> shift) & 0xFU];
+    }
+    return p;
+}
+
+/* One "[sys][FAULT] <name> pc=... lr=... cfsr=... hfsr=... bfar=..." record in
+ * the boot log, built by hand so a broken heap or stdio cannot stop it.
+ * Format: $PROD/docs/modules/M1/BOOT-LOG.md */
+static void fault_log_record(const char *name, const uint32_t *frame,
+                             uint32_t cfsr, uint32_t hfsr)
+{
+    char line[BOOT_LOG_LINE_MAX];
+    char *p = line;
+    const char *s;
+
+    for (s = BOOT_LOG_TAG_FAULT; *s != '\0'; s++) {
+        *p++ = *s;
+    }
+    for (s = name; *s != '\0'; s++) {
+        *p++ = *s;
+    }
+    p = fault_put_hex(p, "pc=", frame[6]);
+    p = fault_put_hex(p, "lr=", frame[5]);
+    p = fault_put_hex(p, "cfsr=", cfsr);
+    p = fault_put_hex(p, "hfsr=", hfsr);
+    p = fault_put_hex(p, "bfar=", SCB->BFAR);
+    (void) boot_log_write(line, (size_t) (p - line));
+}
+
 /*
  * Called from the naked handlers above with the exception frame still intact.
  * `frame` is the stack pointer at exception entry, `exc_return` is the LR value
@@ -314,6 +356,9 @@ void IT_Fault_Report(uint32_t *frame, uint32_t exc_return, uint32_t which)
     const uint32_t mmfsr = cfsr & 0xFFU;
     const uint32_t bfsr  = (cfsr >> 8) & 0xFFU;
     const uint32_t ufsr  = (cfsr >> 16) & 0xFFFFU;
+
+    /* Before the full report: it survives the reset even if printf faults. */
+    fault_log_record(names[(which < 5U) ? which : 0U], frame, cfsr, hfsr);
 
     printf("\n--- %s ---\n", names[(which < 5U) ? which : 0U]);
     printf("frame @ 0x%08lX (%s)  EXC_RETURN = 0x%08lX\n",
@@ -382,7 +427,7 @@ void IT_Fault_Report(uint32_t *frame, uint32_t exc_return, uint32_t which)
 
     /* Deliberately hangs. Never reset to recover here: a fault that resets
      * itself away leaves no evidence and turns a reproducible bug into an
-     * intermittent one. The board stays put with the report on the wire. */
+     * intermittent one. The board stays put with the report in SWO and the boot log. */
     while (1) { }
 }
 /* USER CODE END 1 */

@@ -54,21 +54,17 @@ already has firmware on it.
   no sketch version to report and sends `-`.
 - **The bootloader can now be replaced over the network**, with
   `IAPTool flashboot <boot.bin> <ip> --key=<owner.pem>`, and the board stays
-  claimed: the owner records are carried across the erase, and compacted while
-  they are out of the way. The key must be the owner root -- a leaf certificate
-  authorises applications, not bootloaders -- and an unclaimed board demands
-  BOOT0 held through start-up instead. Verified on hardware: five bootloader
-  replacements in a row, ownership and the installed application intact after
-  each one.
+  claimed: the owner records live in sector 15, which `flashboot` never
+  touches. The key must be the owner root -- a leaf certificate authorises
+  applications, not bootloaders -- and a board with no root refuses it (claim
+  it first; the first upload does that). Verified on hardware.
   ⚠️ **Do not cut power during it.** The board is running out of the sector
-  being rewritten. If it is interrupted the board will not start; hold BOOT0
-  through a reset to reach the ST ROM DFU and re-flash over USB. Whether
-  ownership survived depends on where it stopped, and the boot log says so.
-  ⚠️ Re-flashing over **ST-Link still wipes ownership** -- the owner records
-  live in the bootloader's own sector. Use `flashboot` to keep it.
-  ⚠️ Going *into* this release still loses ownership whichever way you do it:
-  the owner record format changed, so no record written by an earlier build is
-  read. From 0.1.3 onwards `flashboot` keeps it.
+  being rewritten. If it is interrupted the board will not start; re-flash the
+  bootloader over ST-Link. Ownership survives either way.
+  ⚠️ Going *into* this release still loses ownership: the sector-15 layout
+  changed, so nothing written by an earlier build is read (see
+  [Upgrade rules](#upgrade-rules)). From 0.1.3 onwards both `flashboot` and an
+  ST-Link reflash of the bootloader keep it.
 - **A leaf certificate can be revoked**, so one departing colleague no longer
   means re-keying everybody:
 
@@ -97,8 +93,7 @@ already has firmware on it.
   slots left.
   ⚠️ **Changing the root does not free those slots.** It retires every leaf the
   old root issued -- so they need no individual revocation -- but the records
-  already written stay where they are. Only `setowner --wipe`, a `flashboot`,
-  or an ST-Link reflash reclaims them.
+  already written stay where they are. Only `setowner --wipe` reclaims them.
 - **`setowner --wipe` hands the board over and empties the record area**, which
   is the only way to get revocation slots back without an ST-Link:
 
@@ -106,9 +101,9 @@ already has firmware on it.
   IAPTool setowner <ip> --current-key=<a.pem> --new-key=<b.pem> --wipe
   ```
 
-  The board erases and rewrites its own flash sector to do it, so it resets.
-  ⚠️ **Same power rule as `flashboot`**: a cut during the erase means holding
-  BOOT0 through a reset and re-flashing over USB DFU.
+  The board erases and rewrites sector 15 to do it, so it resets. A power cut
+  during the rewrite is finished at the next start from a copy held in backup
+  SRAM; the bootloader itself is never touched.
   ⚠️ **After a wipe the board's ownership can no longer be proved back to the
   factory.** Each ownership record is authorised by the one before it, and a
   wipe discards them; the record it writes therefore carries no signature and
@@ -124,67 +119,160 @@ already has firmware on it.
 - **The event log is gone.** The eight journal events supported no requirement
   and nothing ever read them back. The state sector now holds firmware metadata
   only, with its first 8 KiB reserved for calibration data.
+- **Every output stays at 0 until the sketch first writes it.** The bootloader
+  drives the digital outputs low, the analog outputs to 0 mA and `KNX_TX` low,
+  rather than leaving them to whatever a floating pin does. The per-output
+  table is in the `OpenPLC_Ports` README, "Outputs at power-up, reset and power
+  loss".
+- **The boot log warns when the brown-out reset level is not 2.7 V.** The level
+  lives in the chip's option bytes; the bootloader only reads it.
+- **Logs and example output go to RS232** (terminals C05 / C06, 115200 baud),
+  not USB. USB is for uploading; `USB_Serial` is the one example that still
+  prints there, because USB serial is what it shows. The core switches the
+  RS232 transceiver on at start-up, so a sketch no longer enables it, and the
+  `[BOOT] millis=` line no longer depends on start-up timing.
+- **`openplcResetCause()`** tells a sketch why the board last reset: watchdog,
+  power-on, reset button, software or brown-out. `IWatchdog.isReset()` is always
+  false on this board, because the bootloader has already cleared the flag it
+  reads. The board package turns on no watchdog and claims no alarm output;
+  the `OpenPLC_Ports` README shows how to build both.
+- **Analog in mV and mA, with this board's calibration**:
+  `openplcReadAI1_mV()`, `openplcReadAI2_mA()`, `openplcWriteAO_mA()` and
+  `openplcCalibrationStatus()`. A board without valid calibration falls back to
+  the nominal conversion and says so once on the log. `analogRead()` /
+  `analogWrite()` stay raw.
+- **PWM resolution on the digital outputs.** `DO_PWM` sets duty, frequency and,
+  with `r <bits>` (1–16, default 8), the resolution, using the core's
+  `analogWriteResolution()`. Outputs pair up on timer channels (DO1/DO5,
+  DO2/DO6, DO3/DO7, DO4/DO8): only one of a pair runs PWM. Verified on hardware.
+- **SD card and file system ship in the board package**: `OpenPLC_SD` with
+  FatFs, an Arduino-style `SD` / `File` interface, FAT32 and exFAT, cards
+  partitioned MBR or GPT. It contains no GPL code, so linking it puts no
+  obligation on your firmware. `SD_FileReceive` takes a file from the PC over
+  USB with YMODEM (`openplcYmodemReceive()`) and writes it to the card.
+- **KNX TP is rewritten for the board's STKNX transceiver.** The library times
+  the TP1 bits itself in two timer interrupts, including the acknowledge,
+  repetitions and collisions, so a slow `loop()` does not miss an acknowledge.
+  ⚠️ **A sketch using `OpenPLC_KNX` cannot use TIM1 or TIM12** for anything
+  else, PWM on DO1/DO2/DO5/DO6 included.
+- **KNX has two roles, both programmable by ETS**: *Tools ▸ KNX Role* offers
+  KNX TP Device (mask `0x07B0`, the default) and KNX IP Router (`0x091A`).
+  The IP+TP device `0x5780` and the IP-only device `0x57B0` are gone.
+  The programming button is BOOT0: press it once while the sketch runs, and
+  the system LED shows programming mode. When ETS restarts the board, the log
+  says so first (`KNX: restart requested by ETS ...`).
+- **KNX examples**: `KNX_Switch`, `KNX_Inputs`, `KNX_Temperature`,
+  `KNX_Analog`, `KNX_BusMonitor` (prints every telegram and sends group writes
+  typed on RS232, no ETS needed) and `KNX_IPRouter`. `KNX_Basic`,
+  `KNX_IP_Test`, `KNX_SelfTest`, `KNX_TP_PingPong` and `KNX_TP_TxTest` are
+  removed.
+- **Eleven upstream examples that do not fit this board are removed**, from the
+  `Keyboard`, `Mouse`, `RGB_LED_TLC59731`, `SPI`, `Servo`, `SoftwareSerial` and
+  `SubGhz` libraries.
+- **`IAPTool` refuses a board whose bootloader cannot answer `getpubkey`**
+  instead of uploading without checking the key. Older bootloaders are not
+  supported; flash the 0.1.3 bootloader first (see
+  [Boards already in service](#boards-already-in-service-flash-the-bootloader-over-st-link)).
+- **An Ethernet upload stops if a different board answers at the address.**
+  After rebooting the board into its bootloader, `IAPTool` checks the UID at
+  the original IP and refuses with `<ip> now answers as a different board`
+  instead of uploading to it.
+- **Upload output is short by default.** Without *Show verbose output during
+  upload* the IDE shows only the key lines and a progress bar; with it, every
+  block and command.
+- **The IDE port list relabels a board** when it switches between application
+  and bootloader at the same address, instead of keeping the old label.
+- **Uploads work on Linux and macOS**: the upload tool, the discovery helper
+  and the build scripts install as executables, so an upload no longer fails
+  with `Permission denied`.
+- **A second compile without changes is incremental** instead of rebuilding
+  the whole core.
+- **An ETS download can no longer erase the application.** An uninitialised
+  erase request in the KNX storage could wipe the flash sector holding the
+  application signature, ownership and calibration.
+- **The KNX data area is 16 KiB** (about 2,700 group links instead of about
+  110), enough for the IP router's filter table. Data from earlier ETS
+  downloads stays valid.
+- **The ETS product file is no longer in the board package.**
+  `OpenPLC_Bridge.knxprod` is removed; the product for this release is
+  `OpenPLC_TP.knxprod` (application version 5, order number `OPENPLC-TP`),
+  downloaded from [OpenPLC_ETS_Prod](https://github.com/haliboteda/OpenPLC_ETS_Prod).
+
+### Sketches that need editing
+
+These names changed with no alias left behind, so a sketch using the old ones
+**does not compile** with this package. One spelling per thing keeps the
+interface consistent.
+
+| Was | Now |
+|---|---|
+| `Serial_Test` | `RS232` |
+| `RS232_TX_Pin`, `RS232_RX_Pin`, `RS232_EN_Pin` | `RS232_TX`, `RS232_RX`, `RS232_EN` |
+| `KNXHelper.<method>` | `KNX.<method>` — `KNX` is the only KNX object now |
+| `KNX.setup("OPENPLC000001")` (serial number) | `KNX.setup("OPENPLC-TP")` — the ETS product's order number |
+| *KNX Role* `IP+TP Device` (`0x5780`) or `KNXnet/IP Device` (`0x57B0`) | `KNX TP Device` (`0x07B0`) or `KNX IP Router` (`0x091A`) |
+| `#include <STM32SD.h>` | `#include <OpenPLC_SD.h>`; `SD` / `File` keep their shape |
+| `SD.begin(SDMMC_CD_Pin)`; `digitalRead(SDMMC_CD_Pin)` | `SD.begin()`; `SD.cardPresent()` — the card-detect pin is built in. `SDMMC_CLK_Pin`, `SDMMC_CMD_Pin`, `SDMMC_D0_Pin` are gone; `SDMMC_CD_Pin` is `SDMMC_CD` |
+| `CAN_TX_Pin`, `CAN_RX_Pin` | `CAN_TX`, `CAN_RX` (the `CAN` object sets them up itself) |
+| `openplc_reset_cause()` | `openplcResetCause()` |
+| `openplc_net_link_up()`, `openplc_net_has_ip()`, `openplc_net_get_ipv4(ip)`, `openplc_net_get_mac(mac)` | `Net.linkUp()`, `Net.hasIP()`, `Net.localIP()` (an `IPAddress`), `Net.macAddress(mac)`; no `#include` needed. The `openplc_lwip_*` statistics are gone |
+
+**How to migrate:** search the sketch for each name in the left column and
+replace it; the compiler error names each line still left. `KNX` exposes
+`setup`, `start`, `loop`, `progMode`, `configured`, `individualAddress`,
+`getGroupObject` (TP device only), `onBusFrame`, `sendGroupWrite` and
+`onBusSendDone`; the `OpenPLC_KNX` README describes each. A sketch that called
+other `KnxFacade` methods on the old `KNX` has no replacement for them yet.
+Lines that switch `RS232_EN` on are no longer needed: the core does it.
 
 ### Upgrade rules
 
 > **The bootloader and the application must be upgraded together. This is not a
 > recommendation.**
 
-Application metadata (size, hash, signature) lives in the last flash sector,
-and 0.1.3 changed its layout more than once. The current layout reserves the
-first 8 KiB of that sector for calibration data and starts the metadata area
-after it, so a record written by any earlier build no longer lines up. In every
-one of those cases:
+The bootloader keeps its state in the last flash sector (sector 15), laid out
+as:
 
-1. It finds no metadata for the application already in flash.
-2. It therefore declares that application invalid.
-3. It stays in the bootloader and reports role `BOOTLD-INVALID`.
+| Address | Size | Holds |
+|---|---|---|
+| `0x081E0000` | 8 KiB | Calibration data, written at production; never erased by an upgrade |
+| `0x081E2000` | 8 KiB | Root area: ownership records and revoked leaves |
+| `0x081E4000` | to `0x081FFFE0` | Application metadata (size, signature, certificate), appended once per upload |
+| `0x081FFFE0` | 32 bytes | Layout marker, written last, so a half-written sector is recognised |
 
-The application image itself is untouched and byte-for-byte fine. What is gone
-is the bootloader's record that it was ever installed.
+A sector 15 written by any earlier build has no layout marker. The first start
+of the 0.1.3 bootloader therefore prints
+`** Sector 15 is not in this layout ... rebuilt with calibration only. **`
+and rewrites the sector keeping only the calibration data, so:
+
+1. The board has **no root**: whoever owned it before no longer does.
+2. It has **no metadata** for the application already in flash, so it does not
+   run it and reports role `BOOTLD-INVALID`.
 
 **The board looks bricked. It is not.** It still answers discovery over both USB
-CDC and Ethernet, and it still accepts uploads. Upload the sketch again and the
-new bootloader writes fresh metadata in the format it understands.
+CDC and Ethernet, and it still accepts uploads. Upload the sketch again: that
+first upload claims the board for your key and writes fresh metadata.
 
-**What it will not do is recover on its own.** Ship the two images as one
-bundle, and never let a field board take a bootloader update alone.
+**What it will not do is recover on its own.** Ship the bootloader and the
+application as one bundle, and never let a board take a bootloader update
+alone. There is no compatibility path for the old layout, by decision: no
+released board is supposed to keep it.
 
-There is no code-level mitigation for this, by decision. The old format is not
-readable and adding a compatibility path would mean carrying a parser for a
-format no released board is supposed to keep.
+### Boards already in service: flash the bootloader over ST-Link
 
-**The boot after a bootloader upgrade reports the metadata area as full**, for
-the same reason: it will not erase a sector on the strength of records it cannot
-read. The next successful upload reclaims it, carrying the calibration area
-across, and the count drops back. Observed on hardware 2026-09-21.
+**Every board running a bootloader older than 0.1.3 gets the 0.1.3 bootloader
+over ST-Link.** There is no in-place upgrade from an older bootloader, by
+decision: ownership does not carry across the layout change anyway.
 
-### The upgrade into 0.1.3 needs somebody at the board
-
-This applies **once**, to the upgrade into this release, and not to any
-upgrade after it.
-
-An application built before 0.1.3 cannot reboot itself into the bootloader on
-a 0.1.3 board. It reads the owner records to decide who may ask it to reboot,
-and it does not understand the layout this release introduced, so it falls
-back to the published root and refuses a request signed by the board's real
-owner. The board is fine and still answers discovery — it just will not take
-that one command.
-
-**So the upgrade into 0.1.3 needs BOOT0 held through a reset**, unless the
-board is already sitting in its bootloader. Once a 0.1.3-built application is
-installed, `IAPTool` can drive the whole cycle over the network again.
-
-### Upgrade in this order
-
-**Board package first, bootloader second.** The intermediate state is usable
-that way round: a sketch built with the new package runs fine on an old
-bootloader (the metadata format it writes has not changed, and the extra
-identity field only makes an old tool's display untidy). The other way round
-leaves the board sitting in `BOOTLD-INVALID` until the application is re-sent.
-
-Either way the application has to be uploaded once after the bootloader is
-replaced — see [Upgrade rules](#upgrade-rules).
+1. **Flash the 0.1.3 bootloader over ST-Link** — steps in
+   [README.md, "Download BootLoader-Menu to PLC-H743IIKx"](README.md#download-bootloader-menu-to-plc-h743iikx)
+   (for a scripted flash that also checks the result:
+   `$PROD/docs/engineering/HOW-TO-RUN-TESTS.md`, "出厂态怎么造、怎么证明").
+2. **Install the 0.1.3 board package.** The version number is unchanged from
+   the earlier 0.1.3 build, so the IDE offers no update: remove the installed
+   package and install it again.
+3. **Upload the sketch.** The board has no root, so this first upload claims it
+   for your key and the board starts the application.
 
 ### The upload tool has to be upgraded too
 
@@ -198,27 +286,23 @@ The tool ships inside the Arduino board package, so installing the package
 updates it — but a machine that keeps a copy elsewhere, or a script pointing at
 an old path, will fail this way until it is pointed at the new one.
 
-### Flashing the bootloader
+### Flashing the bootloader from 0.1.3 onwards
 
-There are two ways, and they differ in what survives.
+Once a board runs the 0.1.3 bootloader, there are two ways to replace it, and
+both keep ownership, the application and calibration: the root area and the
+metadata live in sector 15, which neither of them writes.
 
-| | `IAPTool flashboot` | ST-Link / DFU |
+| | `IAPTool flashboot` | ST-Link |
 |---|---|---|
-| Ownership | **kept** | **erased** |
-| Installed application | kept | kept (the image itself is never touched) |
+| Ownership | kept | kept |
+| Installed application | kept | kept |
 | Needs a cable at the board | no | yes |
 | Needs the owner's private key | yes | no |
 
-`flashboot` is the normal route from 0.1.3 onwards. ST-Link remains the way in
-when there is no owner key to sign with, and the way back when something went
-wrong.
-
-> **Reflashing over ST-Link resets ownership.** The owner records live in the
-> top 8 KB of the bootloader's own flash sector, so erasing that sector to write
-> a new bootloader takes them with it. That is semantically right — anyone who
-> can attach ST-Link could reset the board anyway — but it means **whoever
-> replaces a bootloader that way on a claimed board must claim it again**, and
-> re-upload the application because the new owner cannot verify the old one's.
+`flashboot` is the normal route. ST-Link is the way back when a `flashboot` was
+interrupted, and the way in when there is no owner key to sign with.
+⚠️ **A full-chip erase does clear ownership** (and the application): the board
+is back to no root, and the next upload claims it.
 
 ## Board ownership
 
@@ -310,7 +394,7 @@ you want if the owner key itself is in doubt rather than one colleague's.
 
 | | Firmware already on the board | That key uploading again |
 |---|---|---|
-| `takeown` (first claim) | **Refused at the next reset** — it was signed with the published key. Re-sign it with your own and upload again | Refused |
+| `takeown` (first claim) | None runs: a board with no root runs nothing. The upload that claims it installs the first | — |
 | `revoke` a leaf | **Keeps running** | Refused |
 | `setowner` (change of root) | **Refused at the next reset** | Refused |
 
@@ -331,25 +415,18 @@ needs a re-upload list, which `IAPTool getapprevoked` gives you.
   If a board shows this, the external SDRAM is the first thing to suspect: the
   diagnostic in `TestCase/SDRAM/sdram_test.c` walks the data bus from inside the MCU
   and names the failing line.
-- **The application's `[BOOT] millis=` banner reaches the RS232 terminals only
-  by accident of timing.** The core prints it before anything drives the
-  transceiver enable high, so the MAX3221 is nominally shut down — but its
-  charge pump still holds enough residual voltage to produce valid RS-232 levels
-  for a few milliseconds, and the banner slips out on that. Measured at
-  `millis=12`. **Nothing guarantees that window.** An application that starts
-  more slowly will lose the line entirely, so do not build anything on it and do
-  not add further start-up printing at that point in the core.
 - **Discovery rate limiting is a fixed window, not a token bucket.** Nominally
   50 replies/sec; a burst straddling a window boundary has been measured at 60.
   Treat 50 as approximate, not as a guarantee.
 
 ### Not verified
 
-- **MAC addresses are unique across boards.** Derivation from the chip UID
-  replaced the hardcoded `00:80:E1:00:43:21`, and one board was confirmed to
-  derive and use its own address consistently in both the bootloader and the
-  application. Only one board was available, so uniqueness *between* boards has
-  never been observed. Put it on the production checklist.
+- ~~MAC addresses are unique across boards.~~ **Verified 2026-09-28** on two
+  boards: each derives its own address from the chip UID.
+- **KNX on a real bus with ETS.** The TP data link passed its host-side tests,
+  and `KNX_BusMonitor` sent and received on a real bus; the ETS-programmed
+  examples (`KNX_Switch`, `KNX_Inputs`, `KNX_Temperature`, `KNX_Analog`) and
+  `KNX_IPRouter` have not yet passed their tests against other KNX devices.
 - ~~Behaviour when power is lost mid-upgrade.~~ **Verified 2026-09-01** (test
   cases T1-21/T1-22): losing power during the transfer is harmless — the old
   application starts normally and the application region is untouched. Losing
@@ -364,6 +441,8 @@ needs a re-upload list, which `IAPTool getapprevoked` gives you.
   for the board to finish and come back, so the tool's exit is a usable signal
   again and automation no longer has to watch the serial log for
   `Checksum and signature OK`.
+- **GPT-partitioned SD cards on a real board.** Supported in the file system
+  configuration and tested on the host only.
 - Long-term stability under a real OpenPLC runtime.
 
 There is no second secret: the board holds only public keys.

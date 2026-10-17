@@ -12,11 +12,19 @@
 extern "C" {
 #endif
 
-#define UDP_SERVER_PORT 12345
-#define UDP_PRINT(fmt, ...) printf("[UDP] " fmt "\n", ##__VA_ARGS__)
+#include <stdbool.h>
+#include <stddef.h>
 
-void openplc_udp_server_start();
-void openplc_udp_server_stop(void);
+void openplc_udp_server_start(void);
+
+/* Longest read-only query reply plus its NUL: getpubkey's 128 hex characters. */
+#define IAP_QUERY_REPLY_MAX 129U
+
+/* Reply text for the read-only query named exactly `name` (getuid, getpubkey,
+ * getowner, getapprevoked); false for any other name. Used by UDP and by the
+ * TCP/CDC parser, so every channel answers alike.
+ * See $PROD/docs/modules/M1/IAP-PROTOCOL.md "只读查询". */
+bool iap_query_reply(const char *name, char *out, size_t out_len);
 
 #ifdef __cplusplus
 }

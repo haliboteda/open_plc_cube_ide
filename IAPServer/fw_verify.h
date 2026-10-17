@@ -16,7 +16,6 @@
 extern "C" {
 #endif
 
-#define FW_PUBLIC_KEY_SIZE 64U /* secp256r1 uncompressed point, X||Y, no 0x04 prefix */
 #define FW_SIGNATURE_SIZE  64U /* secp256r1 signature, r||s */
 
 /*

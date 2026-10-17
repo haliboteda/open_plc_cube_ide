@@ -1,8 +1,5 @@
 /*
- * ota_processor.h
- *
- *  Created on: Apr 30, 2025
- *      Author: ziotier
+ * IAP_server.h -- IAP command state machine and the boot decision.
  */
 
 #ifndef INC_IAP_SERVER_H_
@@ -15,20 +12,13 @@ extern "C" {
 #include <IAP_config.h>
 #include "stdint.h"
 
-typedef void (*pFunction)(void);
-
-//// 添加全局同步对象
-//extern SemaphoreHandle_t xDataMutex;
-//extern TaskHandle_t xCommandTaskHandle;
-
 void reset_buf(void);
 void process_command();
-//uint8_t Check_Boot0_Pressed(void);
 
 /* Boot sequence, split so that the mode decision happens before any peripheral
  * is initialised. See server_decide() in IAP_server.c for why.
  *
- *   Phase 1 (from USER CODE BEGIN SysInit, only minimal GPIO + UART4 up):
+ *   Phase 1 (from USER CODE BEGIN SysInit, only minimal GPIO up):
  *       pressed = <boot window: LED blinks 2 s, then boot0_is_pressed() once>;
  *       mode    = server_decide(pressed);
  *       if (mode == IAP_NONE) { server_jump_to_app(); }
@@ -47,7 +37,7 @@ void IAP_servers_start(IAP_Method mode);
 
 void IAP_task(void);
 
-/* "name_uid_role_version", the one identity string both the UDP discovery reply
+/* "name_uid_role_pkgversion_appversion", the one identity string both the UDP discovery reply
  * and the CDC probe answer with. Role is BOOTLD or BOOTLD-INVALID. */
 void iap_identity_string(char *out, uint32_t out_len);
 

@@ -13,11 +13,10 @@
  * the sector with the compacted area, staging it in backup SRAM across the
  * erase ($PROD/docs/modules/M1/SECTOR-15.md).
  *
- * v4 (2026-09-22) splits the area into two fixed-length segments: 32 'O'
- * (ownership) records of 160 bytes, then 96 'R' (revocation) records of 32
- * bytes. An 'R' record is one flash word and carries no signature -- it is
- * verified on the way in and never re-verified on the way out. This is a hard
- * cut, not a migration: no v3 record is readable here.
+ * Format v4: two fixed-length segments, 32 'O' (ownership) records of 160
+ * bytes, then 96 'R' (revocation) records of 32 bytes. An 'R' record is one
+ * flash word and carries no signature -- it is verified on the way in and
+ * never re-verified on the way out.
  * $PROD/docs/modules/M2-ownership.md holds the byte tables and the reasoning.
  */
 
@@ -80,27 +79,13 @@
  * .c file. format_ver exists from the first version on purpose, so a later
  * format change is an upgrade rather than a breaking migration.
  *
- * v2 (2026-09-04): added `uid`, binding a record to the one board it was
- * issued for -- without it, the raw bytes of one board's record area could be
- * copied onto another board's and verify just as well, since nothing in the
- * signed prefix said which board it was for. `uid` sits inside
- * OWNER_SIGNED_PREFIX_LEN, so the same signature covers it -- a field the
- * signature does not cover is not actually bound to anything.
- *
- * v3 (2026-09-20): dropped `slots` (nothing ever read it -- variable-length
- * records were never built) in favour of a `reserved0` byte that keeps every
- * other field at the same offset.
- *
- * v4 (2026-09-22): 'R' records moved out into their own segment and their own
- * struct, so this one describes ownership only and the union is gone.
- *
- * No compatibility with earlier versions: nothing in the field carries an
- * older record forward, so OWNER_FORMAT_VER is a hard cut, not a migration.
- * record_is_structurally_valid() rejects format_ver != 4 outright.
+ * No compatibility with earlier versions: record_is_structurally_valid()
+ * rejects format_ver != 4 outright. Why each field is where it is: same doc,
+ * "字段设计的理由".
  */
 typedef struct {
 	uint8_t  type;             /*   0  'O', or 0xFF when erased                */
-	uint8_t  reserved0;        /*   1  was `slots`; always 0 now                */
+	uint8_t  reserved0;        /*   1  always 0                                 */
 	uint16_t format_ver;       /*   2  4                                        */
 	uint32_t generation;       /*   4  monotonic; walked oldest-first, see below */
 	uint32_t flags;            /*   8  bit0 = cleared                           */
@@ -245,12 +230,6 @@ bool owner_slot_is_revoked(const uint8_t leaf_pubkey[64]);
  * caller must treat NULL as "nothing verifies".
  */
 const uint8_t *owner_slot_root(void);
-
-/* True when the area holds no record at all (a factory board). */
-bool owner_slot_is_empty(void);
-
-/* Number of structurally valid records found. */
-uint32_t owner_slot_record_count(void);
 
 /* One boot line describing what was found. */
 void owner_slot_report(void);

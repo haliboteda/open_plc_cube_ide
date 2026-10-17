@@ -7,8 +7,9 @@
  * Byte table and meaning of the coefficients:
  * $PROD/docs/modules/M1/SECTOR-15.md, "校准值区的格式".
  *
- * Written by the fixture over JLINK, never by the firmware. The bootloader
- * only carries it across a metadata reclaim (bootloader_state.c).
+ * Written only by the fixture firmware (pt.calw, decision 142), never by the
+ * app. The bootloader only carries it across a metadata reclaim
+ * (bootloader_state.c).
  */
 
 #ifndef IAPSERVER_CALIB_AREA_H_

@@ -41,9 +41,8 @@ static bool s_sdram_ok; /* stays false unless FMC_SDRAM_SelfTest() passes */
  *
  * Sequence and values are the hardware engineer's, verbatim: see FMC_Init() in
  * ref/Hello_World_OpenPLC/Core/Src/main.c (lines 175-209), which is where the
- * sibling firmware for this same Bridge board keeps it. Validated on this exact
- * board via TestCase/sdram_test.c, which used to carry its own copy.
- * Nothing here was derived or guessed.
+ * sibling firmware for this same Bridge board keeps it. Nothing here was
+ * derived or guessed.
  *
  * Chip: AS4C32M16SB-7BIN, 8192 rows x 1024 cols x 4 banks x 16 bit = 64 MiB,
  * mapped at 0xC0000000 by SDNE0.

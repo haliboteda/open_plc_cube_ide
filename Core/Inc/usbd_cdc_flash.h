@@ -42,35 +42,22 @@
 #define FLASH_END_ADDR       (uint32_t)(0x081FFFFF)
 
 /* Exported functions ------------------------------------------------------- */
-#ifndef USE_BOOTLOADER
-#define USE_BOOTLOADER
-#endif
-
-#ifdef USE_BOOTLOADER
+/* Sector 0 of bank 1 is the bootloader; the app starts at sector 1. */
 #define ADDRESS_VECTOR ((uint32_t)0x20000)
 #define RESERVED_SECTORS 1
-#else
-#define ADDRESS_VECTOR 0UL
-#define RESERVED_SECTORS 0UL
-#endif
 
-#ifndef IAP_APP_ADDRESS
 #define IAP_APP_ADDRESS (FLASH_BASE_ADDR | ADDRESS_VECTOR)
-#endif
 
-/* Last Flash sector (Bank2 Sector7) is reserved for bootloader-owned state:
- * firmware metadata (size/hash/signature) and the tamper-evident event log.
- * It must never be touched by app erase/write and is excluded from the
- * app's maximum usable size. */
 /* Programs `Len` bytes at `FlashAddress`. Len and the address must both be
  * multiples of 32: the H7 programs one 256-bit flash word at a time, and a
  * partial word cannot be written without erasing its neighbours. Returns 0 on
- * success. The target must already be erased.
- *
- * Declared here rather than left as a bare extern in callers -- owner_slot.c
- * needs it too, and a second hand-written prototype is how the two drift. */
+ * success. The target must already be erased. */
 uint16_t Flash_If_Write(uint8_t *DataAddress, uint8_t *FlashAddress, uint32_t Len);
 
+/* The last sector (bank 2 sector 7, "sector 15") holds bootloader-owned state:
+ * calibration, root area and firmware metadata. App erase/write never touches
+ * it and it is excluded from the app's maximum size.
+ * See $PROD/docs/modules/M1/SECTOR-15.md. */
 #define RESERVED_TAIL_SECTORS 1
 #define IAP_STATE_SECTOR_ADDR ADDR_FLASH_SECTOR_7_BANK2
 #define IAP_APP_MAX_SIZE (IAP_STATE_SECTOR_ADDR - IAP_APP_ADDRESS)

@@ -2,30 +2,13 @@
  * IAP_boot_handoff.h
  *
  * The one and only channel by which a running image asks the bootloader to
- * stay in upload mode after the next reset. Every place that used to poke
- * MAGIC_BKP_REG directly now goes through boot_handoff_request(), and the
- * bootloader's only read is boot_handoff_take().
+ * stay in upload mode after the next reset: boot_handoff_request() writes,
+ * boot_handoff_take() in the bootloader reads.
  *
- * Why the record lives in SRAM4 rather than an RTC backup register:
- *
- *   - No preconditions. Writing an RTC backup register silently does nothing
- *     unless PWR_CR1.DBP happens to be set, and nothing in the compiler or the
- *     HAL return value tells you when it was dropped. That is exactly how the
- *     ethernet upload path came to fail silently: iap_auth's nonce counter
- *     cleared DBP as its last act, so the MAGIC_ETH_FLAG write issued a few
- *     milliseconds later never landed and the board rebooted straight back
- *     into the application. Plain memory has no such hidden gate.
- *   - No init. SRAM4 needs no clock enable, no MPU region and no peripheral
- *     setup, so the bootloader can read the record before it has initialised
- *     anything at all -- which is what lets the boot-mode decision happen
- *     before USB / ethernet / FMC are brought up.
- *   - Correct lifetime. RAM survives a warm reset but not a power cycle, and
- *     "enter upload mode once" is exactly a warm-reset-scoped request. A
- *     battery-backed register would keep a stale request across a power loss.
- *   - No dependency on VBAT or on the RTC being configured.
- *
- * Both linker scripts start RAM_D3 at 0x38000020, so the linker cannot place
- * anything in the reserved 32 bytes -- that is a guarantee, not a convention.
+ * The record lives in SRAM4 rather than an RTC backup register because plain
+ * RAM has no hidden write gate (PWR_CR1.DBP) and needs no init. Full rationale
+ * and why the linker cannot place anything in these 32 bytes:
+ * $PROD/docs/modules/M1/BOOT-SEQUENCE.md, "交接记录为什么放 SRAM4".
  */
 
 #ifndef BOOT_HANDOFF_H_

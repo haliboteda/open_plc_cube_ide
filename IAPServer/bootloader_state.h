@@ -36,18 +36,12 @@ extern "C" {
  * `cert` is the certificate whose leaf key produced `signature` -- stored
  * whole, not just the leaf pubkey, because re-verification at every boot
  * (server_decide()) has to re-check root_sig too. That is what makes a
- * setowner handover -- or a revocation -- retroactively invalidate the
- * currently-installed firmware: the stored cert's root_sig only verifies
- * against the root that signed it, owner_slot_root() changes the moment
- * ownership changes, and owner_slot_is_revoked() is checked fresh every time
- * against the leaf this cert names. A cached "last known good leaf_pubkey"
- * would silently defeat both -- do not add one.
+ * setowner handover retroactively invalidate the installed firmware: the
+ * stored cert's root_sig only verifies against the root that signed it. A
+ * cached "last known good leaf_pubkey" would defeat that -- do not add one.
+ * Revocation does not take part at boot (decision 60).
  *
- * 2026-09-20: dropped `sha256` (never read anywhere -- the signature already
- * binds the hash, so a stored copy of the hash added no security and nothing
- * ever compared it) and `cert` shrank from 132 to 128 bytes when its `serial`
- * field went away (see iap_cert.h). One update costs 7 slots, so 3583/7 = 511
- * updates before a reclaim.
+ * One update costs 7 slots, so 3583/7 = 511 updates before a reclaim.
  */
 typedef struct {
 	uint32_t   app_size;
@@ -72,12 +66,8 @@ bool bootloader_state_get_metadata(iap_fw_metadata_t *out);
 /* Appends a new metadata record after a successful, signature-verified
  * update. A full area is reclaimed with the new record as its metadata.
  * `cert` is stored whole (see the comment on iap_fw_metadata_t above) -- it is the certificate
- * whose leaf key produced `signature`.
- *
- * No hash parameter: `iap_fw_metadata_t` used to store one, but nothing ever
- * read it back (the signature already binds the hash it was computed over,
- * so a second stored copy checked against nothing was dead weight). Removed
- * 2026-09-20 along with the field. */
+ * whose leaf key produced `signature`. No hash parameter: the
+ * signature already binds it. */
 void bootloader_state_save_metadata(uint32_t app_size, const uint8_t signature[64],
                                      const iap_cert_t *cert);
 
