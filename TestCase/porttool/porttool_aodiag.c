@@ -167,7 +167,7 @@ void PortTool_AoDiag(const char *args, void (*stop_sessions)(void))
     }
 
     int vref_ok = (exp == 3U) ? PortAodiag_VrefScale(0U) : 1;
-    (void)PortDac_SetMv((int)ch, 0U);   /* buffer on, enabled, 0 mV */
+    (void)PortDac_SetMv((int)ch, 0U);   /* enabled, 0 mV, buffer off */
 
     if (!vref_ok) {
         printf("ERR aodiag done exp=E3 but VREFBUF did not settle back at scale 0 "

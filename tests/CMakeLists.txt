@@ -119,3 +119,12 @@ endif()
 add_executable(safe_outputs_test ${IAP}/safe_outputs.c safe_outputs/test_main.c)
 target_include_directories(safe_outputs_test PRIVATE safe_outputs/stubs ${IAP})
 add_test(NAME T1-36 COMMAND safe_outputs_test)
+
+# --- T4-06: the fixture's AO buffer off at 0, on otherwise (decision 152) ------
+set(TC_COMMON "${BOOT_ROOT}/TestCase/common")
+add_executable(port_dac_test port_dac/stubs/fake_dac.c ${TC_COMMON}/port_dac.c port_dac/test_main.c)
+# stubs first: their main.h stands in for the project's. PORTTOOL_HOST_TEST skips
+# the HAL guard, which mingw's own <adc.h> would trip (testcase_hal_guard.h).
+target_include_directories(port_dac_test PRIVATE port_dac/stubs ${TC_COMMON})
+target_compile_definitions(port_dac_test PRIVATE PORTTOOL_HOST_TEST)
+add_test(NAME T4-06 COMMAND port_dac_test)

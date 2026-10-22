@@ -20,7 +20,7 @@ uint32_t PortAodiag_QuietSleep(uint32_t secs);
 uint32_t PortAodiag_Spin(uint32_t ms, uint32_t step_ms, void (*step)(void));
 
 /* DAC output buffer on/off for ch 1|2; the channel is re-enabled after.
- * PortDac_SetMv() puts the buffer back on. Returns 0 on a bad channel. */
+ * PortDac_SetMv() sets the buffer for its value (off at 0). Returns 0 on a bad channel. */
 int PortAodiag_DacBuffer(int ch, int on);
 
 /* Disables DAC ch 1|2 (pin left to the board). PortDac_SetMv() re-enables. */
